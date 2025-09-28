@@ -112,5 +112,3 @@ flowchart TD
 3. Use the "Postgres Explorer" view to browse objects.
 4. Run `Postgres: Compare Schemas` to start a comparison.
 5. Review differences, select changes, and sync safely!
-
----
