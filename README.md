@@ -315,22 +315,22 @@ The extension adds a PostgreSQL icon (🗄️) to VSCode's Activity Bar, providi
 ### Panel Layout
 ```
 ┌─────────────────────────────────────────┐
-│ 🗄️ PostgreSQL Explorer                │
+│ 🗄️ PostgreSQL Explorer                  │
 ├─────────────────────────────────────────┤
-│ 🔍 Search: [________________________] │
+│ 🔍 Search: [________________________]   │
 ├─────────────────────────────────────────┤
-│ 📁 Development Database                │
-│    └─ 🔗 localhost:5432 (Connected)    │
-│        ├─ 📂 public                    │
-│        │  ├─ 📋 users (Table)          │
-│        │  ├─ 📋 orders (Table)         │
-│        │  └─ 🔧 get_user_data (Func)   │
-│        └─ 📂 app                       │
-│           ├─ 📋 products (Table)       │
-│           └─ 🔧 process_order (Func)   │
+│ 📁 Development Database                 │
+│    └─ 🔗 localhost:5432 (Connected)     │
+│        ├─ 📂 public                     │
+│        │  ├─ 📋 users (Table)           │
+│        │  ├─ 📋 orders (Table)          │
+│        │  └─ 🔧 get_user_data (Func)    │
+│        └─ 📂 app                        │
+│           ├─ 📋 products (Table)        │
+│           └─ 🔧 process_order (Func)    │
 ├─────────────────────────────────────────┤
-│ 📁 Production Database                 │
-│    └─ 🔗 prod-host:5432 (Connected)    │
+│ 📁 Production Database                  │
+│    └─ 🔗 prod-host:5432 (Connected)     │
 └─────────────────────────────────────────┘
 ```
 
@@ -389,18 +389,19 @@ The extension adds a PostgreSQL icon (🗄️) to VSCode's Activity Bar, providi
 
 ### Extension Commands
 All commands are available through the VSCode Command Palette (`Ctrl+Shift+P`):
-
-| Command | Description |
-|---------|-------------|
-| `Postgres: Add Connection` | Add a new database connection |
-| `Postgres: Edit Connection` | Modify existing connection settings |
-| `Postgres: Remove Connection` | Delete a saved connection |
-| `Postgres: Test Connection` | Test database connectivity |
-| `Postgres: Compare Schemas` | Start schema comparison |
-| `Postgres: View Object Details` | Show detailed object information |
-| `Postgres: Generate Migration` | Create migration script |
-| `Postgres: Execute Migration` | Run migration on target database |
-| `Postgres: Rollback Migration` | Revert last migration |
+|---------------------------------|-------------------------------------|
+|           Command               |             Description             |
+|---------------------------------|-------------------------------------|
+| `Postgres: Add Connection`      | Add a new database connection       |
+| `Postgres: Edit Connection`     | Modify existing connection settings |
+| `Postgres: Remove Connection`   | Delete a saved connection           |
+| `Postgres: Test Connection`     | Test database connectivity          |
+| `Postgres: Compare Schemas`     | Start schema comparison             |
+| `Postgres: View Object Details` | Show detailed object information    |
+| `Postgres: Generate Migration`  | Create migration script             |
+| `Postgres: Execute Migration`   | Run migration on target database    |
+| `Postgres: Rollback Migration`  | Revert last migration               |
+|---------------------------------|-------------------------------------|
 
 ### Programmatic API
 For extension development or automation:
