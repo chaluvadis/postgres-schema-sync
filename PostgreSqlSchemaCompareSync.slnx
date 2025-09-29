@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/PostgreSqlSchemaCompareSync.Benchmarks/PostgreSqlSchemaCompareSync.Benchmarks.csproj" />
+  <Project Path="src/PostgreSqlSchemaCompareSync.Tests/PostgreSqlSchemaCompareSync.Tests.csproj" />
+  <Project Path="src/PostgreSqlSchemaCompareSync/PostgreSqlSchemaCompareSync.csproj" />
+</Solution>
