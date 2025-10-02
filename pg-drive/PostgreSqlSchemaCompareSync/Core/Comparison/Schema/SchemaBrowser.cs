@@ -1,13 +1,11 @@
-namespace PostgreSqlSchemaCompareSync.Core.Comparison;
+namespace PostgreSqlSchemaCompareSync.Core.Comparison.Schema;
 
 public class SchemaBrowser(
     ILogger<SchemaBrowser> logger,
-    SchemaMetadataExtractor metadataExtractor,
     SchemaCacheManager cacheManager,
     IConnectionManager connectionManager) : ISchemaBrowser
 {
     private readonly ILogger<SchemaBrowser> _logger = logger;
-    private readonly SchemaMetadataExtractor _metadataExtractor = metadataExtractor;
     private readonly SchemaCacheManager _cacheManager = cacheManager;
     private readonly IConnectionManager _connectionManager = connectionManager;
 
@@ -145,7 +143,7 @@ public class SchemaBrowser(
         }
         return dependents;
     }
-    private bool IsReferencedBy(DatabaseObject dependent, DatabaseObject dependency) =>
+    private static bool IsReferencedBy(DatabaseObject dependent, DatabaseObject dependency) =>
         dependent.Properties.Values.Any(prop =>
             prop.Contains(dependency.Name, StringComparison.OrdinalIgnoreCase) ||
             prop.Contains($"{dependency.Schema}.{dependency.Name}", StringComparison.OrdinalIgnoreCase));

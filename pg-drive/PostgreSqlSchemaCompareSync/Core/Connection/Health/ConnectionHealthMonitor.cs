@@ -6,7 +6,9 @@ public class ConnectionHealthMonitor : IDisposable
     private readonly ILogger<ConnectionHealthMonitor> _logger;
     private readonly ConcurrentDictionary<string, ConnectionHealthInfo> _healthInfo;
     private readonly Timer _monitoringTimer;
+    private readonly CancellationTokenSource _cts = new();
     private bool _disposed;
+
     public ConnectionHealthMonitor(
         IOptions<AppSettings> settings,
         ILogger<ConnectionHealthMonitor> logger)
@@ -14,6 +16,7 @@ public class ConnectionHealthMonitor : IDisposable
         _settings = settings.Value.Connection;
         _logger = logger;
         _healthInfo = new ConcurrentDictionary<string, ConnectionHealthInfo>();
+
         // Start monitoring timer
         _monitoringTimer = new Timer(
             MonitoringCallback,
@@ -23,6 +26,7 @@ public class ConnectionHealthMonitor : IDisposable
         _logger.LogInformation("Connection health monitor started with {Interval}s interval",
             _settings.HealthCheckInterval);
     }
+
     public void RegisterConnection(ConnectionInfo connectionInfo)
     {
         var key = GetConnectionKey(connectionInfo);
@@ -38,12 +42,14 @@ public class ConnectionHealthMonitor : IDisposable
         _healthInfo[key] = healthInfo;
         _logger.LogDebug("Registered connection {ConnectionKey} for health monitoring", key);
     }
+
     public void UnregisterConnection(ConnectionInfo connectionInfo)
     {
         var key = GetConnectionKey(connectionInfo);
         _healthInfo.TryRemove(key, out _);
         _logger.LogDebug("Unregistered connection {ConnectionKey} from health monitoring", key);
     }
+
     public async Task<bool> CheckConnectionHealthAsync(
         ConnectionInfo connectionInfo,
         CancellationToken cancellationToken = default)
@@ -54,26 +60,25 @@ public class ConnectionHealthMonitor : IDisposable
             ConnectionInfo = connectionInfo,
             LastHealthCheck = DateTime.UtcNow
         });
+
         try
         {
             using var connection = new NpgsqlConnection(connectionInfo.ConnectionString);
             await connection.OpenAsync(cancellationToken);
-            // Perform health check query
+
+            // Health check query (lightweight)
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT 1 as health_check, current_database() as database";
+            cmd.CommandText = "SELECT 1";
             cmd.CommandTimeout = 5;
-            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-            await reader.ReadAsync(cancellationToken);
-            var healthCheck = reader.GetInt32(0);
-            var database = reader.GetString(1);
+            await cmd.ExecuteScalarAsync(cancellationToken);
+
             // Update health info
             healthInfo.IsHealthy = true;
             healthInfo.LastHealthCheck = DateTime.UtcNow;
             healthInfo.LastSuccessAt = DateTime.UtcNow;
             healthInfo.ConsecutiveFailures = 0;
             healthInfo.TotalChecks++;
-            healthInfo.ResponseTime = DateTime.UtcNow - healthInfo.LastHealthCheck;
-            _logger.LogDebug("Connection {ConnectionKey} is healthy (database: {Database})", key, database);
+            _logger.LogDebug("Connection {ConnectionKey} is healthy", key);
             return true;
         }
         catch (Exception ex)
@@ -91,23 +96,15 @@ public class ConnectionHealthMonitor : IDisposable
             return false;
         }
     }
-    public ConnectionHealthInfo GetConnectionHealth(string connectionKey)
-    {
-        return _healthInfo.GetOrAdd(connectionKey, key => new ConnectionHealthInfo
-        {
-            ConnectionInfo = new ConnectionInfo { Name = "Unknown" },
-            LastHealthCheck = DateTime.UtcNow
-        });
-    }
-    public Dictionary<string, ConnectionHealthInfo> GetAllHealthInfo()
-    {
-        return new Dictionary<string, ConnectionHealthInfo>(_healthInfo);
-    }
+
+    // Timer callback for periodic monitoring
     private void MonitoringCallback(object? state)
     {
-        Task.Run(PerformMonitoringAsync);
+        if (_disposed) return; // Prevent race on shutdown
+        Task.Run(() => PerformMonitoringAsync(_cts.Token));
     }
-    private async Task PerformMonitoringAsync()
+
+    private async Task PerformMonitoringAsync(CancellationToken cancellationToken)
     {
         var monitoringTasks = _healthInfo.Values
             .Where(h => !h.IsHealthy || h.ConsecutiveFailures > 0)
@@ -115,7 +112,7 @@ public class ConnectionHealthMonitor : IDisposable
             {
                 try
                 {
-                    await CheckConnectionHealthAsync(healthInfo.ConnectionInfo);
+                    await CheckConnectionHealthAsync(healthInfo.ConnectionInfo, cancellationToken);
                     // If connection recovered, log the recovery
                     if (healthInfo.IsHealthy && healthInfo.ConsecutiveFailures > 0)
                     {
@@ -131,6 +128,7 @@ public class ConnectionHealthMonitor : IDisposable
                 }
             });
         await Task.WhenAll(monitoringTasks);
+
         // Log summary if there are unhealthy connections
         var unhealthyCount = _healthInfo.Count(h => !h.Value.IsHealthy);
         if (unhealthyCount > 0)
@@ -139,21 +137,24 @@ public class ConnectionHealthMonitor : IDisposable
                 unhealthyCount, _healthInfo.Count);
         }
     }
+
     private string GetConnectionKey(ConnectionInfo connectionInfo)
-    {
-        return $"{connectionInfo.Host}:{connectionInfo.Port}:{connectionInfo.Database}";
-    }
+        => $"{connectionInfo.Host}:{connectionInfo.Port}:{connectionInfo.Database}";
+
     public void Dispose()
     {
         if (!_disposed)
         {
             _disposed = true;
+            _cts.Cancel();
             _monitoringTimer?.Dispose();
+            _cts.Dispose();
             _healthInfo.Clear();
             _logger.LogInformation("Connection health monitor disposed");
         }
     }
 }
+
 public class ConnectionHealthInfo
 {
     public ConnectionInfo ConnectionInfo { get; set; } = new();
@@ -165,6 +166,4 @@ public class ConnectionHealthInfo
     public DateTime? LastSuccessAt { get; set; }
     public DateTime? LastFailureAt { get; set; }
     public string? LastError { get; set; }
-    public TimeSpan ResponseTime { get; set; }
-    public double AverageResponseTime { get; set; }
 }

@@ -1,16 +1,19 @@
 namespace PostgreSqlSchemaCompareSync.Infrastructure.Exceptions;
 
-[Serializable]
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 public class DatabaseException : Exception
 {
-    public string? Database { get; }
-    public string? Schema { get; }
-    public string? ObjectName { get; }
-    public DatabaseErrorCode ErrorCode { get; }
+    public string? Database { get; init; }
+    public string? Schema { get; init; }
+    public string? ObjectName { get; init; }
+    public DatabaseErrorCode ErrorCode { get; init; }
+
     public DatabaseException() { }
     public DatabaseException(string message) : base(message) { }
     public DatabaseException(string message, Exception innerException) : base(message, innerException) { }
-    public DatabaseException(string message, string database, string schema, string objectName, DatabaseErrorCode errorCode)
+    public DatabaseException(string message, string? database, string? schema, string? objectName, DatabaseErrorCode errorCode)
         : base(message)
     {
         Database = database;
@@ -18,66 +21,60 @@ public class DatabaseException : Exception
         ObjectName = objectName;
         ErrorCode = errorCode;
     }
-    public DatabaseException(string message, string database, DatabaseErrorCode errorCode)
+    public DatabaseException(string message, string? database, DatabaseErrorCode errorCode)
         : base(message)
     {
         Database = database;
         ErrorCode = errorCode;
     }
-    protected DatabaseException(SerializationInfo info, StreamingContext context) : base(info, context)
-    {
-        Database = info.GetString(nameof(Database)) ?? string.Empty;
-        Schema = info.GetString(nameof(Schema)) ?? string.Empty;
-        ObjectName = info.GetString(nameof(ObjectName)) ?? string.Empty;
-        ErrorCode = (DatabaseErrorCode)(info.GetInt32(nameof(ErrorCode)));
-    }
-    public override void GetObjectData(SerializationInfo info, StreamingContext context)
-    {
-        base.GetObjectData(info, context);
-        info.AddValue(nameof(Database), Database);
-        info.AddValue(nameof(Schema), Schema);
-        info.AddValue(nameof(ObjectName), ObjectName);
-        info.AddValue(nameof(ErrorCode), (int)ErrorCode);
-    }
+
+    public virtual string ToJson() => JsonSerializer.Serialize(this, GetType());
+    public static T FromJson<T>(string json) where T : DatabaseException
+        => JsonSerializer.Deserialize<T>(json)!;
 }
-[Serializable]
+
 public class ConnectionException : DatabaseException
 {
     public ConnectionException(string message) : base(message) { }
     public ConnectionException(string message, string database) : base(message, database, DatabaseErrorCode.ConnectionFailed) { }
     public ConnectionException(string message, Exception innerException) : base(message, innerException) { }
 }
-[Serializable]
+
 public class SchemaExtractionException : DatabaseException
 {
     public SchemaExtractionException(string message) : base(message) { }
     public SchemaExtractionException(string message, string database, string schema)
         : base(message, database, schema, string.Empty, DatabaseErrorCode.SchemaExtractionFailed) { }
 }
-[Serializable]
+
 public class ComparisonException : DatabaseException
 {
     public ComparisonException(string message) : base(message) { }
     public ComparisonException(string message, string sourceDatabase, string targetDatabase)
         : base(message, $"{sourceDatabase}->{targetDatabase}", DatabaseErrorCode.ComparisonFailed) { }
 }
-[Serializable]
+
 public class MigrationException : DatabaseException
 {
-    public Guid MigrationId { get; }
+    public Guid MigrationId { get; init; }
     public MigrationException(string message) : base(message) { }
     public MigrationException(string message, Guid migrationId)
         : base(message) => MigrationId = migrationId;
     public MigrationException(string message, Guid migrationId, Exception innerException)
         : base(message, innerException) => MigrationId = migrationId;
+
+    public override string ToJson() => JsonSerializer.Serialize(this, GetType());
+    public static MigrationException FromJson(string json)
+        => JsonSerializer.Deserialize<MigrationException>(json)!;
 }
-[Serializable]
+
 public class ValidationException : DatabaseException
 {
     public ValidationException(string message) : base(message) { }
     public ValidationException(string message, string database, string schema, string objectName)
         : base(message, database, schema, objectName, DatabaseErrorCode.ValidationFailed) { }
 }
+
 public enum DatabaseErrorCode
 {
     // Connection errors (1000-1099)

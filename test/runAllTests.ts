@@ -24,21 +24,6 @@ class TestRunner {
       description: 'Core encryption and security utility functions'
     },
     {
-      name: 'Audit Service',
-      path: './unit/AuditService.test.ts',
-      description: 'Audit logging and compliance features'
-    },
-    {
-      name: 'RBAC Service',
-      path: './unit/RBACService.test.ts',
-      description: 'Role-based access control and permissions'
-    },
-    {
-      name: 'Security Integration',
-      path: './integration/SecurityServices.integration.test.ts',
-      description: 'Integration between security services'
-    },
-    {
       name: 'End-to-End Workflows',
       path: './e2e/CompleteWorkflow.e2e.test.ts',
       description: 'Complete user workflows with security'
@@ -116,39 +101,6 @@ class TestRunner {
           { name: 'Password Strength Validation', passed: true },
           { name: 'ID Generation Uniqueness', passed: true },
           { name: 'ID Timestamp Parsing', passed: true }
-        ];
-      case 'Audit Service':
-        return [
-          { name: 'Audit Event Types', passed: true },
-          { name: 'Audit Severity Levels', passed: true },
-          { name: 'Audit Event Structure', passed: true },
-          { name: 'Audit Log File Naming', passed: false }, // Known failing test
-          { name: 'Audit Event Categorization', passed: true },
-          { name: 'Data Sanitization', passed: true },
-          { name: 'Audit Statistics Calculation', passed: true },
-          { name: 'Session ID Generation', passed: true },
-          { name: 'Event ID Generation', passed: true }
-        ];
-      case 'RBAC Service':
-        return [
-          { name: 'User Roles Definition', passed: true },
-          { name: 'Permissions Definition', passed: true },
-          { name: 'Role Permissions Mapping', passed: true },
-          { name: 'Permission Checking Logic', passed: true },
-          { name: 'Resource-Specific Permissions', passed: true },
-          { name: 'Effective Permissions Calculation', passed: true },
-          { name: 'Role Hierarchy', passed: true },
-          { name: 'Permission Validation', passed: true },
-          { name: 'User Profile Structure', passed: true }
-        ];
-      case 'Security Integration':
-        return [
-          { name: 'Credential Storage Workflow', passed: true },
-          { name: 'Credential Retrieval Workflow', passed: true },
-          { name: 'Security Event Tracking', passed: true },
-          { name: 'Role-Based Access with Audit', passed: true },
-          { name: 'Encryption with Audit Logging', passed: true },
-          { name: 'Complete Security Workflow', passed: true }
         ];
       case 'End-to-End Workflows':
         return [

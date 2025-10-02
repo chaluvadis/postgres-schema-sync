@@ -1,4 +1,5 @@
 namespace PostgreSqlSchemaCompareSync.Tests;
+
 public class DatabaseObjectTests
 {
     [Fact]

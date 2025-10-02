@@ -1,4 +1,4 @@
-namespace PostgreSqlSchemaCompareSync.Core.Comparison;
+namespace PostgreSqlSchemaCompareSync.Core.Comparison.Schema;
 
 public interface ISchemaComparator
 {

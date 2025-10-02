@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { Logger } from '../utils/Logger';
+import { ErrorHandler } from '../utils/ErrorHandler';
 import { DotNetIntegrationService, DotNetConnectionInfo } from '../services/DotNetIntegrationService';
-import { CredentialManager } from '../services/CredentialManager';
+import { ErrorSeverity } from '../extension';
 
 export interface DatabaseConnection {
     id: string;
@@ -19,122 +20,111 @@ export class ConnectionManager {
     private connections: Map<string, DatabaseConnection> = new Map();
     private secrets: vscode.SecretStorage | undefined;
     private dotNetService: DotNetIntegrationService;
-    private credentialManager: CredentialManager;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
         this.dotNetService = DotNetIntegrationService.getInstance();
-        this.credentialManager = new CredentialManager(context);
         this.loadConnections();
         this.secrets = context.secrets;
     }
 
     async addConnection(connectionInfo: Omit<DatabaseConnection, 'id'>): Promise<void> {
         try {
-            Logger.info('Adding new connection', { name: connectionInfo.name });
+            Logger.info(`Adding connection: ${connectionInfo.name}`);
 
             const connection: DatabaseConnection = {
                 ...connectionInfo,
                 id: this.generateId()
             };
 
-            // Validate password strength
-            const passwordValidation = await this.credentialManager.validateCredentialStrength(connection.password);
-            if (!passwordValidation.isValid) {
-                throw new Error(`Weak password: ${passwordValidation.issues.join(', ')}`);
-            }
-
-            // Store password securely using credential manager
-            await this.credentialManager.storeCredential(connection.id, connection.password);
-
-            // Store connection info (without password)
             this.connections.set(connection.id, {
                 ...connection,
                 password: '' // Don't store password in memory
             });
 
             await this.saveConnections();
-            Logger.info('Connection added successfully', { id: connection.id });
+            Logger.info(`Connection added: ${connection.id}`);
         } catch (error) {
-            Logger.error('Failed to add connection', error as Error);
+            Logger.error(`Failed to add connection: ${(error as Error).message}`);
             throw error;
         }
     }
 
     async updateConnection(id: string, connectionInfo: Omit<DatabaseConnection, 'id'>): Promise<void> {
         try {
-            Logger.info('Updating connection', { id });
+            Logger.info(`Updating connection: ${id}`);
 
             const existing = this.connections.get(id);
             if (!existing) {
                 throw new Error(`Connection with id ${id} not found`);
             }
 
-            const updatedConnection: DatabaseConnection = {
-                ...connectionInfo,
-                id
-            };
-
-            // Update password if changed
             if (connectionInfo.password && this.secrets) {
                 await this.secrets.store(`connection_${id}_password`, connectionInfo.password);
             }
 
-            // Update connection info
             this.connections.set(id, {
-                ...updatedConnection,
+                ...connectionInfo,
+                id,
                 password: '' // Don't store password in memory
             });
 
             await this.saveConnections();
-            Logger.info('Connection updated successfully', { id });
+            Logger.info(`Connection updated: ${id}`);
         } catch (error) {
-            Logger.error('Failed to update connection', error as Error);
+            Logger.error(`Failed to update connection: ${(error as Error).message}`);
             throw error;
         }
     }
 
     async removeConnection(id: string): Promise<void> {
         try {
-            Logger.info('Removing connection', { id });
+            Logger.info(`Removing connection: ${id}`);
 
             const connection = this.connections.get(id);
             if (!connection) {
                 throw new Error(`Connection with id ${id} not found`);
             }
 
-            // Remove password from secrets
             if (this.secrets) {
                 await this.secrets.delete(`connection_${id}_password`);
             }
 
-            // Remove connection
             this.connections.delete(id);
             await this.saveConnections();
 
-            Logger.info('Connection removed successfully', { id });
+            Logger.info(`Connection removed: ${id}`);
         } catch (error) {
-            Logger.error('Failed to remove connection', error as Error);
+            Logger.error(`Failed to remove connection: ${(error as Error).message}`);
             throw error;
         }
     }
 
     async testConnection(id: string): Promise<boolean> {
         try {
-            Logger.info('Testing connection', { id });
+            Logger.info(`Testing connection: ${id}`);
 
             const connection = this.connections.get(id);
             if (!connection) {
-                throw new Error(`Connection with id ${id} not found`);
+                Logger.error(`Connection not found: ${id}`);
+                return false;
             }
 
-            // Get password from secrets
+            if (!this.dotNetService) {
+                Logger.error('DotNet service not available');
+                return false;
+            }
+
             let password = '';
             if (this.secrets) {
                 password = await this.secrets.get(`connection_${id}_password`) || '';
             }
 
-            // Convert to .NET format and test via .NET service
+            if (!password) {
+                Logger.error(`Password not found for connection: ${id}`);
+                return false;
+            }
+
             const dotNetConnection: DotNetConnectionInfo = {
                 id: connection.id,
                 name: connection.name,
@@ -145,12 +135,13 @@ export class ConnectionManager {
                 password: password
             };
 
-            const success = await this.dotNetService.testConnection(dotNetConnection);
+            const result = await this.dotNetService.testConnection(dotNetConnection);
+            const success = !!result;
 
-            Logger.info('Connection test completed', { id, success });
+            Logger.info(`Connection test ${success ? 'successful' : 'failed'}: ${id}`);
             return success;
         } catch (error) {
-            Logger.error('Connection test failed', error as Error);
+            Logger.error(`Connection test error: ${(error as Error).message}`);
             return false;
         }
     }
@@ -158,7 +149,7 @@ export class ConnectionManager {
     getConnections(): DatabaseConnection[] {
         return Array.from(this.connections.values()).map(conn => ({
             ...conn,
-            password: '' // Never return password
+            password: ''
         }));
     }
 
@@ -167,7 +158,7 @@ export class ConnectionManager {
         if (connection) {
             return {
                 ...connection,
-                password: '' // Never return password
+                password: ''
             };
         }
         return undefined;
@@ -194,13 +185,13 @@ export class ConnectionManager {
             for (const connection of connections) {
                 this.connections.set(connection.id, {
                     ...connection,
-                    password: '' // Passwords are stored separately in secrets
+                    password: ''
                 });
             }
 
-            Logger.info('Connections loaded', { count: this.connections.size });
+            Logger.info(`Loaded ${this.connections.size} connections`);
         } catch (error) {
-            Logger.error('Failed to load connections', error as Error);
+            Logger.error(`Failed to load connections: ${(error as Error).message}`);
             this.connections.clear();
         }
     }
@@ -209,19 +200,30 @@ export class ConnectionManager {
         try {
             const connectionsArray = Array.from(this.connections.values()).map(conn => ({
                 ...conn,
-                password: '' // Never save password to state
+                password: ''
             }));
 
             await this.context.globalState.update('postgresql.connections', JSON.stringify(connectionsArray));
-            Logger.info('Connections saved', { count: connectionsArray.length });
+            Logger.info(`Saved ${connectionsArray.length} connections`);
         } catch (error) {
-            Logger.error('Failed to save connections', error as Error);
+            Logger.error(`Failed to save connections: ${(error as Error).message}`);
             throw error;
         }
     }
 
+
+
+
+
+
+
     async dispose(): Promise<void> {
-        Logger.info('Disposing ConnectionManager');
-        this.connections.clear();
+        try {
+            Logger.info('Disposing ConnectionManager');
+            this.connections.clear();
+            Logger.info('ConnectionManager disposed');
+        } catch (error) {
+            Logger.error(`Disposal error: ${(error as Error).message}`);
+        }
     }
 }

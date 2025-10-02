@@ -79,14 +79,22 @@ This extension integrates with a powerful .NET backend that provides:
 
 ### Prerequisites
 
-- Node.js 16+
-- .NET 8.0+ SDK
+- Node.js 22.0.0+
+- .NET 9.0+ SDK
 - PostgreSQL 12+
 
 ### Setup
 
 ```bash
-# Install dependencies
+# Build the .NET solution first
+npm run build:dotnet
+
+# Or build .NET manually
+cd pg-drive/PostgreSqlSchemaCompareSync
+dotnet build -c Release
+cd ../../
+
+# Install Node.js dependencies
 npm install
 
 # Compile TypeScript
@@ -99,19 +107,32 @@ npm run watch
 ### Project Structure
 
 ```
-├── src/
-│   ├── extension.ts              # Main extension entry point
-│   ├── PostgreSqlExtension.ts    # Core extension class
-│   ├── managers/                 # Business logic managers
-│   │   ├── ConnectionManager.ts  # Connection management
-│   │   ├── SchemaManager.ts      # Schema operations
-│   │   └── MigrationManager.ts   # Migration operations
-│   ├── providers/                # VSCode providers
-│   │   └── PostgreSqlTreeProvider.ts # Tree view provider
-│   └── utils/                    # Utilities
-│       └── Logger.ts             # Logging utility
-├── PostgreSqlSchemaCompareSync/  # .NET backend library
-└── package.json                  # Extension manifest
+├── src/                                    # VSCode extension source
+│   ├── extension.ts                        # Main extension entry point
+│   ├── managers/                           # Business logic managers
+│   │   ├── ConnectionManager.ts            # Connection lifecycle management
+│   │   ├── SchemaManager.ts                # Schema browsing and metadata
+│   │   └── MigrationManager.ts             # Migration operations
+│   ├── services/                           # Advanced services
+│   │   ├── DotNetIntegrationService.ts     # Main .NET integration service
+│   │   └── ConnectionHealthChecker.ts      # Health monitoring
+│   ├── providers/                          # VSCode UI providers
+│   ├── views/                              # Custom webview panels
+│   └── utils/                              # Utility functions
+├── pg-drive/                               # .NET solution root
+│   └── PostgreSqlSchemaCompareSync/        # Main .NET project
+│       ├── PostgreSqlSchemaCompareSync.cs  # Main extension class
+│       ├── Core/                           # Core .NET functionality
+│       │   ├── Connection/                 # Advanced connection management
+│       │   ├── Comparison/                 # Schema comparison engine
+│       │   ├── Migration/                  # Migration generation and execution
+│       │   └── Models/                     # Data models and types
+│       ├── Infrastructure/                 # Infrastructure services
+│       ├── Tests/                          # Comprehensive test suite
+│       └── PerformanceTests/               # Performance benchmarks
+├── test/                                   # VSCode extension tests
+├── package.json                            # Extension manifest
+└── build-dotnet.js                         # .NET build automation
 ```
 
 ## Contributing

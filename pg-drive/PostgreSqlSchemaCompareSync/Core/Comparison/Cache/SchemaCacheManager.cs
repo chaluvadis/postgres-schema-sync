@@ -1,5 +1,6 @@
 namespace PostgreSqlSchemaCompareSync.Core.Comparison.Cache;
-public class SchemaCacheManager : IDisposable
+
+public class SchemaCacheManager : IDisposable, ISchemaCacheManager
 {
     private readonly SchemaSettings _settings;
     private readonly ILogger<SchemaCacheManager> _logger;

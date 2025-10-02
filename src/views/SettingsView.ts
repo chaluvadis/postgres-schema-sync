@@ -20,6 +20,19 @@ export interface ExtensionSettings {
         enabled: boolean;
         logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
     };
+    connectionPooling: {
+        enabled: boolean;
+        minPoolSize: number;
+        maxPoolSize: number;
+        acquireTimeoutMs: number;
+        idleTimeoutMs: number;
+        healthCheckIntervalMs: number;
+        maxConnectionAgeMs: number;
+        enableDynamicSizing: boolean;
+        loadThresholdForScaling: number;
+        enableConnectionLeasing: boolean;
+        leaseTimeoutMs: number;
+    };
 }
 
 export class SettingsView {
@@ -84,6 +97,19 @@ export class SettingsView {
             debug: {
                 enabled: config.get('debug.enabled', false),
                 logLevel: config.get('debug.logLevel', 'info')
+            },
+            connectionPooling: {
+                enabled: config.get('connectionPooling.enabled', true),
+                minPoolSize: config.get('connectionPooling.minPoolSize', 2),
+                maxPoolSize: config.get('connectionPooling.maxPoolSize', 20),
+                acquireTimeoutMs: config.get('connectionPooling.acquireTimeoutMs', 30000),
+                idleTimeoutMs: config.get('connectionPooling.idleTimeoutMs', 300000),
+                healthCheckIntervalMs: config.get('connectionPooling.healthCheckIntervalMs', 60000),
+                maxConnectionAgeMs: config.get('connectionPooling.maxConnectionAgeMs', 3600000),
+                enableDynamicSizing: config.get('connectionPooling.enableDynamicSizing', true),
+                loadThresholdForScaling: config.get('connectionPooling.loadThresholdForScaling', 0.8),
+                enableConnectionLeasing: config.get('connectionPooling.enableConnectionLeasing', true),
+                leaseTimeoutMs: config.get('connectionPooling.leaseTimeoutMs', 300000)
             }
         };
     }
@@ -380,6 +406,110 @@ export class SettingsView {
                             </div>
                         </div>
                     </div>
+
+                    <!-- Connection Pooling Settings -->
+                    <div class="settings-section">
+                        <h3 class="section-title">Connection Pooling</h3>
+
+                        <div class="setting-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="connectionPoolingEnabled" name="connectionPoolingEnabled"
+                                       ${settings.connectionPooling.enabled ? 'checked' : ''}>
+                                <label for="connectionPoolingEnabled">Enable Connection Pooling</label>
+                            </div>
+                            <div class="setting-description">Enable connection pooling for improved performance</div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-label">Minimum Pool Size</div>
+                            <div class="setting-description">Minimum number of connections to maintain in the pool</div>
+                            <div class="setting-control">
+                                <input type="number" id="minPoolSize" name="minPoolSize"
+                                       value="${settings.connectionPooling.minPoolSize}" min="1" max="50">
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-label">Maximum Pool Size</div>
+                            <div class="setting-description">Maximum number of connections allowed in the pool</div>
+                            <div class="setting-control">
+                                <input type="number" id="maxPoolSize" name="maxPoolSize"
+                                       value="${settings.connectionPooling.maxPoolSize}" min="5" max="100">
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-label">Acquire Timeout (ms)</div>
+                            <div class="setting-description">Maximum time to wait for acquiring a connection</div>
+                            <div class="setting-control">
+                                <input type="number" id="acquireTimeoutMs" name="acquireTimeoutMs"
+                                       value="${settings.connectionPooling.acquireTimeoutMs}" min="5000" max="120000">
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-label">Idle Timeout (ms)</div>
+                            <div class="setting-description">Maximum idle time before closing a connection</div>
+                            <div class="setting-control">
+                                <input type="number" id="idleTimeoutMs" name="idleTimeoutMs"
+                                       value="${settings.connectionPooling.idleTimeoutMs}" min="60000" max="3600000">
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-label">Health Check Interval (ms)</div>
+                            <div class="setting-description">Interval between connection health checks</div>
+                            <div class="setting-control">
+                                <input type="number" id="healthCheckIntervalMs" name="healthCheckIntervalMs"
+                                       value="${settings.connectionPooling.healthCheckIntervalMs}" min="10000" max="300000">
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-label">Max Connection Age (ms)</div>
+                            <div class="setting-description">Maximum age of a connection before replacement</div>
+                            <div class="setting-control">
+                                <input type="number" id="maxConnectionAgeMs" name="maxConnectionAgeMs"
+                                       value="${settings.connectionPooling.maxConnectionAgeMs}" min="300000" max="86400000">
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="enableDynamicSizing" name="enableDynamicSizing"
+                                       ${settings.connectionPooling.enableDynamicSizing ? 'checked' : ''}>
+                                <label for="enableDynamicSizing">Enable Dynamic Sizing</label>
+                            </div>
+                            <div class="setting-description">Automatically adjust pool size based on load</div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-label">Load Threshold for Scaling</div>
+                            <div class="setting-description">Pool utilization percentage that triggers scaling (0.1-0.9)</div>
+                            <div class="setting-control">
+                                <input type="number" id="loadThresholdForScaling" name="loadThresholdForScaling"
+                                       value="${settings.connectionPooling.loadThresholdForScaling}" min="0.1" max="0.9" step="0.1">
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="enableConnectionLeasing" name="enableConnectionLeasing"
+                                       ${settings.connectionPooling.enableConnectionLeasing ? 'checked' : ''}>
+                                <label for="enableConnectionLeasing">Enable Connection Leasing</label>
+                            </div>
+                            <div class="setting-description">Allow long-term connection leasing for extended operations</div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-label">Lease Timeout (ms)</div>
+                            <div class="setting-description">Maximum time a leased connection can be held</div>
+                            <div class="setting-control">
+                                <input type="number" id="leaseTimeoutMs" name="leaseTimeoutMs"
+                                       value="${settings.connectionPooling.leaseTimeoutMs}" min="60000" max="3600000">
+                            </div>
+                        </div>
+                    </div>
                 </form>
 
                 <div class="actions">
@@ -414,6 +544,19 @@ export class SettingsView {
                             debug: {
                                 enabled: document.getElementById('debugEnabled').checked,
                                 logLevel: document.getElementById('debugLogLevel').value
+                            },
+                            connectionPooling: {
+                                enabled: document.getElementById('connectionPoolingEnabled').checked,
+                                minPoolSize: parseInt(document.getElementById('minPoolSize').value),
+                                maxPoolSize: parseInt(document.getElementById('maxPoolSize').value),
+                                acquireTimeoutMs: parseInt(document.getElementById('acquireTimeoutMs').value),
+                                idleTimeoutMs: parseInt(document.getElementById('idleTimeoutMs').value),
+                                healthCheckIntervalMs: parseInt(document.getElementById('healthCheckIntervalMs').value),
+                                maxConnectionAgeMs: parseInt(document.getElementById('maxConnectionAgeMs').value),
+                                enableDynamicSizing: document.getElementById('enableDynamicSizing').checked,
+                                loadThresholdForScaling: parseFloat(document.getElementById('loadThresholdForScaling').value),
+                                enableConnectionLeasing: document.getElementById('enableConnectionLeasing').checked,
+                                leaseTimeoutMs: parseInt(document.getElementById('leaseTimeoutMs').value)
                             }
                         };
 
@@ -512,6 +655,19 @@ export class SettingsView {
             await config.update('debug.enabled', newSettings.debug.enabled, vscode.ConfigurationTarget.Global);
             await config.update('debug.logLevel', newSettings.debug.logLevel, vscode.ConfigurationTarget.Global);
 
+            // Update connection pooling configuration
+            await config.update('connectionPooling.enabled', newSettings.connectionPooling.enabled, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.minPoolSize', newSettings.connectionPooling.minPoolSize, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.maxPoolSize', newSettings.connectionPooling.maxPoolSize, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.acquireTimeoutMs', newSettings.connectionPooling.acquireTimeoutMs, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.idleTimeoutMs', newSettings.connectionPooling.idleTimeoutMs, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.healthCheckIntervalMs', newSettings.connectionPooling.healthCheckIntervalMs, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.maxConnectionAgeMs', newSettings.connectionPooling.maxConnectionAgeMs, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.enableDynamicSizing', newSettings.connectionPooling.enableDynamicSizing, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.loadThresholdForScaling', newSettings.connectionPooling.loadThresholdForScaling, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.enableConnectionLeasing', newSettings.connectionPooling.enableConnectionLeasing, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.leaseTimeoutMs', newSettings.connectionPooling.leaseTimeoutMs, vscode.ConfigurationTarget.Global);
+
             vscode.window.showInformationMessage('Settings saved successfully');
 
         } catch (error) {
@@ -533,6 +689,19 @@ export class SettingsView {
             await config.update('theme.colorScheme', 'auto', vscode.ConfigurationTarget.Global);
             await config.update('debug.enabled', false, vscode.ConfigurationTarget.Global);
             await config.update('debug.logLevel', 'info', vscode.ConfigurationTarget.Global);
+
+            // Reset connection pooling to defaults
+            await config.update('connectionPooling.enabled', true, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.minPoolSize', 2, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.maxPoolSize', 20, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.acquireTimeoutMs', 30000, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.idleTimeoutMs', 300000, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.healthCheckIntervalMs', 60000, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.maxConnectionAgeMs', 3600000, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.enableDynamicSizing', true, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.loadThresholdForScaling', 0.8, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.enableConnectionLeasing', true, vscode.ConfigurationTarget.Global);
+            await config.update('connectionPooling.leaseTimeoutMs', 300000, vscode.ConfigurationTarget.Global);
 
             vscode.window.showInformationMessage('Settings reset to defaults');
 

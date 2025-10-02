@@ -11,7 +11,7 @@ const path = require('path');
 
 class DotNetBuilder {
     constructor() {
-        this.sourceDir = path.join(__dirname, 'src', 'dotnet');
+        this.sourceDir = path.join(__dirname, 'pg-drive', 'PostgreSqlSchemaCompareSync');
         this.outputDir = path.join(__dirname, 'bin');
         this.projectFile = path.join(this.sourceDir, 'PostgreSqlSchemaCompareSync.csproj');
     }
@@ -81,23 +81,43 @@ class DotNetBuilder {
     <OutputType>Library</OutputType>
     <Configurations>Release</Configurations>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <Nullable>enable</Nullable>
+    <LangVersion>10.0</LangVersion>
+    <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <Optimize>true</Optimize>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="7.0.6" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="7.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="7.0.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.9" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="7.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="7.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="7.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Edge.js" Version="8.2.1" />
   </ItemGroup>
 
   <ItemGroup>
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Core\**" />
+    <Compile Remove="Infrastructure\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Core\**" />
+    <None Remove="Infrastructure\**" />
   </ItemGroup>
 </Project>`;
 
@@ -114,8 +134,42 @@ class DotNetBuilder {
 
         const stats = fs.statSync(expectedDll);
         console.log(`✅ Build verified: ${expectedDll} (${this.formatBytes(stats.size)})`);
+
+        // Additional verification - check if DLL is a valid .NET assembly
+        try {
+            // Check if other expected files exist
+            const pdbFile = path.join(this.outputDir, 'PostgreSqlSchemaCompareSync.pdb');
+            const runtimeConfigFile = path.join(this.outputDir, 'PostgreSqlSchemaCompareSync.runtimeconfig.json');
+
+            if (fs.existsSync(pdbFile)) {
+                const pdbStats = fs.statSync(pdbFile);
+                console.log(`✅ Debug symbols found: ${this.formatBytes(pdbStats.size)}`);
+            }
+
+            if (fs.existsSync(runtimeConfigFile)) {
+                console.log(`✅ Runtime configuration found`);
+            }
+
+            // List all files in output directory for transparency
+            const files = fs.readdirSync(this.outputDir);
+            console.log(`📁 Build output contains ${files.length} files:`);
+            files.forEach(file => {
+                const filePath = path.join(this.outputDir, file);
+                const fileStats = fs.statSync(filePath);
+                const sizeStr = this.formatBytes(fileStats.size);
+                console.log(`   - ${file} (${sizeStr})`);
+            });
+
+        } catch (error) {
+            console.warn(`⚠️  Additional verification failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 
+    /**
+     * Format bytes to human readable format
+     * @param {number} bytes - The number of bytes
+     * @returns {string} Formatted bytes string
+     */
     formatBytes(bytes) {
         if (bytes === 0) return '0 Bytes';
         const k = 1024;

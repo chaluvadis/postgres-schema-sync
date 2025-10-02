@@ -11,12 +11,7 @@ export class ActivityBarProvider {
     }
 
     private setupActivityBar(): void {
-        // The Activity Bar integration is handled through package.json
-        // This class provides additional Activity Bar functionality
-
         Logger.info('Activity Bar provider initialized');
-
-        // Set up welcome view when no connections exist
         this.setupWelcomeView();
     }
 
@@ -34,12 +29,9 @@ export class ActivityBarProvider {
     updateActivityBar(): void {
         const connections = this.connectionManager.getConnections();
         const connectedCount = connections.filter(c => c.status === 'Connected').length;
-
-        // Update activity bar badge if needed
         if (connectedCount > 0) {
             vscode.commands.executeCommand('setContext', 'postgresql:connectedCount', connectedCount);
         }
-
         this.setupWelcomeView();
     }
 

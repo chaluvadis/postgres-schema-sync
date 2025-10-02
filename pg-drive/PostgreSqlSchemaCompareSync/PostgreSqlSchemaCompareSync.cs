@@ -1,3 +1,5 @@
+using PostgreSqlSchemaCompareSync.Core.Comparison.Schema;
+
 namespace PostgreSqlSchemaCompareSync;
 /// <summary>
 /// Main extension class for PostgreSQL Schema Compare & Sync functionality.
@@ -32,9 +34,9 @@ public class PostgreSqlSchemaCompareSync : IDisposable
         services.AddSingleton<ConnectionRecoveryManager>();
         services.AddSingleton<IConnectionManager, ConnectionManager>();
         // Register schema management services
-        services.AddSingleton<SchemaMetadataExtractor>();
-        services.AddSingleton<SchemaCacheManager>();
-        services.AddSingleton<SchemaComparisonEngine>();
+        services.AddSingleton<ISchemaMetadataExtractor, SchemaMetadataExtractor>();
+        services.AddSingleton<ISchemaCacheManager, SchemaCacheManager>();
+        services.AddSingleton<ISchemaComparisonEngine, SchemaComparisonEngine>();
         services.AddSingleton<ISchemaBrowser, SchemaBrowser>();
         services.AddSingleton<ISchemaComparator, SchemaComparator>();
         // Register migration services

@@ -1,11 +1,9 @@
 namespace PostgreSqlSchemaCompareSync.PerformanceTests;
-public class LoadTester
+
+public class LoadTester(ILogger<LoadTester> logger)
 {
-    private readonly ILogger<LoadTester> _logger;
-    public LoadTester(ILogger<LoadTester> logger)
-    {
-        _logger = logger;
-    }
+    private readonly ILogger<LoadTester> _logger = logger;
+
     public async Task RunLoadTests()
     {
         Console.WriteLine("\n🔥 Load Testing Scenarios");
@@ -39,8 +37,8 @@ public class LoadTester
             var differences = new List<SchemaDifference>();
             foreach (var objectType in sourceObjectsDict.Keys.Union(targetObjectsDict.Keys).Distinct())
             {
-                var sourceTypeObjects = sourceObjectsDict.GetValueOrDefault(objectType, new List<DatabaseObject>());
-                var targetTypeObjects = targetObjectsDict.GetValueOrDefault(objectType, new List<DatabaseObject>());
+                var sourceTypeObjects = sourceObjectsDict.GetValueOrDefault(objectType, []);
+                var targetTypeObjects = targetObjectsDict.GetValueOrDefault(objectType, []);
 
                 // Simple comparison logic for performance testing
                 var sourceNames = sourceTypeObjects.Select(obj => obj.QualifiedName).ToHashSet();

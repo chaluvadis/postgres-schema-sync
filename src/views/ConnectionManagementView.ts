@@ -4,7 +4,6 @@ import { Logger } from '../utils/Logger';
 
 export class ConnectionManagementView {
     private connectionManager: ConnectionManager;
-
     constructor(connectionManager: ConnectionManager) {
         this.connectionManager = connectionManager;
     }
@@ -45,7 +44,11 @@ export class ConnectionManagementView {
                     case 'testConnection':
                         try {
                             const connection = message.connection as DatabaseConnection;
+
+                            // Test basic connection
                             const success = await this.connectionManager.testConnection(connection.id);
+
+
                             panel.webview.postMessage({
                                 command: 'connectionTestResult',
                                 success,
@@ -231,6 +234,7 @@ export class ConnectionManagementView {
                     </div>
 
                     <div id="testResult" class="test-result" style="display: none;"></div>
+
                 </form>
 
                 ${connections.length > 0 ? `
@@ -325,7 +329,9 @@ export class ConnectionManagementView {
                             resultDiv.className = 'test-result test-error';
                         }
                         resultDiv.style.display = 'block';
+
                     }
+
                 </script>
             </body>
             </html>

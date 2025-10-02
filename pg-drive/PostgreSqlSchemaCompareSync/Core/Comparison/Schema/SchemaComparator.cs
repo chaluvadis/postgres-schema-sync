@@ -1,14 +1,13 @@
-namespace PostgreSqlSchemaCompareSync.Core.Comparison;
+namespace PostgreSqlSchemaCompareSync.Core.Comparison.Schema;
+
 public class SchemaComparator(
     ILogger<SchemaComparator> logger,
     SchemaMetadataExtractor metadataExtractor,
-    SchemaCacheManager cacheManager,
     IConnectionManager connectionManager,
     SchemaComparisonEngine comparisonEngine) : ISchemaComparator
 {
     private readonly ILogger<SchemaComparator> _logger = logger;
     private readonly SchemaMetadataExtractor _metadataExtractor = metadataExtractor;
-    private readonly SchemaCacheManager _cacheManager = cacheManager;
     private readonly IConnectionManager _connectionManager = connectionManager;
     private readonly SchemaComparisonEngine _comparisonEngine = comparisonEngine;
     public async Task<SchemaComparison> CompareSchemasAsync(
@@ -60,7 +59,7 @@ public class SchemaComparator(
         {
             using var connection = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
             // If specific schemas requested, filter by them
-            string? schemaFilter = schemas.Any() ? schemas.First() : null;
+            string? schemaFilter = schemas.Count != 0 ? schemas.First() : null;
             var objects = await _metadataExtractor.ExtractAllObjectsAsync(
                 connection, schemaFilter, cancellationToken);
             _logger.LogDebug("Extracted {ObjectCount} objects from {Database}",

@@ -652,11 +652,12 @@ Enable debug logging in VSCode settings:
 ## Development
 
 ### Prerequisites
-- .NET 8.0 SDK or later
+- .NET 9.0 SDK or later
 - C# 12.0+
-- VSCode 1.70+
+- VSCode 1.104+
 - PostgreSQL 12+ (for testing)
 - Visual Studio 2022 or Visual Studio Code with C# extension
+- Node.js 22.0.0+
 
 ### Setup
 ```bash
@@ -664,77 +665,100 @@ Enable debug logging in VSCode settings:
 git clone https://github.com/yourusername/postgres-schema-sync.git
 cd postgres-schema-sync
 
-# Restore NuGet packages
+# Build the .NET solution first
+npm run build:dotnet
+
+# Restore NuGet packages for the .NET solution
+cd pg-drive/PostgreSqlSchemaCompareSync
 dotnet restore
 
-# Build the extension
-dotnet build
+# Build the .NET library
+dotnet build -c Release
+
+# Return to root and build the VSCode extension
+cd ../../
+npm install
+
+# Compile TypeScript
+npm run compile
 
 # Run tests
-dotnet test
-
-# Package extension
-dotnet publish -c Release -o publish
+npm run test
 ```
 
 ### Enhanced Project Structure (Microsoft-Inspired)
 ```
-├── src/
-│   ├── Core/                    # Core functionality
-│   │   ├── Connection/          # Advanced connection management
-│   │   │   ├── Pool/           # Connection pooling
-│   │   │   ├── Health/         # Connection health monitoring
-│   │   │   └── Recovery/       # Auto-reconnection logic
-│   │   ├── Query/              # Efficient query handling
-│   │   │   ├── Executor/       # Async query execution
-│   │   │   ├── Cancellation/   # Query cancellation support
-│   │   │   └── Streaming/      # Large result streaming
-│   │   ├── Comparison/         # Schema comparison logic
-│   │   │   ├── Engine/         # High-performance comparison
-│   │   │   ├── Cache/          # Schema metadata caching
-│   │   │   └── Background/     # Async schema refresh
-│   │   └── Migration/          # Migration generation and execution
-│   │       ├── Generator/      # SQL generation
-│   │       ├── Preview/        # Migration preview
-│   │       └── Rollback/       # Rollback script generation
-│   ├── UI/                     # User interface components
-│   │   ├── ActivityBar/        # Activity Bar integration
-│   │   ├── TreeView/          # Efficient tree data provider
-│   │   ├── WebView/           # Webview panels and views
-│   │   └── StatusBar/         # Connection status indicators
-│   ├── Infrastructure/         # Infrastructure services
-│   │   ├── Logging/           # Structured logging
-│   │   ├── Configuration/     # Settings management
-│   │   ├── Security/          # Credential management
-│   │   └── Performance/       # Performance monitoring
-│   └── Utils/                  # Utility functions
-│       ├── Extensions/         # Extension methods
-│       ├── Validation/         # Input validation
-│       └── Formatting/         # Data formatting
-├── PostgreSqlSchemaCompareSync/         # Main extension project
-├── PostgreSqlSchemaCompareSync.Tests/   # Comprehensive test project
-├── PostgreSqlSchemaCompareSync.Benchmarks/  # Performance benchmarks
-└── resources/                  # Static assets
+├── src/                                    # VSCode extension source
+│   ├── managers/                          # Core business logic managers
+│   │   ├── ConnectionManager.ts           # Connection lifecycle management
+│   │   ├── SchemaManager.ts               # Schema browsing and metadata
+│   │   └── MigrationManager.ts            # Migration operations
+│   ├── services/                          # Advanced services
+│   │   ├── DotNetIntegrationService.ts    # Main .NET integration service
+│   │   └── ConnectionHealthChecker.ts     # Health monitoring
+│   │   └── [Advanced Services]            # Enterprise-grade features
+│   ├── providers/                         # VSCode UI providers
+│   ├── views/                             # Custom webview panels
+│   ├── utils/                             # Utility functions
+│   └── extension.ts                       # Main extension entry point
+├── pg-drive/                              # .NET solution root
+│   └── PostgreSqlSchemaCompareSync/       # Main .NET project
+│       ├── PostgreSqlSchemaCompareSync.cs # Main extension class
+│       ├── Core/                          # Core .NET functionality
+│       │   ├── Connection/                # Advanced connection management
+│       │   │   ├── Pool/                  # Connection pooling
+│       │   │   ├── Health/                 # Health monitoring
+│       │   │   └── Recovery/               # Auto-reconnection
+│       │   ├── Comparison/                # Schema comparison engine
+│       │   │   ├── Engine/                 # High-performance comparison
+│       │   │   ├── Cache/                  # Metadata caching
+│       │   │   └── Metadata/               # Schema metadata extraction
+│       │   ├── Migration/                 # Migration generation and execution
+│       │   │   ├── Generation/             # SQL generation
+│       │   │   └── Execution/              # Migration execution
+│       │   └── Models/                    # Data models and types
+│       ├── Infrastructure/                # Infrastructure services
+│       │   ├── Configuration/             # Settings management
+│       │   ├── Logging/                   # Structured logging
+│       │   ├── Monitoring/                # Performance monitoring
+│       │   └── Exceptions/                # Custom exception handling
+│       ├── Tests/                         # Comprehensive test suite
+│       └── PerformanceTests/              # Performance benchmarks
+├── test/                                  # VSCode extension tests
+├── resources/                             # Static assets and icons
+├── package.json                           # Extension manifest
+├── tsconfig.json                          # TypeScript configuration
+└── build-dotnet.js                        # .NET build automation
 ```
 
 ### Building
 ```bash
-# Development build
-dotnet build
+# Build the .NET solution first
+npm run build:dotnet
 
-# Watch mode for development (requires dotnet-watch)
-dotnet watch build
-
-# Production build
+# Or build .NET manually
+cd pg-drive/PostgreSqlSchemaCompareSync
 dotnet build -c Release
+cd ../../
+
+# Install Node.js dependencies
+npm install
+
+# Compile TypeScript
+npm run compile
+
+# Watch mode for development
+npm run watch
 
 # Run tests
-dotnet test
+npm run test
 
-# Code analysis
+# Code analysis and formatting
+npm run lint
 dotnet format
 
 # Create VSIX package for VSCode
+npm run build:all
 vsce package
 ```
 

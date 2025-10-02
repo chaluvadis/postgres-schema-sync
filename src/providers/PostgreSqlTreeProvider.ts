@@ -84,7 +84,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
                 new vscode.ThemeColor('debugIcon.startForeground') :
                 new vscode.ThemeColor('debugIcon.stopForeground');
 
-            return new TreeItem(
+            const item = new TreeItem(
                 connection.name,
                 'connection',
                 isConnected ? new vscode.ThemeIcon('debug-start') : new vscode.ThemeIcon('debug-breakpoint'),
@@ -102,6 +102,11 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
                 isConnected ? 'Connected' : 'Disconnected',
                 statusColor
             );
+
+            // Add enhanced context menu for connections
+            item.contextValue = 'connection';
+
+            return item;
         });
     }
 
@@ -300,6 +305,261 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
             case 'schema': return new vscode.ThemeIcon('symbol-namespace');
             default: return new vscode.ThemeIcon('question');
         }
+    }
+
+    // Enhanced features for better UX
+
+    /**
+     * Get context menu items for tree items
+     */
+    getContextMenuItems(element: TreeItem): vscode.Command[] {
+        const commands: vscode.Command[] = [];
+
+        switch (element.type) {
+            case 'connection':
+                commands.push(
+                    { command: 'postgresql.testConnection', title: 'Test Connection' },
+                    { command: 'postgresql.refreshConnection', title: 'Refresh' },
+                    { command: 'postgresql.editConnection', title: 'Edit Connection' },
+                    { command: 'postgresql.duplicateConnection', title: 'Duplicate Connection' },
+                    { command: 'postgresql.removeConnection', title: 'Remove Connection' },
+                    { command: 'postgresql.connectionInfo', title: 'Connection Information' }
+                );
+                break;
+
+            case 'database':
+                commands.push(
+                    { command: 'postgresql.refreshDatabase', title: 'Refresh Database' },
+                    { command: 'postgresql.databaseInfo', title: 'Database Information' },
+                    { command: 'postgresql.backupDatabase', title: 'Backup Database' }
+                );
+                break;
+
+            case 'schema':
+                commands.push(
+                    { command: 'postgresql.refreshSchema', title: 'Refresh Schema' },
+                    { command: 'postgresql.schemaInfo', title: 'Schema Information' },
+                    { command: 'postgresql.compareSchema', title: 'Compare Schema' }
+                );
+                break;
+
+            case 'table':
+                commands.push(
+                    { command: 'postgresql.viewTableData', title: 'View Data' },
+                    { command: 'postgresql.editTable', title: 'Edit Table' },
+                    { command: 'postgresql.tableInfo', title: 'Table Information' },
+                    { command: 'postgresql.compareTable', title: 'Compare Table' },
+                    { command: 'postgresql.generateMigration', title: 'Generate Migration' },
+                    { command: 'postgresql.exportTableData', title: 'Export Data' },
+                    { command: 'postgresql.truncateTable', title: 'Truncate Table' }
+                );
+                break;
+
+            case 'view':
+                commands.push(
+                    { command: 'postgresql.viewViewData', title: 'View Data' },
+                    { command: 'postgresql.editView', title: 'Edit View' },
+                    { command: 'postgresql.viewInfo', title: 'View Information' },
+                    { command: 'postgresql.compareView', title: 'Compare View' },
+                    { command: 'postgresql.exportViewData', title: 'Export Data' }
+                );
+                break;
+
+            case 'function':
+            case 'procedure':
+                commands.push(
+                    { command: 'postgresql.editFunction', title: 'Edit Function' },
+                    { command: 'postgresql.functionInfo', title: 'Function Information' },
+                    { command: 'postgresql.testFunction', title: 'Test Function' },
+                    { command: 'postgresql.debugFunction', title: 'Debug Function' }
+                );
+                break;
+
+            case 'index':
+                commands.push(
+                    { command: 'postgresql.indexInfo', title: 'Index Information' },
+                    { command: 'postgresql.rebuildIndex', title: 'Rebuild Index' },
+                    { command: 'postgresql.dropIndex', title: 'Drop Index' }
+                );
+                break;
+
+            case 'trigger':
+                commands.push(
+                    { command: 'postgresql.triggerInfo', title: 'Trigger Information' },
+                    { command: 'postgresql.enableTrigger', title: 'Enable Trigger' },
+                    { command: 'postgresql.disableTrigger', title: 'Disable Trigger' }
+                );
+                break;
+        }
+
+        return commands;
+    }
+
+    /**
+     * Handle drag and drop operations
+     */
+    handleDrag(element: TreeItem, dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): void {
+        // Add object information to drag data
+        if (element.type === 'table' || element.type === 'view') {
+            const dragData = {
+                type: 'database_object',
+                objectType: element.type,
+                objectName: element.objectName,
+                schemaName: element.schemaName,
+                connectionId: element.connectionId,
+                source: 'tree_view'
+            };
+
+            dataTransfer.set('application/json', new vscode.DataTransferItem(JSON.stringify(dragData)));
+        }
+    }
+
+    /**
+     * Handle drop operations
+     */
+    async handleDrop(target: TreeItem, dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): Promise<void> {
+        const transferItem = dataTransfer.get('application/json');
+        if (!transferItem) return;
+
+        try {
+            const dragData = JSON.parse(await transferItem.asString());
+
+            if (dragData.type === 'database_object' && target.type === 'connection') {
+                // Handle dropping table/view onto another connection for comparison
+                await vscode.commands.executeCommand('postgresql.compareObjects', {
+                    sourceObject: dragData,
+                    targetConnection: target.connectionId
+                });
+            }
+        } catch (error) {
+            Logger.error('Failed to handle drop operation', error as Error);
+        }
+    }
+
+    /**
+     * Get enhanced tooltip with additional information
+     */
+    getEnhancedTooltip(element: TreeItem): string {
+        let tooltip = '';
+
+        if (typeof element.tooltip === 'string') {
+            tooltip = element.tooltip;
+        } else if (element.tooltip) {
+            tooltip = element.tooltip.toString();
+        } else {
+            tooltip = typeof element.label === 'string' ? element.label : (element.label?.label || '');
+        }
+
+        switch (element.type) {
+            case 'connection':
+                const connection = this.connections.find(c => c.id === element.connectionId);
+                if (connection) {
+                    tooltip += `\n\nConnection Details:\n`;
+                    tooltip += `Host: ${connection.host}\n`;
+                    tooltip += `Port: ${connection.port}\n`;
+                    tooltip += `Database: ${connection.database}\n`;
+                    tooltip += `Status: ${connection.status}\n`;
+                    // Connection timestamp information would be available in enhanced connection model
+                    // if (connection.lastConnected) {
+                    //     tooltip += `Last Connected: ${new Date(connection.lastConnected).toLocaleString()}\n`;
+                    // }
+                }
+                break;
+
+            case 'table':
+                tooltip += `\n\nRight-click for table options\nDrag to compare with other tables`;
+                break;
+
+            case 'view':
+                tooltip += `\n\nRight-click for view options\nDrag to compare with other views`;
+                break;
+        }
+
+        return tooltip;
+    }
+
+    /**
+     * Search and filter tree items
+     */
+    setSearchFilter(filter: string): void {
+        this.searchFilter = filter.toLowerCase();
+        this.refresh();
+    }
+
+    private searchFilter: string = '';
+
+    /**
+     * Enhanced refresh with progress indication
+     */
+    async refreshWithProgress(): Promise<void> {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Refreshing PostgreSQL Tree',
+            cancellable: false
+        }, async (progress, token) => {
+            progress.report({ increment: 0, message: 'Loading connections...' });
+
+            try {
+                this.connections = this.connectionManager.getConnections();
+                progress.report({ increment: 50, message: 'Loading schema objects...' });
+
+                // Refresh schema objects for all connections
+                for (const connection of this.connections) {
+                    if (token.isCancellationRequested) break;
+
+                    try {
+                        await this.schemaManager.getDatabaseObjects(connection.id);
+                    } catch (error) {
+                        Logger.warn(`Failed to refresh schema for connection ${connection.name}`, error as Error);
+                    }
+                }
+
+                progress.report({ increment: 100, message: 'Complete' });
+                this._onDidChangeTreeData.fire();
+
+            } catch (error) {
+                Logger.error('Failed to refresh tree with progress', error as Error);
+                throw error;
+            }
+        });
+    }
+
+    /**
+     * Get quick actions for tree items
+     */
+    getQuickActions(element: TreeItem): vscode.Command[] {
+        const actions: vscode.Command[] = [];
+
+        switch (element.type) {
+            case 'connection':
+                if (element.description === 'Connected') {
+                    actions.push(
+                        { command: 'postgresql.browseSchema', title: 'Browse Schema', arguments: [element.connectionId] },
+                        { command: 'postgresql.runQuery', title: 'Run Query', arguments: [element.connectionId] }
+                    );
+                } else {
+                    actions.push(
+                        { command: 'postgresql.testConnection', title: 'Test Connection', arguments: [element.connectionId] }
+                    );
+                }
+                break;
+
+            case 'table':
+                actions.push(
+                    { command: 'postgresql.viewTableData', title: 'View Data', arguments: [element] },
+                    { command: 'postgresql.tableInfo', title: 'Info', arguments: [element] }
+                );
+                break;
+
+            case 'view':
+                actions.push(
+                    { command: 'postgresql.viewViewData', title: 'View Data', arguments: [element] },
+                    { command: 'postgresql.viewInfo', title: 'Info', arguments: [element] }
+                );
+                break;
+        }
+
+        return actions;
     }
 
     private isContainerType(type: string): boolean {

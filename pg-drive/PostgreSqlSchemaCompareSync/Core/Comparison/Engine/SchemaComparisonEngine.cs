@@ -1,44 +1,92 @@
 namespace PostgreSqlSchemaCompareSync.Core.Comparison.Engine;
 
-public class SchemaComparisonEngine
+public class SchemaComparisonEngine : ISchemaComparisonEngine
 {
     private readonly ComparisonSettings _settings;
     private readonly ILogger<SchemaComparisonEngine> _logger;
-    public SchemaComparisonEngine(
-        IOptions<AppSettings> settings,
-        ILogger<SchemaComparisonEngine> logger)
+
+    public SchemaComparisonEngine(IOptions<AppSettings> settings, ILogger<SchemaComparisonEngine> logger)
     {
         _settings = settings.Value.Comparison;
         _logger = logger;
+        ValidateSettings();
+        LogSettings();
     }
+
+    private void ValidateSettings()
+    {
+        var errors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(_settings.DefaultMode) ||
+            !Enum.TryParse<ComparisonMode>(_settings.DefaultMode, true, out _))
+            errors.Add($"Invalid DefaultMode '{_settings.DefaultMode}'. Valid values: {string.Join(", ", Enum.GetNames<ComparisonMode>())}");
+
+        if (_settings.MaxDegreeOfParallelism is < 1 or > 8)
+            errors.Add($"MaxDegreeOfParallelism must be 1-8, got {_settings.MaxDegreeOfParallelism}");
+
+        if (_settings.ChunkSize is < 100 or > 10000)
+            errors.Add($"ChunkSize must be 100-10000, got {_settings.ChunkSize}");
+
+        if (errors.Count > 0)
+        {
+            var errorMessage = $"Invalid ComparisonSettings: {string.Join("; ", errors)}";
+            _logger.LogError(errorMessage);
+            throw new ArgumentException(errorMessage);
+        }
+    }
+
+    private void LogSettings() =>
+        _logger.LogInformation(
+            "SchemaComparisonEngine initialized: DefaultMode={DefaultMode}, EnableParallelProcessing={EnableParallelProcessing}, MaxDegreeOfParallelism={MaxDegreeOfParallelism}, ChunkSize={ChunkSize}",
+            _settings.DefaultMode, _settings.EnableParallelProcessing, _settings.MaxDegreeOfParallelism, _settings.ChunkSize);
+
+    private ComparisonMode GetComparisonMode(ComparisonOptions? options = null)
+    {
+        if (options != null)
+        {
+            return options.Mode;
+        }
+        if (_settings.DefaultMode != null && Enum.TryParse<ComparisonMode>(_settings.DefaultMode, true, out var mode))
+        {
+            return mode;
+        }
+        _logger.LogWarning("Failed to parse DefaultMode '{DefaultMode}', falling back to Strict", _settings.DefaultMode);
+        return ComparisonMode.Strict;
+    }
+
     public async Task<List<SchemaDifference>> CompareObjectsAsync(
         List<DatabaseObject> sourceObjects,
         List<DatabaseObject> targetObjects,
         ComparisonOptions options,
         CancellationToken cancellationToken = default)
     {
-        var differences = new List<SchemaDifference>();
+        _logger.LogInformation("Starting schema comparison: {SourceCount} source, {TargetCount} target objects",
+            sourceObjects.Count, targetObjects.Count);
+
+        var sourceByType = sourceObjects.GroupBy(obj => obj.Type).ToDictionary(g => g.Key, g => g.ToList());
+        var targetByType = targetObjects.GroupBy(obj => obj.Type).ToDictionary(g => g.Key, g => g.ToList());
+
         try
         {
-            _logger.LogInformation("Starting schema comparison: {SourceCount} source, {TargetCount} target objects",
-                sourceObjects.Count, targetObjects.Count);
-            // Group objects by type for efficient processing
-            var sourceByType = sourceObjects.GroupBy(obj => obj.Type).ToDictionary(g => g.Key, g => g.ToList());
-            var targetByType = targetObjects.GroupBy(obj => obj.Type).ToDictionary(g => g.Key, g => g.ToList());
-            // Process each object type
-            var comparisonTasks = new List<Task<List<SchemaDifference>>>();
-            foreach (var objectType in sourceByType.Keys.Union(targetByType.Keys).Distinct())
+            var objectTypes = sourceByType.Keys.Union(targetByType.Keys).ToList();
+            var tasks = objectTypes.Select(objectType =>
             {
-                var sourceTypeObjects = sourceByType.GetValueOrDefault(objectType, []);
-                var targetTypeObjects = targetByType.GetValueOrDefault(objectType, []);
-                comparisonTasks.Add(CompareObjectTypeAsync(
-                    objectType, sourceTypeObjects, targetTypeObjects, options, cancellationToken));
-            }
-            var typeDifferences = await Task.WhenAll(comparisonTasks);
-            foreach (var typeDiff in typeDifferences)
+                var source = sourceByType.GetValueOrDefault(objectType, []);
+                var target = targetByType.GetValueOrDefault(objectType, []);
+                return CompareObjectTypeAsync(objectType, source, target, options, cancellationToken);
+            });
+
+            List<SchemaDifference>[] typeDiffs;
+            if (_settings.EnableParallelProcessing && objectTypes.Count > 1)
             {
-                differences.AddRange(typeDiff);
+                typeDiffs = await Task.WhenAll(tasks);
             }
+            else
+            {
+                typeDiffs = await Task.WhenAll(tasks);
+            }
+
+            var differences = typeDiffs.SelectMany(d => d).ToList();
             _logger.LogInformation("Schema comparison completed: {DifferenceCount} differences found", differences.Count);
             return differences;
         }
@@ -48,6 +96,7 @@ public class SchemaComparisonEngine
             throw;
         }
     }
+
     private async Task<List<SchemaDifference>> CompareObjectTypeAsync(
         ObjectType objectType,
         List<DatabaseObject> sourceObjects,
@@ -55,51 +104,51 @@ public class SchemaComparisonEngine
         ComparisonOptions options,
         CancellationToken cancellationToken)
     {
+        _logger.LogDebug("Comparing {ObjectType}: {SourceCount} source, {TargetCount} target objects",
+            objectType, sourceObjects.Count, targetObjects.Count);
+
+        if (ShouldUseChunking(sourceObjects, targetObjects))
+            return await CompareObjectTypeWithChunkingAsync(objectType, sourceObjects, targetObjects, options, cancellationToken);
+
+        var sourceLookup = sourceObjects.ToDictionary(obj => obj.QualifiedName);
+        var targetLookup = targetObjects.ToDictionary(obj => obj.QualifiedName);
+
         var differences = new List<SchemaDifference>();
-        try
-        {
-            _logger.LogDebug("Comparing {ObjectType}: {SourceCount} source, {TargetCount} target objects",
-                objectType, sourceObjects.Count, targetObjects.Count);
-            // Create lookup dictionaries for efficient comparison
-            var sourceLookup = sourceObjects.ToDictionary(obj => obj.QualifiedName);
-            var targetLookup = targetObjects.ToDictionary(obj => obj.QualifiedName);
-            // Find added objects (in target but not in source)
-            var addedObjects = targetObjects.Where(targetObj =>
-                !sourceLookup.ContainsKey(targetObj.QualifiedName));
-            foreach (var addedObj in addedObjects)
+
+        // Added
+        differences.AddRange(targetObjects
+            .Where(obj => !sourceLookup.ContainsKey(obj.QualifiedName))
+            .Select(obj => new SchemaDifference
             {
-                differences.Add(new SchemaDifference
-                {
-                    Type = DifferenceType.Added,
-                    ObjectType = objectType,
-                    ObjectName = addedObj.Name,
-                    Schema = addedObj.Schema,
-                    TargetDefinition = addedObj.Definition
-                });
-            }
-            // Find removed objects (in source but not in target)
-            var removedObjects = sourceObjects.Where(sourceObj =>
-                !targetLookup.ContainsKey(sourceObj.QualifiedName));
-            foreach (var removedObj in removedObjects)
+                Type = DifferenceType.Added,
+                ObjectType = objectType,
+                ObjectName = obj.Name,
+                Schema = obj.Schema,
+                TargetDefinition = obj.Definition
+            }));
+
+        // Removed
+        differences.AddRange(sourceObjects
+            .Where(obj => !targetLookup.ContainsKey(obj.QualifiedName))
+            .Select(obj => new SchemaDifference
             {
-                differences.Add(new SchemaDifference
-                {
-                    Type = DifferenceType.Removed,
-                    ObjectType = objectType,
-                    ObjectName = removedObj.Name,
-                    Schema = removedObj.Schema,
-                    SourceDefinition = removedObj.Definition
-                });
-            }
-            // Find modified objects (in both but different)
-            var commonObjects = sourceObjects.Where(sourceObj =>
-                targetLookup.ContainsKey(sourceObj.QualifiedName));
-            var modificationTasks = commonObjects.Select(async sourceObj =>
+                Type = DifferenceType.Removed,
+                ObjectType = objectType,
+                ObjectName = obj.Name,
+                Schema = obj.Schema,
+                SourceDefinition = obj.Definition
+            }));
+
+        // Modified
+        var comparisonMode = GetComparisonMode(options);
+        var modificationTasks = sourceObjects
+            .Where(obj => targetLookup.ContainsKey(obj.QualifiedName))
+            .Select(async sourceObj =>
             {
                 var targetObj = targetLookup[sourceObj.QualifiedName];
-                if (await AreObjectsDifferentAsync(sourceObj, targetObj, options, cancellationToken))
+                if (await AreObjectsDifferentAsync(sourceObj, targetObj, comparisonMode, cancellationToken))
                 {
-                    var differenceDetails = await GetDifferenceDetailsAsync(sourceObj, targetObj, options, cancellationToken);
+                    var details = await GetDifferenceDetailsAsync(sourceObj, targetObj, options, cancellationToken);
                     return new SchemaDifference
                     {
                         Type = DifferenceType.Modified,
@@ -108,54 +157,128 @@ public class SchemaComparisonEngine
                         Schema = sourceObj.Schema,
                         SourceDefinition = sourceObj.Definition,
                         TargetDefinition = targetObj.Definition,
-                        DifferenceDetails = differenceDetails
+                        DifferenceDetails = details
                     };
                 }
                 return null;
             });
-            var modificationResults = await Task.WhenAll(modificationTasks);
-            differences.AddRange(modificationResults.Where(diff => diff != null)!);
-            _logger.LogDebug("Object type {ObjectType} comparison completed: {DifferenceCount} differences",
-                objectType, differences.Count);
-            return differences;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to compare object type {ObjectType}", objectType);
-            throw;
-        }
+
+        differences.AddRange((await Task.WhenAll(modificationTasks)).Where(diff => diff != null)!);
+
+        _logger.LogDebug("Object type {ObjectType} comparison completed: {DifferenceCount} differences", objectType, differences.Count);
+        return differences;
     }
+
+    private bool ShouldUseChunking(List<DatabaseObject> source, List<DatabaseObject> target)
+        => source.Count + target.Count > _settings.ChunkSize;
+
+    private async Task<List<SchemaDifference>> CompareObjectTypeWithChunkingAsync(
+        ObjectType objectType,
+        List<DatabaseObject> sourceObjects,
+        List<DatabaseObject> targetObjects,
+        ComparisonOptions options,
+        CancellationToken cancellationToken)
+    {
+        var sourceLookup = sourceObjects.ToDictionary(obj => obj.QualifiedName);
+        var targetLookup = targetObjects.ToDictionary(obj => obj.QualifiedName);
+        var allObjects = sourceObjects.Concat(targetObjects).Distinct().ToList();
+        var chunks = allObjects.Chunk(_settings.ChunkSize);
+
+        var differences = new List<SchemaDifference>();
+
+        foreach (var chunk in chunks)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+            var chunkDiffs = await ProcessChunkAsync(objectType, chunk, sourceLookup, targetLookup, GetComparisonMode(options), cancellationToken);
+            differences.AddRange(chunkDiffs);
+        }
+        return differences;
+    }
+
+    private async Task<List<SchemaDifference>> ProcessChunkAsync(
+        ObjectType objectType,
+        DatabaseObject[] chunk,
+        Dictionary<string, DatabaseObject> sourceLookup,
+        Dictionary<string, DatabaseObject> targetLookup,
+        ComparisonMode comparisonMode,
+        CancellationToken cancellationToken)
+    {
+        var differences = new List<SchemaDifference>();
+
+        differences.AddRange(chunk
+            .Where(obj => targetLookup.ContainsKey(obj.QualifiedName) && !sourceLookup.ContainsKey(obj.QualifiedName))
+            .Select(obj => new SchemaDifference
+            {
+                Type = DifferenceType.Added,
+                ObjectType = objectType,
+                ObjectName = obj.Name,
+                Schema = obj.Schema,
+                TargetDefinition = obj.Definition
+            }));
+
+        differences.AddRange(chunk
+            .Where(obj => sourceLookup.ContainsKey(obj.QualifiedName) && !targetLookup.ContainsKey(obj.QualifiedName))
+            .Select(obj => new SchemaDifference
+            {
+                Type = DifferenceType.Removed,
+                ObjectType = objectType,
+                ObjectName = obj.Name,
+                Schema = obj.Schema,
+                SourceDefinition = obj.Definition
+            }));
+
+        var modificationTasks = chunk
+            .Where(obj => sourceLookup.ContainsKey(obj.QualifiedName) && targetLookup.ContainsKey(obj.QualifiedName))
+            .Select(async sourceObj =>
+            {
+                if (cancellationToken.IsCancellationRequested) return null;
+                var targetObj = targetLookup[sourceObj.QualifiedName];
+                if (await AreObjectsDifferentAsync(sourceObj, targetObj, comparisonMode, cancellationToken))
+                {
+                    var details = await GetDifferenceDetailsAsync(sourceObj, targetObj, new ComparisonOptions(), cancellationToken);
+                    return new SchemaDifference
+                    {
+                        Type = DifferenceType.Modified,
+                        ObjectType = objectType,
+                        ObjectName = sourceObj.Name,
+                        Schema = sourceObj.Schema,
+                        SourceDefinition = sourceObj.Definition,
+                        TargetDefinition = targetObj.Definition,
+                        DifferenceDetails = details
+                    };
+                }
+                return null;
+            });
+
+        differences.AddRange((await Task.WhenAll(modificationTasks)).Where(diff => diff != null)!);
+        return differences;
+    }
+
     private async Task<bool> AreObjectsDifferentAsync(
         DatabaseObject sourceObj,
         DatabaseObject targetObj,
-        ComparisonOptions options,
+        ComparisonMode comparisonMode,
         CancellationToken cancellationToken)
     {
         try
         {
-            // Quick check: compare basic properties
             if (sourceObj.Owner != targetObj.Owner ||
                 sourceObj.SizeInBytes != targetObj.SizeInBytes)
-            {
                 return true;
-            }
-            // Compare definitions based on comparison mode
-            if (options.Mode == ComparisonMode.Strict)
+
+            return comparisonMode switch
             {
-                return sourceObj.Definition != targetObj.Definition;
-            }
-            else // Lenient mode
-            {
-                return !await AreDefinitionsEquivalentAsync(sourceObj.Definition, targetObj.Definition, cancellationToken);
-            }
+                ComparisonMode.Strict => sourceObj.Definition != targetObj.Definition,
+                _ => !await AreDefinitionsEquivalentAsync(sourceObj.Definition, targetObj.Definition, cancellationToken)
+            };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error comparing objects {SourceName} and {TargetName}",
-                sourceObj.QualifiedName, targetObj.QualifiedName);
-            return true; // Assume different if comparison fails
+            _logger.LogWarning(ex, "Error comparing objects {SourceName} and {TargetName}", sourceObj.QualifiedName, targetObj.QualifiedName);
+            return true;
         }
     }
+
     private Task<bool> AreDefinitionsEquivalentAsync(
         string sourceDefinition,
         string targetDefinition,
@@ -163,31 +286,23 @@ public class SchemaComparisonEngine
     {
         try
         {
-            // Normalize definitions for comparison
             var normalizedSource = NormalizeDefinition(sourceDefinition);
             var normalizedTarget = NormalizeDefinition(targetDefinition);
-            // For now, do a simple string comparison
-            // In a real implementation, this would use a proper SQL parser
-            var areEquivalent = normalizedSource == normalizedTarget;
-            return Task.FromResult(areEquivalent);
+            return Task.FromResult(normalizedSource == normalizedTarget);
         }
         catch
         {
-            // If normalization fails, fall back to exact comparison
-            var areEquivalent = sourceDefinition == targetDefinition;
-            return Task.FromResult(areEquivalent);
+            return Task.FromResult(sourceDefinition == targetDefinition);
         }
     }
-    private string NormalizeDefinition(string definition)
-    {
-        // Basic normalization: trim, normalize whitespace, convert to uppercase
-        return definition
-            .Trim()
-            .Replace("\r\n", "\n")
-            .Replace('\t', ' ')
-            .Replace("  ", " ") // Collapse multiple spaces
-            .ToUpperInvariant();
-    }
+
+    private static string NormalizeDefinition(string definition) => definition
+        .Trim()
+        .Replace("\r\n", "\n")
+        .Replace('\t', ' ')
+        .Replace("  ", " ")
+        .ToUpperInvariant();
+
     private async Task<List<string>> GetDifferenceDetailsAsync(
         DatabaseObject sourceObj,
         DatabaseObject targetObj,
@@ -197,41 +312,36 @@ public class SchemaComparisonEngine
         var details = new List<string>();
         try
         {
-            // Compare specific properties based on object type
             switch (sourceObj)
             {
-                case Table sourceTable when targetObj is Table targetTable:
-                    details.AddRange(CompareTableProperties(sourceTable, targetTable));
-                    details.AddRange(await CompareTableColumnsAsync(sourceTable, targetTable, options, cancellationToken));
+                case Table sTable when targetObj is Table tTable:
+                    details.AddRange(CompareTableProperties(sTable, tTable));
+                    details.AddRange(await CompareTableColumnsAsync(sTable, tTable, options, cancellationToken));
                     break;
-                case View sourceView when targetObj is View targetView:
-                    details.AddRange(CompareViewProperties(sourceView, targetView));
+                case View sView when targetObj is View tView:
+                    details.AddRange(CompareViewProperties(sView, tView));
                     break;
-                case Function sourceFunction when targetObj is Function targetFunction:
-                    details.AddRange(CompareFunctionProperties(sourceFunction, targetFunction));
+                case Function sFunc when targetObj is Function tFunc:
+                    details.AddRange(CompareFunctionProperties(sFunc, tFunc));
                     break;
-                case Core.Models.Index sourceIndex when targetObj is Core.Models.Index targetIndex:
-                    details.AddRange(CompareIndexProperties(sourceIndex as Core.Models.Index, targetIndex as Core.Models.Index));
+                case TableIndex sIndex when targetObj is TableIndex tIndex:
+                    details.AddRange(CompareIndexProperties(sIndex, tIndex));
                     break;
                 default:
                     details.Add("Object definitions differ");
                     break;
             }
-            // Compare metadata properties
             if (sourceObj.Owner != targetObj.Owner)
                 details.Add($"Owner differs: '{sourceObj.Owner}' vs '{targetObj.Owner}'");
             if (sourceObj.SizeInBytes != targetObj.SizeInBytes)
                 details.Add($"Size differs: {sourceObj.SizeInBytes} vs {targetObj.SizeInBytes} bytes");
-            // Compare custom properties
-            var allPropertyKeys = sourceObj.Properties.Keys.Union(targetObj.Properties.Keys).Distinct();
-            foreach (var key in allPropertyKeys)
+
+            foreach (var key in sourceObj.Properties.Keys.Union(targetObj.Properties.Keys))
             {
                 var sourceValue = sourceObj.Properties.GetValueOrDefault(key, "");
                 var targetValue = targetObj.Properties.GetValueOrDefault(key, "");
                 if (sourceValue != targetValue)
-                {
                     details.Add($"Property '{key}' differs: '{sourceValue}' vs '{targetValue}'");
-                }
             }
         }
         catch (Exception ex)
@@ -241,16 +351,17 @@ public class SchemaComparisonEngine
         }
         return details;
     }
-    private List<string> CompareTableProperties(Table sourceTable, Table targetTable)
+
+    private List<string> CompareTableProperties(Table sTable, Table tTable)
     {
         var details = new List<string>();
-        if (sourceTable.RowCount != targetTable.RowCount)
-            details.Add($"Row count differs: {sourceTable.RowCount} vs {targetTable.RowCount}");
-        // Compare storage parameters
-        if (sourceTable.StorageParameters.FillFactor != targetTable.StorageParameters.FillFactor)
-            details.Add($"Fill factor differs: '{sourceTable.StorageParameters.FillFactor}' vs '{targetTable.StorageParameters.FillFactor}'");
+        if (sTable.RowCount != tTable.RowCount)
+            details.Add($"Row count differs: {sTable.RowCount} vs {tTable.RowCount}");
+        if (sTable.StorageParameters.FillFactor != tTable.StorageParameters.FillFactor)
+            details.Add($"Fill factor differs: '{sTable.StorageParameters.FillFactor}' vs '{tTable.StorageParameters.FillFactor}'");
         return details;
     }
+
     private Task<List<string>> CompareTableColumnsAsync(
         Table sourceTable,
         Table targetTable,
@@ -260,74 +371,62 @@ public class SchemaComparisonEngine
         var details = new List<string>();
         var sourceColumns = sourceTable.Columns.ToDictionary(c => c.Name);
         var targetColumns = targetTable.Columns.ToDictionary(c => c.Name);
-        // Find added columns
-        var addedColumns = targetColumns.Keys.Except(sourceColumns.Keys);
-        foreach (var addedColumn in addedColumns)
+
+        foreach (var added in targetColumns.Keys.Except(sourceColumns.Keys))
+            details.Add($"Column added: {added}");
+
+        foreach (var removed in sourceColumns.Keys.Except(targetColumns.Keys))
+            details.Add($"Column removed: {removed}");
+
+        foreach (var columnName in sourceColumns.Keys.Intersect(targetColumns.Keys))
         {
-            details.Add($"Column added: {addedColumn}");
-        }
-        // Find removed columns
-        var removedColumns = sourceColumns.Keys.Except(targetColumns.Keys);
-        foreach (var removedColumn in removedColumns)
-        {
-            details.Add($"Column removed: {removedColumn}");
-        }
-        // Compare common columns
-        var commonColumns = sourceColumns.Keys.Intersect(targetColumns.Keys);
-        foreach (var columnName in commonColumns)
-        {
-            var sourceColumn = sourceColumns[columnName];
-            var targetColumn = targetColumns[columnName];
-            if (sourceColumn.DataType != targetColumn.DataType)
-                details.Add($"Column '{columnName}' data type changed: {sourceColumn.DataType} -> {targetColumn.DataType}");
-            if (sourceColumn.IsNullable != targetColumn.IsNullable)
-                details.Add($"Column '{columnName}' nullability changed: {sourceColumn.IsNullable} -> {targetColumn.IsNullable}");
-            if (sourceColumn.DefaultValue != targetColumn.DefaultValue)
-                details.Add($"Column '{columnName}' default changed: '{sourceColumn.DefaultValue}' -> '{targetColumn.DefaultValue}'");
+            var sourceCol = sourceColumns[columnName];
+            var targetCol = targetColumns[columnName];
+            if (sourceCol.DataType != targetCol.DataType)
+                details.Add($"Column '{columnName}' data type changed: {sourceCol.DataType} -> {targetCol.DataType}");
+            if (sourceCol.IsNullable != targetCol.IsNullable)
+                details.Add($"Column '{columnName}' nullability changed: {sourceCol.IsNullable} -> {targetCol.IsNullable}");
+            if (sourceCol.DefaultValue != targetCol.DefaultValue)
+                details.Add($"Column '{columnName}' default changed: '{sourceCol.DefaultValue}' -> '{targetCol.DefaultValue}'");
         }
         return Task.FromResult(details);
     }
-    private List<string> CompareViewProperties(View sourceView, View targetView)
+
+    private List<string> CompareViewProperties(View sView, View tView)
     {
         var details = new List<string>();
-        if (sourceView.ReferencedTables.Count != targetView.ReferencedTables.Count)
-        {
-            details.Add($"Referenced table count differs: {sourceView.ReferencedTables.Count} vs {targetView.ReferencedTables.Count}");
-        }
-        var addedRefs = targetView.ReferencedTables.Except(sourceView.ReferencedTables);
-        var removedRefs = sourceView.ReferencedTables.Except(targetView.ReferencedTables);
-        foreach (var addedRef in addedRefs)
-            details.Add($"Referenced table added: {addedRef}");
-        foreach (var removedRef in removedRefs)
-            details.Add($"Referenced table removed: {removedRef}");
+        if (sView.ReferencedTables.Count != tView.ReferencedTables.Count)
+            details.Add($"Referenced table count differs: {sView.ReferencedTables.Count} vs {tView.ReferencedTables.Count}");
+        foreach (var added in tView.ReferencedTables.Except(sView.ReferencedTables))
+            details.Add($"Referenced table added: {added}");
+        foreach (var removed in sView.ReferencedTables.Except(tView.ReferencedTables))
+            details.Add($"Referenced table removed: {removed}");
         return details;
     }
-    private List<string> CompareFunctionProperties(Function sourceFunction, Function targetFunction)
+
+    private List<string> CompareFunctionProperties(Function sFunc, Function tFunc)
     {
         var details = new List<string>();
-        if (sourceFunction.Language != targetFunction.Language)
-            details.Add($"Language differs: '{sourceFunction.Language}' vs '{targetFunction.Language}'");
-        if (sourceFunction.ReturnType != targetFunction.ReturnType)
-            details.Add($"Return type differs: '{sourceFunction.ReturnType}' vs '{targetFunction.ReturnType}'");
-        if (sourceFunction.Volatility != targetFunction.Volatility)
-            details.Add($"Volatility differs: '{sourceFunction.Volatility}' vs '{targetFunction.Volatility}'");
-        if (sourceFunction.Parameters.Count != targetFunction.Parameters.Count)
-        {
-            details.Add($"Parameter count differs: {sourceFunction.Parameters.Count} vs {targetFunction.Parameters.Count}");
-        }
+        if (sFunc.Language != tFunc.Language)
+            details.Add($"Language differs: '{sFunc.Language}' vs '{tFunc.Language}'");
+        if (sFunc.ReturnType != tFunc.ReturnType)
+            details.Add($"Return type differs: '{sFunc.ReturnType}' vs '{tFunc.ReturnType}'");
+        if (sFunc.Volatility != tFunc.Volatility)
+            details.Add($"Volatility differs: '{sFunc.Volatility}' vs '{tFunc.Volatility}'");
+        if (sFunc.Parameters.Count != tFunc.Parameters.Count)
+            details.Add($"Parameter count differs: {sFunc.Parameters.Count} vs {tFunc.Parameters.Count}");
         return details;
     }
-    private List<string> CompareIndexProperties(Core.Models.Index sourceIndex, Core.Models.Index targetIndex)
+
+    private List<string> CompareIndexProperties(TableIndex sIndex, TableIndex tIndex)
     {
         var details = new List<string>();
-        if (sourceIndex.IsUnique != targetIndex.IsUnique)
-            details.Add($"Uniqueness differs: {sourceIndex.IsUnique} vs {targetIndex.IsUnique}");
-        if (sourceIndex.AccessMethod != targetIndex.AccessMethod)
-            details.Add($"Access method differs: '{sourceIndex.AccessMethod}' vs '{targetIndex.AccessMethod}'");
-        if (!sourceIndex.ColumnNames.SequenceEqual(targetIndex.ColumnNames))
-        {
-            details.Add($"Columns differ: [{string.Join(", ", sourceIndex.ColumnNames)}] vs [{string.Join(", ", targetIndex.ColumnNames)}]");
-        }
+        if (sIndex.IsUnique != tIndex.IsUnique)
+            details.Add($"Uniqueness differs: {sIndex.IsUnique} vs {tIndex.IsUnique}");
+        if (sIndex.AccessMethod != tIndex.AccessMethod)
+            details.Add($"Access method differs: '{sIndex.AccessMethod}' vs '{tIndex.AccessMethod}'");
+        if (!sIndex.ColumnNames.SequenceEqual(tIndex.ColumnNames))
+            details.Add($"Columns differ: [{string.Join(", ", sIndex.ColumnNames)}] vs [{string.Join(", ", tIndex.ColumnNames)}]");
         return details;
     }
 }

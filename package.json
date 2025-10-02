@@ -192,6 +192,94 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "postgresql.addConnection",
+        "key": "ctrl+shift+p",
+        "mac": "cmd+shift+p",
+        "when": "editorTextFocus",
+        "args": []
+      },
+      {
+        "command": "postgresql.refreshExplorer",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "view == postgresqlExplorer"
+      },
+      {
+        "command": "postgresql.testConnection",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "view == postgresqlExplorer && viewItem == connection"
+      },
+      {
+        "command": "postgresql.compareSchemas",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c",
+        "when": "view == postgresqlExplorer && viewItem =~ /^(database|schema)$/"
+      },
+      {
+        "command": "postgresql.generateMigration",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g",
+        "when": "workspaceState.postgresql.comparisonExists == true"
+      },
+      {
+        "command": "postgresql.previewMigration",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "workspaceState.postgresql.migrationExists == true"
+      },
+      {
+        "command": "postgresql.executeMigration",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "workspaceState.postgresql.migrationExists == true"
+      },
+      {
+        "command": "postgresql.rollbackMigration",
+        "key": "ctrl+shift+u",
+        "mac": "cmd+shift+u",
+        "when": "workspaceState.postgresql.migrationExists == true"
+      },
+      {
+        "command": "postgresql.viewObjectDetails",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
+        "when": "view == postgresqlExplorer && viewItem =~ /^(table|view|function|procedure|sequence|type|domain|collation|extension|role|tablespace)$/"
+      },
+      {
+        "command": "postgresql.browseSchema",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "view == postgresqlExplorer && viewItem == database"
+      },
+      {
+        "command": "postgresql.showDashboard",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h"
+      },
+      {
+        "command": "postgresql.showNotifications",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n"
+      },
+      {
+        "command": "postgresql.showLogs",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l"
+      },
+      {
+        "command": "postgresql.openSettings",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s"
+      },
+      {
+        "command": "postgresql.showHelp",
+        "key": "f1",
+        "when": "resourceExtname == .sql || resourceExtname == .psql"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "PostgreSQL Schema Compare & Sync",
@@ -264,6 +352,164 @@
             "error"
           ],
           "description": "Log level for debug output"
+        },
+        "postgresql.securityManager.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SSL/TLS certificate validation and security monitoring"
+        },
+        "postgresql.securityManager.securityLevel": {
+          "type": "string",
+          "default": "warning",
+          "enum": [
+            "strict",
+            "warning",
+            "permissive"
+          ],
+          "enumDescriptions": [
+            "All security checks enabled. Self-signed certificates are not allowed.",
+            "Security checks enabled with warnings. Self-signed certificates allowed with warnings.",
+            "Minimal security checks. Self-signed certificates allowed."
+          ],
+          "description": "Security level for certificate validation"
+        },
+        "postgresql.securityManager.certificateValidation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SSL/TLS certificate validation"
+        },
+        "postgresql.securityManager.certificateValidation.checkRevocation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check certificate revocation lists (CRL/OCSP) - may impact performance"
+        },
+        "postgresql.securityManager.certificateValidation.checkTransparency": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check certificate transparency logs - may impact performance"
+        },
+        "postgresql.securityManager.certificateValidation.allowSelfSigned": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow self-signed certificates (not recommended for production)"
+        },
+        "postgresql.securityManager.certificateValidation.minKeySize": {
+          "type": "number",
+          "default": 2048,
+          "minimum": 1024,
+          "maximum": 4096,
+          "description": "Minimum acceptable certificate key size in bits"
+        },
+        "postgresql.securityManager.certificateValidation.maxValidityDays": {
+          "type": "number",
+          "default": 825,
+          "minimum": 30,
+          "maximum": 1095,
+          "description": "Maximum certificate validity period in days (~2.25 years default)"
+        },
+        "postgresql.securityManager.certificatePinning.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable certificate pinning for high-security environments"
+        },
+        "postgresql.securityManager.certificatePinning.autoPinTrusted": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically pin certificates from trusted Certificate Authorities"
+        },
+        "postgresql.securityManager.certificatePinning.requireUserApproval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require user approval before pinning certificates"
+        },
+        "postgresql.securityManager.certificatePinning.maxPinAge": {
+          "type": "number",
+          "default": 365,
+          "minimum": 30,
+          "maximum": 730,
+          "description": "Maximum age of pinned certificates in days"
+        },
+        "postgresql.securityManager.certificatePinning.allowedHostnames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of hostnames allowed for certificate pinning (empty allows all)"
+        },
+        "postgresql.securityManager.monitoring.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable security event monitoring and alerting"
+        },
+        "postgresql.securityManager.monitoring.alertLevels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "error",
+              "critical"
+            ]
+          },
+          "default": [
+            "warning",
+            "error",
+            "critical"
+          ],
+          "description": "Security alert levels that trigger notifications"
+        },
+        "postgresql.securityManager.monitoring.retentionDays": {
+          "type": "number",
+          "default": 90,
+          "minimum": 7,
+          "maximum": 365,
+          "description": "Number of days to retain security events"
+        },
+        "postgresql.securityManager.monitoring.maxEvents": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Maximum number of security events to store"
+        },
+        "postgresql.securityManager.monitoring.autoResolveAfterDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 90,
+          "description": "Auto-resolve security events after specified days"
+        },
+        "postgresql.securityManager.monitoring.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show security notifications in VS Code"
+        },
+        "postgresql.securityManager.monitoring.showInStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show security status in VS Code status bar"
+        },
+        "postgresql.securityManager.connectionSecurity.enforceSecureConnections": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enforce secure connections - block insecure connections"
+        },
+        "postgresql.securityManager.connectionSecurity.allowInsecureFallback": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow fallback to insecure connections if secure connection fails"
+        },
+        "postgresql.securityManager.connectionSecurity.validateOnConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Validate certificates when establishing connections"
+        },
+        "postgresql.securityManager.connectionSecurity.validateOnReconnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Validate certificates when reconnecting to databases"
         }
       }
     }
@@ -282,6 +528,7 @@
     "test:e2e": "jest --testPathPattern=e2e",
     "build:dotnet": "node build-dotnet.js",
     "build:all": "npm run build:dotnet && npm run compile",
+    "verify:dotnet": "node verify-dotnet-dll.js",
     "clean": "rimraf bin out"
   },
   "devDependencies": {
@@ -303,11 +550,9 @@
     "@types/jest": "^29.5.12",
     "ts-jest": "^29.1.2",
     "jest-environment-node": "^29.7.0",
-    "@types/node": "24.5.2",
     "supertest": "^6.3.4",
     "ts-node": "^10.9.2",
     "edge-js": "^18.1.0",
-    "@types/edge-js": "^1.0.0",
     "rimraf": "^5.0.5"
   },
   "repository": {

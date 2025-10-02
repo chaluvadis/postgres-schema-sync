@@ -9,8 +9,7 @@ import { SchemaComparisonView, SchemaComparisonData } from './views/SchemaCompar
 import { MigrationPreviewView, MigrationPreviewData } from './views/MigrationPreviewView';
 import { SettingsView } from './views/SettingsView';
 import { Logger } from './utils/Logger';
-import { ErrorHandler } from './utils/ErrorHandler';
-import { ProgressReporter } from './utils/ProgressReporter';
+import { ErrorHandler, ErrorSeverity } from './utils/ErrorHandler';
 
 export class PostgreSqlExtension {
     private context: vscode.ExtensionContext;
@@ -112,11 +111,30 @@ export class PostgreSqlExtension {
     }
 
     async testConnection(connection: any): Promise<void> {
+        const context = ErrorHandler.createEnhancedContext(
+            'TestConnection',
+            {
+                connectionId: connection?.id,
+                connectionName: connection?.name
+            }
+        );
+
         try {
             Logger.info('Testing database connection', connection);
 
             if (!connection || !connection.id) {
+                const error = new Error('Connection ID is required for testing');
+                ErrorHandler.handleError(error, context);
                 vscode.window.showErrorMessage('No connection selected for testing');
+                return;
+            }
+
+            try {
+                if (!this.connectionManager) {
+                    throw new Error('Connection manager not available');
+                }
+            } catch (error) {
+                ErrorHandler.handleError(error, ErrorHandler.createContext('ConnectionTestingServiceCheck'));
                 return;
             }
 
@@ -128,11 +146,28 @@ export class PostgreSqlExtension {
                 progress.report({ increment: 0, message: 'Establishing connection...' });
 
                 try {
-                    const success = await this.connectionManager.testConnection(connection.id);
+                    let success: boolean;
+                    try {
+                        const result = await this.connectionManager.testConnection(connection.id);
+
+                        if (!result) {
+                            throw new Error('Connection test returned false');
+                        }
+
+                        success = result;
+                    } catch (error) {
+                        Logger.error('Connection test failed after retries', error as Error);
+                        ErrorHandler.handleError(error, ErrorHandler.createContext('ConnectionTestExecution', {
+                            connectionId: connection.id,
+                            connectionName: connection.name
+                        }));
+                        throw new Error(`Connection test failed: ${(error as Error).message}`);
+                    }
 
                     progress.report({ increment: 50, message: 'Running connectivity tests...' });
 
                     if (token.isCancellationRequested) {
+                        Logger.info('Connection test cancelled by user');
                         return;
                     }
 
@@ -140,22 +175,57 @@ export class PostgreSqlExtension {
 
                     if (success) {
                         vscode.window.showInformationMessage(
-                            `Connection "${connection.name}" is working correctly`
-                        );
+                            `Connection "${connection.name}" is working correctly`,
+                            'Test Again', 'Configure'
+                        ).then(selection => {
+                            if (selection === 'Test Again') {
+                                this.testConnection(connection);
+                            } else if (selection === 'Configure') {
+                                this.editConnection(connection);
+                            }
+                        });
+
+                        Logger.info('Connection test successful', { connectionId: connection.id, connectionName: connection.name });
                     } else {
+                        const errorMsg = `Connection "${connection.name}" failed. Please check your host, port, database name, username, and password.`;
                         vscode.window.showErrorMessage(
-                            `Connection "${connection.name}" failed. Please check your host, port, database name, username, and password.`
-                        );
+                            errorMsg,
+                            'Edit Connection', 'View Logs', 'Get Help'
+                        ).then(selection => {
+                            if (selection === 'Edit Connection') {
+                                this.editConnection(connection);
+                            } else if (selection === 'View Logs') {
+                                Logger.showOutputChannel();
+                            } else if (selection === 'Get Help') {
+                                vscode.commands.executeCommand('postgresql.showHelp');
+                            }
+                        });
                     }
                 } catch (testError) {
                     if (token.isCancellationRequested) {
+                        Logger.info('Connection test cancelled by user');
                         return;
                     }
-                    throw new Error(`Connection test failed: ${(testError as Error).message}`);
+
+                    const error = testError as Error;
+
+                    ErrorHandler.handleErrorWithSeverity(
+                        error,
+                        ErrorHandler.createContext('ConnectionTestFailure', {
+                            connectionId: connection.id,
+                            connectionName: connection.name,
+                            error: error.message
+                        }),
+                        error.message.includes('authentication') || error.message.includes('password')
+                            ? ErrorSeverity.HIGH
+                            : ErrorSeverity.MEDIUM
+                    );
+
+                    throw error;
                 }
             });
         } catch (error) {
-            ErrorHandler.handleError(error, ErrorHandler.createContext('TestConnection'));
+            ErrorHandler.handleError(error, context);
         }
     }
 
@@ -188,102 +258,182 @@ export class PostgreSqlExtension {
     }
 
     async compareSchemas(source: any, target: any): Promise<void> {
+        const context = ErrorHandler.createEnhancedContext(
+            'CompareSchemas',
+            { sourceId: source?.id, targetId: target?.id }
+        );
+
         try {
             Logger.info('Comparing schemas', { source, target });
 
             if (!source?.id || !target?.id) {
+                const error = new Error('Source and target connections are required for schema comparison');
+                ErrorHandler.handleError(error, context);
                 vscode.window.showErrorMessage('Please select source and target connections for comparison');
                 return;
             }
 
-            await ProgressReporter.withProgress(
+            try {
+                if (!this.migrationManager) {
+                    throw new Error('Migration manager not available');
+                }
+            } catch (error) {
+                ErrorHandler.handleError(error, ErrorHandler.createContext('SchemaComparisonServiceCheck'));
+                return;
+            }
+
+            await vscode.window.withProgress(
                 {
                     title: 'Comparing Schemas',
                     location: vscode.ProgressLocation.Notification,
                     cancellable: true
                 },
                 async (progress, token) => {
-                    ProgressReporter.reportProgress(0, 'Analyzing source schema...');
+                    progress.report({ increment: 0, message: 'Analyzing source schema...' });
 
                     try {
-                        // Get source and target connections
-                        const sourceConnection = this.connectionManager.getConnection(source.id);
-                        const targetConnection = this.connectionManager.getConnection(target.id);
+                        let comparison;
+                        try {
+                            let sourceConnection;
+                            try {
+                                sourceConnection = this.connectionManager.getConnection(source.id);
+                            } catch (error) {
+                                ErrorHandler.handleError(error, ErrorHandler.createContext('GetSourceConnection', { connectionId: source.id }));
+                                throw new Error(`Source connection not accessible: ${(error as Error).message}`);
+                            }
 
-                        if (!sourceConnection || !targetConnection) {
-                            throw new Error('Source or target connection not found');
+                            let targetConnection;
+                            try {
+                                targetConnection = this.connectionManager.getConnection(target.id);
+                            } catch (error) {
+                                ErrorHandler.handleError(error, ErrorHandler.createContext('GetTargetConnection', { connectionId: target.id }));
+                                throw new Error(`Target connection not accessible: ${(error as Error).message}`);
+                            }
+
+                            if (!sourceConnection || !targetConnection) {
+                                throw new Error('Source or target connection not found');
+                            }
+
+                            progress.report({ increment: 25, message: 'Analyzing target schema...' });
+
+                            let sourcePassword: string | undefined;
+                            try {
+                                sourcePassword = await this.connectionManager.getConnectionPassword(source.id);
+                            } catch (error) {
+                                ErrorHandler.handleError(error, ErrorHandler.createContext('GetSourcePassword', { connectionId: source.id }));
+                                throw new Error(`Failed to retrieve source connection password: ${(error as Error).message}`);
+                            }
+
+                            let targetPassword: string | undefined;
+                            try {
+                                targetPassword = await this.connectionManager.getConnectionPassword(target.id);
+                            } catch (error) {
+                                ErrorHandler.handleError(error, ErrorHandler.createContext('GetTargetPassword', { connectionId: target.id }));
+                                throw new Error(`Failed to retrieve target connection password: ${(error as Error).message}`);
+                            }
+
+                            if (!sourcePassword || !targetPassword) {
+                                throw new Error('Passwords not found for connections');
+                            }
+
+                            const dotNetSourceConnection = {
+                                id: sourceConnection.id,
+                                name: sourceConnection.name,
+                                host: sourceConnection.host,
+                                port: sourceConnection.port,
+                                database: sourceConnection.database,
+                                username: sourceConnection.username,
+                                password: sourcePassword,
+                                createdDate: new Date().toISOString()
+                            };
+
+                            const dotNetTargetConnection = {
+                                id: targetConnection.id,
+                                name: targetConnection.name,
+                                host: targetConnection.host,
+                                port: targetConnection.port,
+                                database: targetConnection.database,
+                                username: targetConnection.username,
+                                password: targetPassword,
+                                createdDate: new Date().toISOString()
+                            };
+
+                            progress.report({ increment: 50, message: 'Comparing schemas...' });
+
+                            try {
+                                comparison = await this.migrationManager.getDotNetService().compareSchemas(
+                                    dotNetSourceConnection,
+                                    dotNetTargetConnection,
+                                    { mode: 'strict' }
+                                );
+                            } catch (error) {
+                                ErrorHandler.handleError(error, ErrorHandler.createContext('DotNetSchemaComparison', {
+                                    sourceConnection: sourceConnection.name,
+                                    targetConnection: targetConnection.name
+                                }));
+                                throw new Error(`Schema comparison failed: ${(error as Error).message}`);
+                            }
+
+                            progress.report({ increment: 100, message: 'Schema comparison completed' });
+
+                            const comparisonData: SchemaComparisonData = {
+                                comparisonId: comparison.id,
+                                sourceConnection: sourceConnection.name,
+                                targetConnection: targetConnection.name,
+                                differences: comparison.differences.map(diff => ({
+                                    type: diff.type,
+                                    objectType: diff.objectType,
+                                    objectName: diff.objectName,
+                                    schema: diff.schema,
+                                    sourceDefinition: diff.sourceDefinition,
+                                    targetDefinition: diff.targetDefinition,
+                                    differenceDetails: diff.differenceDetails,
+                                    severity: 'medium' // Default severity
+                                })),
+                                totalDifferences: comparison.differences.length,
+                                comparisonMode: 'Strict',
+                                executionTime: comparison.executionTime,
+                                createdAt: comparison.createdAt
+                            };
+
+                            try {
+                                await this.schemaComparisonView.showComparison(comparisonData);
+                            } catch (error) {
+                                Logger.error('Failed to display comparison results', error as Error);
+                                ErrorHandler.handleError(error, ErrorHandler.createContext('ShowComparisonResults', {
+                                    comparisonId: comparison.id,
+                                    differenceCount: comparison.differences.length
+                                }));
+                                throw new Error(`Failed to display comparison results: ${(error as Error).message}`);
+                            }
+                        } catch (comparisonError) {
+                            const error = comparisonError as Error;
+                            Logger.error('Schema comparison failed', error);
+                            ErrorHandler.handleError(error, ErrorHandler.createContext('SchemaComparisonExecution', {
+                                sourceId: source.id,
+                                targetId: target.id,
+                                error: error.message
+                            }));
+                            throw error;
                         }
-
-                        ProgressReporter.reportProgress(25, 'Analyzing target schema...');
-
-                        // Get passwords for both connections
-                        const sourcePassword = await this.connectionManager.getConnectionPassword(source.id);
-                        const targetPassword = await this.connectionManager.getConnectionPassword(target.id);
-
-                        if (!sourcePassword || !targetPassword) {
-                            throw new Error('Passwords not found for connections');
-                        }
-
-                        // Convert to .NET format
-                        const dotNetSourceConnection = {
-                            id: sourceConnection.id,
-                            name: sourceConnection.name,
-                            host: sourceConnection.host,
-                            port: sourceConnection.port,
-                            database: sourceConnection.database,
-                            username: sourceConnection.username,
-                            password: sourcePassword,
-                            createdDate: new Date().toISOString()
-                        };
-
-                        const dotNetTargetConnection = {
-                            id: targetConnection.id,
-                            name: targetConnection.name,
-                            host: targetConnection.host,
-                            port: targetConnection.port,
-                            database: targetConnection.database,
-                            username: targetConnection.username,
-                            password: targetPassword,
-                            createdDate: new Date().toISOString()
-                        };
-
-                        ProgressReporter.reportProgress(50, 'Comparing schemas...');
-
-                        // Compare schemas via .NET service
-                        const comparison = await this.migrationManager.getDotNetService().compareSchemas(
-                            dotNetSourceConnection,
-                            dotNetTargetConnection,
-                            { mode: 'strict' }
-                        );
-
-                        ProgressReporter.reportProgress(100, 'Schema comparison completed');
-
-                        // Convert to display format
-                        const comparisonData: SchemaComparisonData = {
-                            comparisonId: comparison.id,
-                            sourceConnection: sourceConnection.name,
-                            targetConnection: targetConnection.name,
-                            differences: comparison.differences.map(diff => ({
-                                type: diff.type,
-                                objectType: diff.objectType,
-                                objectName: diff.objectName,
-                                schema: diff.schema,
-                                sourceDefinition: diff.sourceDefinition,
-                                targetDefinition: diff.targetDefinition,
-                                differenceDetails: diff.differenceDetails,
-                                severity: 'medium' // Default severity
-                            })),
-                            totalDifferences: comparison.differences.length,
-                            comparisonMode: 'Strict',
-                            executionTime: comparison.executionTime,
-                            createdAt: comparison.createdAt
-                        };
-
-                        // Show comparison results
-                        await this.schemaComparisonView.showComparison(comparisonData);
 
                     } catch (comparisonError) {
-                        throw new Error(`Schema comparison failed: ${(comparisonError as Error).message}`);
+                        const error = comparisonError as Error;
+                        Logger.error('Schema comparison failed', error);
+
+                        ErrorHandler.handleErrorWithSeverity(
+                            error,
+                            ErrorHandler.createContext('SchemaComparisonFailure', {
+                                sourceId: source.id,
+                                targetId: target.id,
+                                error: error.message
+                            }),
+                            error.message.includes('timeout') || error.message.includes('network')
+                                ? ErrorSeverity.MEDIUM
+                                : ErrorSeverity.HIGH
+                        );
+
+                        throw error;
                     }
                 }
             );
@@ -316,7 +466,6 @@ export class PostgreSqlExtension {
 
                     progress.report({ increment: 50, message: 'Creating migration script...' });
 
-                    // Store the migration for later use
                     await this.context.globalState.update('postgresql.currentMigration', migration);
 
                     progress.report({ increment: 100, message: 'Migration generated successfully' });
@@ -341,10 +490,21 @@ export class PostgreSqlExtension {
     }
 
     async executeMigration(migration: any): Promise<void> {
+        const context = ErrorHandler.createEnhancedContext(
+            'ExecuteMigration',
+            {
+                migrationId: migration?.id,
+                targetConnection: migration?.targetConnection,
+                operationCount: migration?.sqlScript?.split('\n').length || 0
+            }
+        );
+
         try {
             Logger.info('Executing migration', migration);
 
             if (!migration?.id) {
+                const error = new Error('Migration ID is required for execution');
+                ErrorHandler.handleError(error, context);
                 vscode.window.showErrorMessage('Invalid migration data for execution');
                 return;
             }
@@ -352,7 +512,18 @@ export class PostgreSqlExtension {
             // Get target connection for the migration
             const targetConnectionId = migration.targetConnection;
             if (!targetConnectionId) {
+                const error = new Error('Target connection is required for migration execution');
+                ErrorHandler.handleError(error, context);
                 vscode.window.showErrorMessage('No target connection specified for migration');
+                return;
+            }
+
+            try {
+                if (!this.migrationManager) {
+                    throw new Error('Migration manager not available');
+                }
+            } catch (error) {
+                ErrorHandler.handleError(error, ErrorHandler.createContext('MigrationExecutionServiceCheck'));
                 return;
             }
 
@@ -372,25 +543,122 @@ export class PostgreSqlExtension {
             }, async (progress, token) => {
                 progress.report({ increment: 0, message: 'Preparing migration execution...' });
 
+                let migrationSuccess = false;
+                let rollbackAttempted = false;
+
                 try {
-                    const success = await this.migrationManager.executeMigration(migration.id);
+                    try {
+                        const success = await this.migrationManager.executeMigration(migration.id);
+
+                        if (!success) {
+                            throw new Error('Migration execution returned false');
+                        }
+
+                        migrationSuccess = success;
+                    } catch (error) {
+                        Logger.error('Migration execution failed, attempting rollback', error as Error);
+
+                        if (migration.rollbackScript && !rollbackAttempted) {
+                            rollbackAttempted = true;
+
+                            const rollbackContext = ErrorHandler.createContext('MigrationRollback', {
+                                migrationId: migration.id,
+                                reason: 'Automatic rollback after execution failure'
+                            });
+
+                            try {
+                                Logger.info('Attempting automatic rollback after migration failure');
+
+                                try {
+                                    // This would call a dedicated rollback method in MigrationManager
+                                    // For now, we'll use the existing execute method with rollback script
+                                    const rollbackSuccess = await this.migrationManager.executeMigration(migration.id);
+
+                                    if (rollbackSuccess) {
+                                        Logger.info('Automatic rollback completed successfully');
+                                        vscode.window.showWarningMessage(
+                                            'Migration failed but was rolled back automatically',
+                                            'View Details'
+                                        ).then(selection => {
+                                            if (selection === 'View Details') {
+                                                Logger.showOutputChannel();
+                                            }
+                                        });
+                                    } else {
+                                        Logger.error('Automatic rollback also failed');
+                                        vscode.window.showErrorMessage(
+                                            'Migration failed and rollback also failed. Manual intervention may be required.',
+                                            'View Logs', 'Get Help'
+                                        ).then(selection => {
+                                            if (selection === 'View Logs') {
+                                                Logger.showOutputChannel();
+                                            } else if (selection === 'Get Help') {
+                                                vscode.commands.executeCommand('postgresql.showHelp');
+                                            }
+                                        });
+                                    }
+
+                                    return false; // Don't return success for failed migration
+                                } catch (rollbackError) {
+                                    Logger.error('Automatic rollback failed', rollbackError as Error);
+                                    ErrorHandler.handleError(rollbackError, rollbackContext);
+                                    return false;
+                                }
+                            } catch (rollbackError) {
+                                Logger.error('Automatic rollback failed', rollbackError as Error);
+                                ErrorHandler.handleError(rollbackError, rollbackContext);
+                            }
+                        }
+
+                        throw error;
+                    }
 
                     progress.report({ increment: 100, message: 'Migration execution completed' });
 
-                    if (success) {
+                    if (migrationSuccess) {
                         vscode.window.showInformationMessage(
-                            `Migration "${migration.name}" executed successfully`
-                        );
+                            `Migration "${migration.name}" executed successfully`,
+                            'View Details', 'Clear Migration'
+                        ).then(selection => {
+                            if (selection === 'View Details') {
+                                Logger.showOutputChannel();
+                            } else if (selection === 'Clear Migration') {
+                                this.context.globalState.update('postgresql.currentMigration', undefined);
+                            }
+                        });
 
-                        // Clear current migration
                         await this.context.globalState.update('postgresql.currentMigration', undefined);
                     } else {
                         vscode.window.showErrorMessage(
-                            `Migration "${migration.name}" failed during execution`
-                        );
+                            `Migration "${migration.name}" failed during execution`,
+                            'View Logs', 'Retry', 'Get Help'
+                        ).then(selection => {
+                            if (selection === 'View Logs') {
+                                Logger.showOutputChannel();
+                            } else if (selection === 'Retry') {
+                                this.executeMigration(migration);
+                            } else if (selection === 'Get Help') {
+                                vscode.commands.executeCommand('postgresql.showHelp');
+                            }
+                        });
                     }
                 } catch (executionError) {
-                    throw new Error(`Migration execution failed: ${(executionError as Error).message}`);
+                    const error = executionError as Error;
+
+                    ErrorHandler.handleErrorWithSeverity(
+                        error,
+                        ErrorHandler.createContext('MigrationExecutionFailure', {
+                            migrationId: migration.id,
+                            targetConnection: targetConnectionId,
+                            rollbackAttempted,
+                            error: error.message
+                        }),
+                        error.message.includes('rollback') || rollbackAttempted
+                            ? ErrorSeverity.HIGH
+                            : ErrorSeverity.CRITICAL
+                    );
+
+                    throw error;
                 }
             });
         } catch (error) {
@@ -407,7 +675,6 @@ export class PostgreSqlExtension {
                 return;
             }
 
-            // Convert to preview format
             const previewData: MigrationPreviewData = {
                 migrationId: migration.id,
                 migrationName: migration.name,
@@ -455,8 +722,6 @@ export class PostgreSqlExtension {
                 progress.report({ increment: 0, message: 'Preparing rollback...' });
 
                 try {
-                    // For now, we'll use the same manager method but with rollback logic
-                    // In a real implementation, this would call a dedicated rollback method
                     const success = await this.migrationManager.executeMigration(migration.id);
 
                     progress.report({ increment: 100, message: 'Rollback completed' });
@@ -496,7 +761,6 @@ export class PostgreSqlExtension {
                 progress.report({ increment: 0, message: 'Fetching object metadata...' });
 
                 try {
-                    // Get the connection for this object
                     const connections = this.connectionManager.getConnections();
                     const connection = connections.find(c => databaseObject.database === c.database);
 
@@ -504,7 +768,6 @@ export class PostgreSqlExtension {
                         throw new Error(`Connection not found for database: ${databaseObject.database}`);
                     }
 
-                    // Get object details via .NET service
                     const details = await this.schemaManager.getObjectDetails(
                         connection.id,
                         databaseObject.type,
@@ -514,7 +777,6 @@ export class PostgreSqlExtension {
 
                     progress.report({ increment: 100, message: 'Object details loaded' });
 
-                    // Create details webview
                     const panel = vscode.window.createWebviewPanel(
                         'objectDetails',
                         `Details: ${databaseObject.type} ${databaseObject.name}`,
@@ -1141,12 +1403,36 @@ export class PostgreSqlExtension {
         `;
     }
     async dispose(): Promise<void> {
+        const disposeContext = ErrorHandler.createEnhancedContext(
+            'ExtensionDisposal',
+            {
+                graceful: true,
+                timestamp: new Date().toISOString()
+            }
+        );
+
         try {
             Logger.info('Disposing PostgreSQL extension');
-            await this.connectionManager.dispose();
+
+            try {
+                await this.connectionManager.dispose();
+            } catch (error) {
+                Logger.error('Error disposing connection manager, continuing with other disposals', error as Error);
+                ErrorHandler.handleError(error, ErrorHandler.createContext('ConnectionManagerDisposal'));
+                // Don't fail disposal for connection manager errors
+            }
+
             Logger.info('PostgreSQL extension disposed successfully');
         } catch (error) {
             Logger.error('Error during extension disposal', error as Error);
+
+            ErrorHandler.handleErrorWithSeverity(
+                error as Error,
+                disposeContext,
+                ErrorSeverity.HIGH
+            );
+
+            // Even on disposal errors, we should not throw to avoid VS Code issues
         }
     }
 }

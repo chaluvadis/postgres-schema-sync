@@ -98,7 +98,7 @@ public enum ParameterMode
     INOUT,
     VARIADIC
 }
-public class Index : DatabaseObject
+public class TableIndex : DatabaseObject
 {
     public string TableName { get; set; } = string.Empty;
     public List<string> ColumnNames { get; set; } = [];

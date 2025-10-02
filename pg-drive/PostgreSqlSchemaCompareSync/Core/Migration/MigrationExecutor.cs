@@ -1,7 +1,4 @@
 namespace PostgreSqlSchemaCompareSync.Core.Migration;
-using Npgsql;
-using System.Text;
-using System.Text.RegularExpressions;
 
 public class MigrationExecutor(
     ILogger<MigrationExecutor> logger,
@@ -91,7 +88,6 @@ public class MigrationExecutor(
                         }
                         else
                         {
-                            // For non-critical errors, log warning but continue
                             result.Warnings.Add($"Non-critical error at statement {i + 1}: {ex.Message}");
                         }
                     }
@@ -139,86 +135,19 @@ public class MigrationExecutor(
         }
     }
 
-    private List<string> ParseSqlStatements(string sqlScript)
+    private static List<string> ParseSqlStatements(string sqlScript)
     {
+        using var connection = new NpgsqlConnection();
+        using var batch = new NpgsqlBatch(connection);
+        batch.BatchCommands.Add(new NpgsqlBatchCommand(sqlScript));
+
         var statements = new List<string>();
-        var currentStatement = new StringBuilder();
-        var inString = false;
-        var stringChar = '\0';
-        var inComment = false;
-        var commentLine = false;
-
-        var i = 0;
-        while (i < sqlScript.Length)
+        foreach (var command in batch.BatchCommands)
         {
-            var c = sqlScript[i];
-
-            // Handle comments
-            if (!inString && c == '/' && i + 1 < sqlScript.Length && sqlScript[i + 1] == '*')
+            if (!string.IsNullOrEmpty(command.CommandText.Trim()))
             {
-                inComment = true;
-                i++; // Skip next character
+                statements.Add(command.CommandText.Trim());
             }
-            else if (inComment && c == '*' && i + 1 < sqlScript.Length && sqlScript[i + 1] == '/')
-            {
-                inComment = false;
-                i++; // Skip next character
-            }
-            else if (!inString && !inComment && c == '-' && i + 1 < sqlScript.Length && sqlScript[i + 1] == '-')
-            {
-                commentLine = true;
-            }
-            else if (commentLine && c == '\n')
-            {
-                commentLine = false;
-            }
-            else if (!inComment && !commentLine)
-            {
-                // Handle string literals
-                if (!inString && (c == '"' || c == '\''))
-                {
-                    inString = true;
-                    stringChar = c;
-                    currentStatement.Append(c);
-                }
-                else if (inString && c == stringChar)
-                {
-                    // Check if this is an escaped quote
-                    if (i + 1 < sqlScript.Length && sqlScript[i + 1] == stringChar)
-                    {
-                        currentStatement.Append(c); // Escaped quote
-                        i++; // Skip next character
-                    }
-                    else
-                    {
-                        inString = false;
-                        stringChar = '\0';
-                        currentStatement.Append(c);
-                    }
-                }
-                else if (!inString && c == ';')
-                {
-                    currentStatement.Append(c);
-                    var statement = currentStatement.ToString().Trim();
-                    if (!string.IsNullOrEmpty(statement))
-                    {
-                        statements.Add(statement);
-                    }
-                    currentStatement.Clear();
-                }
-                else
-                {
-                    currentStatement.Append(c);
-                }
-            }
-            i++;
-        }
-
-        // Add any remaining statement
-        var finalStatement = currentStatement.ToString().Trim();
-        if (!string.IsNullOrEmpty(finalStatement))
-        {
-            statements.Add(finalStatement);
         }
 
         return statements;

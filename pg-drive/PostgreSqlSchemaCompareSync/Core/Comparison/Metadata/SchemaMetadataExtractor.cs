@@ -1,6 +1,6 @@
 namespace PostgreSqlSchemaCompareSync.Core.Comparison.Metadata;
 
-public class SchemaMetadataExtractor(ILogger<SchemaMetadataExtractor> logger)
+public class SchemaMetadataExtractor(ILogger<SchemaMetadataExtractor> logger) : ISchemaMetadataExtractor
 {
     private readonly ILogger<SchemaMetadataExtractor> _logger = logger;
 

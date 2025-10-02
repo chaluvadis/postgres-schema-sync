@@ -8,7 +8,6 @@ export interface DatabaseObject {
     type: string;
     schema: string;
     database: string;
-    children?: DatabaseObject[];
 }
 
 export class SchemaManager {
@@ -20,22 +19,22 @@ export class SchemaManager {
         this.dotNetService = DotNetIntegrationService.getInstance();
     }
 
-    async getDatabaseObjects(connectionId: string): Promise<DatabaseObject[]> {
+    async getDatabaseObjects(connectionId: string, schemaFilter?: string): Promise<DatabaseObject[]> {
         try {
             Logger.info('Getting database objects', { connectionId });
 
+            // Get connection and password directly
             const connection = this.connectionManager.getConnection(connectionId);
             if (!connection) {
                 throw new Error(`Connection ${connectionId} not found`);
             }
 
-            // Get password from VSCode secrets
             const password = await this.connectionManager.getConnectionPassword(connectionId);
             if (!password) {
                 throw new Error('Password not found for connection');
             }
 
-            // Convert to .NET format
+            // Create .NET connection info
             const dotNetConnection: DotNetConnectionInfo = {
                 id: connection.id,
                 name: connection.name,
@@ -43,26 +42,25 @@ export class SchemaManager {
                 port: connection.port,
                 database: connection.database,
                 username: connection.username,
-                password: password
+                password: password,
+                createdDate: new Date().toISOString()
             };
 
             // Get objects via .NET service
-            const dotNetObjects = await this.dotNetService.browseSchema(dotNetConnection);
+            const dotNetObjects = await this.dotNetService.browseSchema(dotNetConnection, schemaFilter || undefined);
 
-            // Convert from .NET format to local format
-            const objects = dotNetObjects.map(dotNetObj => ({
+            if (!dotNetObjects || dotNetObjects.length === 0) {
+                Logger.warn('No objects found in schema', { connectionId });
+                return [];
+            }
+
+            // Convert from .NET format to local format with simplified mapping
+            const objects: DatabaseObject[] = dotNetObjects.map(dotNetObj => ({
                 id: dotNetObj.id,
                 name: dotNetObj.name,
                 type: this.mapDotNetTypeToLocal(dotNetObj.type),
                 schema: dotNetObj.schema,
-                database: dotNetObj.database,
-                owner: dotNetObj.owner,
-                sizeInBytes: dotNetObj.sizeInBytes,
-                properties: dotNetObj.properties,
-                definition: dotNetObj.definition,
-                createdAt: dotNetObj.createdAt,
-                modifiedAt: dotNetObj.modifiedAt,
-                dependencies: dotNetObj.dependencies
+                database: dotNetObj.database
             }));
 
             Logger.info('Database objects retrieved', {
@@ -81,18 +79,18 @@ export class SchemaManager {
         try {
             Logger.info('Getting object details', { connectionId, objectType, schema, objectName });
 
+            // Get connection and password directly
             const connection = this.connectionManager.getConnection(connectionId);
             if (!connection) {
                 throw new Error(`Connection ${connectionId} not found`);
             }
 
-            // Get password from VSCode secrets
             const password = await this.connectionManager.getConnectionPassword(connectionId);
             if (!password) {
                 throw new Error('Password not found for connection');
             }
 
-            // Convert to .NET format
+            // Create .NET connection info
             const dotNetConnection: DotNetConnectionInfo = {
                 id: connection.id,
                 name: connection.name,
@@ -112,6 +110,10 @@ export class SchemaManager {
                 objectName
             );
 
+            if (!details) {
+                throw new Error('Object details returned null or undefined');
+            }
+
             Logger.info('Object details retrieved', {
                 connectionId,
                 objectType,
@@ -126,26 +128,16 @@ export class SchemaManager {
     }
 
     private mapDotNetTypeToLocal(dotNetType: string): string {
-        // Map .NET object types to local types
-        switch (dotNetType.toLowerCase()) {
-            case 'table': return 'table';
-            case 'view': return 'view';
-            case 'function': return 'function';
-            case 'procedure': return 'procedure';
-            case 'sequence': return 'sequence';
-            case 'type': return 'type';
-            case 'domain': return 'domain';
-            case 'collation': return 'collation';
-            case 'extension': return 'extension';
-            case 'role': return 'role';
-            case 'tablespace': return 'tablespace';
-            case 'index': return 'index';
-            case 'trigger': return 'trigger';
-            case 'constraint': return 'constraint';
-            case 'column': return 'column';
-            case 'schema': return 'schema';
-            default: return 'unknown';
-        }
+        const typeMap: { [key: string]: string } = {
+            'table': 'table', 'view': 'view', 'function': 'function',
+            'procedure': 'procedure', 'sequence': 'sequence', 'type': 'type',
+            'domain': 'domain', 'index': 'index', 'trigger': 'trigger',
+            'constraint': 'constraint', 'column': 'column', 'schema': 'schema'
+        };
+        return typeMap[dotNetType.toLowerCase()] || 'unknown';
     }
+
+
+
 
 }

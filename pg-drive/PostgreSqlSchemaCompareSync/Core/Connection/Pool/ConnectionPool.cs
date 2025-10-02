@@ -1,34 +1,33 @@
 namespace PostgreSqlSchemaCompareSync.Core.Connection.Pool;
 
-public class ConnectionPool : IDisposable
+public class ConnectionPool : IDisposable, IAsyncDisposable
 {
     private readonly ConnectionSettings _settings;
     private readonly ILogger<ConnectionPool> _logger;
     private readonly SemaphoreSlim _poolSemaphore;
+    private readonly SemaphoreSlim _timerSemaphore;
     private readonly ConcurrentBag<PooledConnection> _connections;
     private readonly ConcurrentDictionary<string, ConnectionStats> _connectionStats;
     private readonly Timer _healthCheckTimer;
     private readonly Timer _cleanupTimer;
     private bool _disposed;
+
     public ConnectionPool(
         IOptions<AppSettings> settings,
         ILogger<ConnectionPool> logger)
     {
         _settings = settings.Value.Connection;
         _logger = logger;
-        _poolSemaphore = new SemaphoreSlim(_settings.ConnectionPoolSize);
+        _poolSemaphore = new(_settings.ConnectionPoolSize);
+        _timerSemaphore = new(1);
         _connections = [];
-        _connectionStats = new ConcurrentDictionary<string, ConnectionStats>();
-        // Initialize connection pool
-        InitializePoolAsync().GetAwaiter().GetResult();
-        // Start background health monitoring
-        _healthCheckTimer = new Timer(
+        _connectionStats = new();
+        _healthCheckTimer = new(
             HealthCheckCallback,
             null,
             TimeSpan.FromSeconds(_settings.HealthCheckInterval),
             TimeSpan.FromSeconds(_settings.HealthCheckInterval));
-        // Cleanup timer for removing stale connections
-        _cleanupTimer = new Timer(
+        _cleanupTimer = new(
             CleanupCallback,
             null,
             TimeSpan.FromMinutes(5),
@@ -37,44 +36,47 @@ public class ConnectionPool : IDisposable
             "Connection pool initialized with max size {MaxPoolSize}, health check interval {HealthCheckInterval}s",
             _settings.ConnectionPoolSize, _settings.HealthCheckInterval);
     }
+
+    public static async Task<ConnectionPool> CreateAsync(
+        IOptions<AppSettings> settings,
+        ILogger<ConnectionPool> logger)
+    {
+        var pool = new ConnectionPool(settings, logger);
+        await pool.InitializePoolAsync();
+        return pool;
+    }
+
     private async Task InitializePoolAsync()
     {
-        var initializationTasks = Enumerable.Range(0, _settings.ConnectionPoolSize)
-            .Select(async i =>
+        var tasks = Enumerable.Range(0, _settings.ConnectionPoolSize)
+            .Select(_ => CreateNewConnectionAsync().ContinueWith(t =>
             {
-                try
-                {
-                    var connection = await CreateNewConnectionAsync();
-                    _connections.Add(connection);
-                    _logger.LogDebug("Initialized connection {ConnectionId} in pool", connection.Id);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to initialize connection {ConnectionIndex} in pool", i);
-                }
-            });
-        await Task.WhenAll(initializationTasks);
+                if (t.Exception != null)
+                    _logger.LogWarning(t.Exception, "Failed to initialize connection in pool");
+                else
+                    _connections.Add(t.Result);
+            }));
+        await Task.WhenAll(tasks);
         _logger.LogInformation("Connection pool initialization completed");
     }
+
     public async Task<PooledConnection> AcquireConnectionAsync(
         ConnectionInfo connectionInfo,
         CancellationToken cancellationToken = default)
     {
         var statsKey = GetStatsKey(connectionInfo);
-        // Update stats
         _connectionStats.AddOrUpdate(statsKey,
-            key => new ConnectionStats { AcquiredCount = 1 },
-            (key, stats) =>
+            _ => new ConnectionStats { AcquiredCount = 1 },
+            (_, stats) =>
             {
                 stats.AcquiredCount++;
                 stats.LastAcquiredAt = DateTime.UtcNow;
                 return stats;
             });
-        // Wait for available slot in pool
+
         await _poolSemaphore.WaitAsync(cancellationToken);
         try
         {
-            // Try to get a healthy connection from the pool
             if (_connections.TryTake(out var pooledConnection))
             {
                 if (await IsConnectionHealthyAsync(pooledConnection.Connection))
@@ -84,14 +86,9 @@ public class ConnectionPool : IDisposable
                     _logger.LogDebug("Acquired healthy connection {ConnectionId} from pool", pooledConnection.Id);
                     return pooledConnection;
                 }
-                else
-                {
-                    // Connection is unhealthy, dispose it
-                    await pooledConnection.Connection.DisposeAsync();
-                    _logger.LogWarning("Removed unhealthy connection {ConnectionId} from pool", pooledConnection.Id);
-                }
+                await pooledConnection.Connection.DisposeAsync();
+                _logger.LogWarning("Removed unhealthy connection {ConnectionId} from pool", pooledConnection.Id);
             }
-            // No healthy connection available, create new one
             var newConnection = await CreateNewConnectionAsync(connectionInfo);
             _logger.LogDebug("Created new connection {ConnectionId} for acquisition", newConnection.Id);
             return newConnection;
@@ -103,23 +100,22 @@ public class ConnectionPool : IDisposable
             throw;
         }
     }
-    public void ReleaseConnection(PooledConnection connection)
+
+    public async Task ReleaseConnectionAsync(PooledConnection connection)
     {
         try
         {
             if (connection.IsHealthy && !connection.IsExpired)
             {
-                // Return healthy connection to pool
                 _connections.Add(connection);
                 _poolSemaphore.Release();
                 _logger.LogDebug("Released healthy connection {ConnectionId} back to pool", connection.Id);
             }
             else
             {
-                // Dispose unhealthy or expired connection
-                connection.Connection.DisposeAsync().GetAwaiter().GetResult();
-                // Create replacement connection in background
-                Task.Run(async () =>
+                await connection.Connection.DisposeAsync();
+                _logger.LogWarning("Disposed unhealthy/expired connection {ConnectionId}", connection.Id);
+                _ = Task.Run(async () =>
                 {
                     try
                     {
@@ -132,7 +128,6 @@ public class ConnectionPool : IDisposable
                         _logger.LogWarning(ex, "Failed to create replacement connection");
                     }
                 });
-                _logger.LogWarning("Disposed unhealthy/expired connection {ConnectionId}", connection.Id);
             }
         }
         catch (Exception ex)
@@ -140,6 +135,7 @@ public class ConnectionPool : IDisposable
             _logger.LogError(ex, "Error releasing connection {ConnectionId}", connection.Id);
         }
     }
+
     private async Task<PooledConnection> CreateNewConnectionAsync(ConnectionInfo? connectionInfo = null)
     {
         var connection = new NpgsqlConnection(connectionInfo?.ConnectionString ?? "Host=localhost;Database=postgres");
@@ -156,13 +152,13 @@ public class ConnectionPool : IDisposable
         _logger.LogDebug("Created new pooled connection {ConnectionId}", pooledConnection.Id);
         return pooledConnection;
     }
+
     private async Task<bool> IsConnectionHealthyAsync(NpgsqlConnection connection)
     {
         try
         {
             if (connection.State != System.Data.ConnectionState.Open)
                 return false;
-            // Quick health check query
             using var cmd = connection.CreateCommand();
             cmd.CommandText = "SELECT 1";
             cmd.CommandTimeout = 5;
@@ -174,15 +170,28 @@ public class ConnectionPool : IDisposable
             return false;
         }
     }
+
     private void HealthCheckCallback(object? state)
     {
-        Task.Run(PerformHealthCheckAsync);
+        if (_disposed) return;
+        Task.Run(async () =>
+        {
+            await _timerSemaphore.WaitAsync();
+            try
+            {
+                await PerformHealthCheckAsync();
+            }
+            finally
+            {
+                _timerSemaphore.Release();
+            }
+        });
     }
+
     private async Task PerformHealthCheckAsync()
     {
         var unhealthyConnections = new List<PooledConnection>();
         var healthyConnections = new List<PooledConnection>();
-        // Check all connections in pool
         while (_connections.TryTake(out var connection))
         {
             if (await IsConnectionHealthyAsync(connection.Connection))
@@ -196,12 +205,9 @@ public class ConnectionPool : IDisposable
                 unhealthyConnections.Add(connection);
             }
         }
-        // Return healthy connections to pool
         foreach (var healthyConnection in healthyConnections)
-        {
             _connections.Add(healthyConnection);
-        }
-        // Dispose unhealthy connections and create replacements
+
         foreach (var unhealthyConnection in unhealthyConnections)
         {
             await unhealthyConnection.Connection.DisposeAsync();
@@ -218,44 +224,53 @@ public class ConnectionPool : IDisposable
                     unhealthyConnection.Id);
             }
         }
-        if (unhealthyConnections.Count != 0)
+        if (unhealthyConnections.Count > 0)
         {
             _logger.LogInformation("Health check completed: {HealthyCount} healthy, {UnhealthyCount} unhealthy connections",
                 healthyConnections.Count, unhealthyConnections.Count);
         }
     }
+
     private void CleanupCallback(object? state)
     {
-        Task.Run(PerformCleanupAsync);
+        if (_disposed) return;
+        Task.Run(async () =>
+        {
+            await _timerSemaphore.WaitAsync();
+            try
+            {
+                await PerformCleanupAsync();
+            }
+            finally
+            {
+                _timerSemaphore.Release();
+            }
+        });
     }
+
     private async Task PerformCleanupAsync()
     {
         var expiredConnections = new List<PooledConnection>();
         var now = DateTime.UtcNow;
-        // Find expired connections (not used for more than 30 minutes)
         while (_connections.TryTake(out var connection))
         {
             if (now - connection.LastAcquiredAt > TimeSpan.FromMinutes(30))
-            {
                 expiredConnections.Add(connection);
-            }
             else
-            {
                 _connections.Add(connection);
-            }
         }
-        // Dispose expired connections
         foreach (var expiredConnection in expiredConnections)
         {
             await expiredConnection.Connection.DisposeAsync();
             _logger.LogDebug("Cleaned up expired connection {ConnectionId}", expiredConnection.Id);
         }
-        if (expiredConnections.Count != 0)
+        if (expiredConnections.Count > 0)
         {
             _logger.LogInformation("Cleanup completed: removed {ExpiredCount} expired connections",
                 expiredConnections.Count);
         }
     }
+
     public ConnectionPoolStats GetStats()
     {
         var availableConnections = _connections.Count;
@@ -268,22 +283,45 @@ public class ConnectionPool : IDisposable
             ConnectionStats = _connectionStats.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
         };
     }
+
     private string GetStatsKey(ConnectionInfo connectionInfo)
         => $"{connectionInfo.Host}:{connectionInfo.Port}:{connectionInfo.Database}";
+
     public void Dispose()
     {
-        if (!_disposed)
+        if (_disposed) return;
+        _disposed = true;
+        _healthCheckTimer?.Dispose();
+        _cleanupTimer?.Dispose();
+        _poolSemaphore?.Dispose();
+        _timerSemaphore?.Dispose();
+        _ = DisposeAllConnectionsAsync();
+        _logger.LogInformation("Connection pool disposed");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _healthCheckTimer?.Dispose();
+        _cleanupTimer?.Dispose();
+        _poolSemaphore?.Dispose();
+        _timerSemaphore?.Dispose();
+        await DisposeAllConnectionsAsync();
+        _logger.LogInformation("Connection pool disposed");
+    }
+
+    private async Task DisposeAllConnectionsAsync()
+    {
+        var connections = new List<PooledConnection>();
+        while (_connections.TryTake(out var connection))
+            connections.Add(connection);
+
+        if (connections.Count != 0)
         {
-            _disposed = true;
-            _healthCheckTimer?.Dispose();
-            _cleanupTimer?.Dispose();
-            _poolSemaphore?.Dispose();
-            // Dispose all connections
-            while (_connections.TryTake(out var connection))
-            {
-                connection.Connection.DisposeAsync().GetAwaiter().GetResult();
-            }
-            _logger.LogInformation("Connection pool disposed");
+            var disposeTasks = connections.Select(conn => conn.Connection.DisposeAsync().AsTask());
+            await Task.WhenAll(disposeTasks);
+            _logger.LogInformation("Disposed {ConnectionCount} connections", connections.Count);
         }
     }
 }
