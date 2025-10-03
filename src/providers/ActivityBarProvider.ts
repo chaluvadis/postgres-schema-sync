@@ -12,14 +12,14 @@ export class ActivityBarProvider {
 
     private setupActivityBar(): void {
         Logger.info('Activity Bar provider initialized');
-        this.setupWelcomeView();
+        this.updateWelcomeView();
     }
 
-    private setupWelcomeView(): void {
+    private updateWelcomeView(): void {
         const connections = this.connectionManager.getConnections();
 
         if (connections.length === 0) {
-            // Show welcome message
+            // Show welcome message when no connections exist
             vscode.commands.executeCommand('setContext', 'postgresql:noConnections', true);
         } else {
             vscode.commands.executeCommand('setContext', 'postgresql:noConnections', false);
@@ -28,14 +28,19 @@ export class ActivityBarProvider {
 
     updateActivityBar(): void {
         const connections = this.connectionManager.getConnections();
+
+        // Set connected count context for activity bar badge
         const connectedCount = connections.filter(c => c.status === 'Connected').length;
         if (connectedCount > 0) {
             vscode.commands.executeCommand('setContext', 'postgresql:connectedCount', connectedCount);
         }
-        this.setupWelcomeView();
+
+        // Update welcome view context based on total connections
+        this.updateWelcomeView();
     }
 
     dispose(): void {
+        // No resources to dispose - this provider only manages VS Code context
         Logger.info('Activity Bar provider disposed');
     }
 }

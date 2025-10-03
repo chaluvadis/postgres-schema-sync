@@ -28,7 +28,6 @@ export interface OperationIndicator {
 export interface StatusBarConfig {
     enabled: boolean;
     showConnectionStatus: boolean;
-    showPerformanceMetrics: boolean;
     showOperationIndicators: boolean;
     showNotifications: boolean;
     showMemoryUsage: boolean;
@@ -78,7 +77,6 @@ export class EnhancedStatusBarProvider {
         return {
             enabled: vscodeConfig.get('enabled', true),
             showConnectionStatus: vscodeConfig.get('showConnectionStatus', true),
-            showPerformanceMetrics: vscodeConfig.get('showPerformanceMetrics', true),
             showOperationIndicators: vscodeConfig.get('showOperationIndicators', true),
             showNotifications: vscodeConfig.get('showNotifications', true),
             showMemoryUsage: vscodeConfig.get('showMemoryUsage', false),
@@ -104,18 +102,6 @@ export class EnhancedStatusBarProvider {
             });
         }
 
-        // Performance metrics item
-        if (this.config.showPerformanceMetrics) {
-            this.createStatusBarItem({
-                id: 'performance',
-                text: '$(graph) Performance',
-                tooltip: 'PostgreSQL Performance Metrics',
-                command: 'postgresql.showPerformanceReport',
-                priority: 95,
-                alignment: 'left',
-                visible: true
-            });
-        }
 
         // Operation indicators area
         if (this.config.showOperationIndicators) {
@@ -197,18 +183,6 @@ export class EnhancedStatusBarProvider {
                 this.recreateStatusBarItems();
             }
         });
-
-        // Listen for connection changes - simplified for now
-        // this.connectionManager.onConnectionChange(() => {
-        //     this.updateConnectionStatus();
-        // });
-
-        // Listen for performance updates
-        // Note: PerformanceMonitor doesn't have an event system in the current implementation
-        // so we'll poll for updates
-
-        // Listen for notifications
-        // Note: NotificationManager doesn't have events, but we can check periodically
     }
 
     private recreateStatusBarItems(): void {
@@ -234,7 +208,6 @@ export class EnhancedStatusBarProvider {
         if (!this.config.enabled) return;
 
         this.updateConnectionStatus();
-        this.updatePerformanceMetrics();
         this.updateOperationIndicators();
         this.updateNotificationStatus();
         this.updateMemoryUsage();
@@ -279,38 +252,6 @@ export class EnhancedStatusBarProvider {
         }
     }
 
-    private updatePerformanceMetrics(): void {
-        if (!this.config.showPerformanceMetrics) return;
-
-        const item = this.statusBarItems.get('performance');
-        if (!item) return;
-
-        // Simplified performance metrics (since PerformanceMonitor was removed)
-        const avgTime = 0;
-        const queryCount = 0;
-
-        let performanceIcon = '$(graph)';
-        let color: vscode.ThemeColor | undefined;
-
-        if (avgTime > 1000) {
-            performanceIcon = '$(warning)';
-            color = new vscode.ThemeColor('statusBarItem.warningBackground');
-        } else if (avgTime > 500) {
-            performanceIcon = '$(info)';
-        }
-
-        const text = this.config.compactMode
-            ? `${performanceIcon} ${avgTime.toFixed(0)}ms`
-            : `${performanceIcon} ${avgTime.toFixed(0)}ms (${queryCount} ops)`;
-
-        const tooltip = `Average Query Time: ${avgTime.toFixed(2)}ms\nTotal Operations: ${queryCount}\nLast Hour`;
-
-        item.text = text;
-        item.tooltip = tooltip;
-        if (color) {
-            item.backgroundColor = color;
-        }
-    }
 
     private updateOperationIndicators(): void {
         if (!this.config.showOperationIndicators) return;
@@ -434,22 +375,13 @@ export class EnhancedStatusBarProvider {
         const item = this.statusBarItems.get('system');
         if (!item) return;
 
-        const isMonitoring = false; // Simplified since PerformanceMonitor was removed
         const uptime = this.getSystemUptime();
 
-        let text = '$(pulse) System';
-        let tooltip = `System Status\nUptime: ${uptime}\nPerformance Monitoring: ${isMonitoring ? 'Active' : 'Inactive'}`;
-        let color: vscode.ThemeColor | undefined;
-
-        if (!isMonitoring) {
-            color = new vscode.ThemeColor('statusBarItem.warningBackground');
-        }
+        const text = '$(pulse) System';
+        const tooltip = `System Status\nUptime: ${uptime}`;
 
         item.text = text;
         item.tooltip = tooltip;
-        if (color) {
-            item.backgroundColor = color;
-        }
     }
 
     private getSystemUptime(): string {
@@ -540,126 +472,6 @@ export class EnhancedStatusBarProvider {
         this.updateOperationIndicators();
 
         Logger.debug('Operation completed', { operationId: id });
-    }
-
-    /**
-     * Show operation details
-     */
-    async showOperationDetails(): Promise<void> {
-        const activeOperations = Array.from(this.operationIndicators.values())
-            .filter(op => op.status === 'running' || op.status === 'pending');
-
-        if (activeOperations.length === 0) {
-            vscode.window.showInformationMessage('No active operations');
-            return;
-        }
-
-        const items = activeOperations.map(op => {
-            const duration = Date.now() - op.startTime;
-            const progress = op.progress !== undefined ? ` (${op.progress}%)` : '';
-            return {
-                label: `${op.name}${progress}`,
-                detail: `Status: ${op.status} • Duration: ${this.formatDuration(duration)}`,
-                data: op
-            };
-        });
-
-        const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: 'Select an operation to view details'
-        });
-
-        if (selected) {
-            const details = `
-Operation Details:
-- Name: ${selected.data.name}
-- Status: ${selected.data.status}
-- Start Time: ${new Date(selected.data.startTime).toLocaleString()}
-- Duration: ${this.formatDuration(Date.now() - selected.data.startTime)}
-${selected.data.progress !== undefined ? `- Progress: ${selected.data.progress}%` : ''}
-${selected.data.estimatedDuration ? `- Estimated Total: ${this.formatDuration(selected.data.estimatedDuration)}` : ''}
-${selected.data.message ? `- Message: ${selected.data.message}` : ''}
-            `;
-
-            const outputChannel = vscode.window.createOutputChannel('PostgreSQL Operations');
-            outputChannel.clear();
-            outputChannel.appendLine(details);
-            outputChannel.show();
-        }
-    }
-
-    /**
-     * Show quick operation actions
-     */
-    async showOperationActions(): Promise<void> {
-        const activeOperations = Array.from(this.operationIndicators.values())
-            .filter(op => op.status === 'running');
-
-        if (activeOperations.length === 0) {
-            vscode.window.showInformationMessage('No running operations');
-            return;
-        }
-
-        const items = activeOperations.map(op => ({
-            label: `Cancel ${op.name}`,
-            detail: `Running for ${this.formatDuration(Date.now() - op.startTime)}`,
-            data: op
-        }));
-
-        const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: 'Select an operation to cancel'
-        });
-
-        if (selected) {
-            // In a real implementation, this would send a cancellation signal
-            vscode.window.showInformationMessage(`Operation "${selected.data.name}" cancellation requested`);
-            this.updateOperation(selected.data.id, 'cancelled');
-        }
-    }
-
-    /**
-     * Update configuration
-     */
-    updateConfig(newConfig: Partial<StatusBarConfig>): void {
-        this.config = { ...this.config, ...newConfig };
-        this.recreateStatusBarItems();
-    }
-
-    /**
-     * Get current status summary
-     */
-    getStatusSummary(): {
-        connections: { total: number; active: number; };
-        performance: { avgQueryTime: number; totalQueries: number; };
-        operations: { active: number; total: number; };
-        notifications: { unread: number; total: number; };
-        memory: { usedMB: number; totalMB: number; };
-    } {
-        const connections = this.connectionManager.getConnections();
-        const notificationStats = this.notificationManager.getStatistics();
-        const memUsage = process.memoryUsage();
-
-        return {
-            connections: {
-                total: connections.length,
-                active: connections.filter(c => c.status === 'Connected').length
-            },
-            performance: {
-                avgQueryTime: 0, // Simplified since PerformanceMonitor was removed
-                totalQueries: 0
-            },
-            operations: {
-                active: this.currentOperations.size,
-                total: this.operationIndicators.size
-            },
-            notifications: {
-                unread: notificationStats.unread,
-                total: notificationStats.total
-            },
-            memory: {
-                usedMB: Math.round(memUsage.heapUsed / 1024 / 1024),
-                totalMB: Math.round(memUsage.heapTotal / 1024 / 1024)
-            }
-        };
     }
 
     /**
