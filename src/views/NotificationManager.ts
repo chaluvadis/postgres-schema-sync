@@ -406,9 +406,14 @@ export class NotificationManager {
     }
 
     private playNotificationSound(type: string): void {
-        // In a real implementation, you might play different sounds for different notification types
-        // For now, we'll just log it
-        Logger.debug('Playing notification sound', { type });
+        // VS Code extensions don't have direct access to Web Audio API in the extension host
+        // Sound playback would need to be implemented in the webview context if needed
+        // For now, we'll just log the sound request
+        Logger.debug('Notification sound requested', { type });
+
+        // TODO: Implement sound playback in webview if needed
+        // This could be done by posting a message to the webview to play sounds
+        // or by using VS Code's built-in notification sound capabilities
     }
 
     private updateProgress(id: string, progress: number, message?: string): void {
@@ -952,6 +957,10 @@ export class NotificationManager {
             case 'executeAction':
                 await this.executeNotificationAction(message.notificationId, message.actionId);
                 break;
+
+            default:
+                Logger.warn('Unknown notification center command', { command: message.command });
+                break;
         }
     }
 
@@ -963,18 +972,34 @@ export class NotificationManager {
     }
 
     private async executeNotificationAction(notificationId: string, actionId: string): Promise<void> {
+        if (!notificationId || !actionId) {
+            Logger.warn('Invalid notification action parameters', { notificationId, actionId });
+            return;
+        }
+
         const notification = this.notifications.get(notificationId);
-        if (notification && notification.actions) {
-            const action = notification.actions.find(a => a.id === actionId);
-            if (action) {
-                try {
-                    await action.action();
-                    this.markAsRead(notificationId);
-                } catch (error) {
-                    Logger.error('Failed to execute notification action', error as Error);
-                    vscode.window.showErrorMessage(`Failed to execute action: ${(error as Error).message}`);
-                }
-            }
+        if (!notification) {
+            Logger.warn('Notification not found for action execution', { notificationId });
+            return;
+        }
+
+        if (!notification.actions || notification.actions.length === 0) {
+            Logger.warn('Notification has no actions', { notificationId });
+            return;
+        }
+
+        const action = notification.actions.find(a => a.id === actionId);
+        if (!action) {
+            Logger.warn('Action not found in notification', { notificationId, actionId });
+            return;
+        }
+
+        try {
+            await action.action();
+            this.markAsRead(notificationId);
+        } catch (error) {
+            Logger.error('Failed to execute notification action', error as Error, { notificationId, actionId });
+            vscode.window.showErrorMessage(`Failed to execute action: ${(error as Error).message}`);
         }
     }
 

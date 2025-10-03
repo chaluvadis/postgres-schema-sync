@@ -318,11 +318,8 @@ function registerCommands(context: vscode.ExtensionContext, extension: PostgreSq
 
     context.subscriptions.push(
         vscode.commands.registerCommand('postgresql.showPerformanceReport', () => {
-            if (components.performanceMonitor) {
-                components.performanceMonitor.showPerformanceReport();
-            } else {
-                vscode.window.showErrorMessage('Performance monitor not available');
-            }
+            // Performance monitoring integrated into dashboard
+            vscode.window.showInformationMessage('Performance monitoring is available in the Dashboard view');
         })
     );
 
@@ -357,15 +354,6 @@ function registerCommands(context: vscode.ExtensionContext, extension: PostgreSq
         })
     );
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.setTreeViewMode', (mode) => {
-            if (components.enhancedTreeProvider) {
-                components.enhancedTreeProvider.setViewMode(mode);
-            } else {
-                vscode.window.showErrorMessage('Enhanced tree provider not available');
-            }
-        })
-    );
 
     context.subscriptions.push(
         vscode.commands.registerCommand('postgresql.searchTree', (query) => {

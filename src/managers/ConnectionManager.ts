@@ -146,6 +146,36 @@ export class ConnectionManager {
         }
     }
 
+    async testConnectionData(connectionData: Omit<DatabaseConnection, 'id'> & { password: string; }): Promise<boolean> {
+        try {
+            Logger.info(`Testing connection data: ${connectionData.name}`);
+
+            if (!this.dotNetService) {
+                Logger.error('DotNet service not available');
+                return false;
+            }
+
+            const dotNetConnection: DotNetConnectionInfo = {
+                id: 'temp-' + Date.now(), // Temporary ID for testing
+                name: connectionData.name,
+                host: connectionData.host,
+                port: connectionData.port,
+                database: connectionData.database,
+                username: connectionData.username,
+                password: connectionData.password
+            };
+
+            const result = await this.dotNetService.testConnection(dotNetConnection);
+            const success = !!result;
+
+            Logger.info(`Connection test ${success ? 'successful' : 'failed'}: ${connectionData.name}`);
+            return success;
+        } catch (error) {
+            Logger.error(`Connection test error: ${(error as Error).message}`);
+            return false;
+        }
+    }
+
     getConnections(): DatabaseConnection[] {
         return Array.from(this.connections.values()).map(conn => ({
             ...conn,
@@ -210,12 +240,6 @@ export class ConnectionManager {
             throw error;
         }
     }
-
-
-
-
-
-
 
     async dispose(): Promise<void> {
         try {

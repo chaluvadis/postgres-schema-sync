@@ -66,6 +66,9 @@ export class SettingsView {
                     case 'importSettings':
                         await this.handleImportSettings(panel);
                         break;
+                    default:
+                        Logger.warn('Unknown settings command', { command: message.command });
+                        break;
                 }
             });
         } catch (error) {
@@ -270,6 +273,10 @@ export class SettingsView {
                     .status-error {
                         background: var(--vscode-notificationsErrorBackground);
                         color: var(--vscode-notificationsErrorForeground);
+                    }
+                    .error-input {
+                        border-color: var(--vscode-errorForeground);
+                        background: var(--vscode-inputValidation-errorBackground);
                     }
                 </style>
             </head>
@@ -516,7 +523,7 @@ export class SettingsView {
                     <button class="btn btn-secondary" onclick="exportSettings()">Export Settings</button>
                     <button class="btn btn-secondary" onclick="importSettings()">Import Settings</button>
                     <button class="btn btn-secondary" onclick="resetSettings()">Reset to Defaults</button>
-                    <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                    <button class="btn btn-primary" onclick="validateAndSaveSettings()">Save Settings</button>
                 </div>
 
                 <div id="statusMessage" class="status-message" style="display: none;"></div>
@@ -524,6 +531,22 @@ export class SettingsView {
                 <script>
                     const vscode = acquireVsCodeApi();
                     let ignoreSchemas = ${JSON.stringify(settings.compare.ignoreSchemas)};
+
+                    function validateAndSaveSettings() {
+                        // Clear previous validation errors
+                        clearValidationErrors();
+
+                        // Validate form
+                        const validationErrors = validateForm();
+
+                        if (validationErrors.length > 0) {
+                            showValidationErrors(validationErrors);
+                            return;
+                        }
+
+                        // If validation passes, save settings
+                        saveSettings();
+                    }
 
                     function saveSettings() {
                         const settings = {
@@ -566,6 +589,69 @@ export class SettingsView {
                         });
                     }
 
+                    function validateForm() {
+                        const errors = [];
+
+                        // Validate migration batch size
+                        const batchSize = parseInt(document.getElementById('migrationBatchSize').value);
+                        if (isNaN(batchSize) || batchSize < 10 || batchSize > 200) {
+                            errors.push('Migration batch size must be between 10 and 200');
+                        }
+
+                        // Validate pool sizes
+                        const minPoolSize = parseInt(document.getElementById('minPoolSize').value);
+                        const maxPoolSize = parseInt(document.getElementById('maxPoolSize').value);
+
+                        if (isNaN(minPoolSize) || minPoolSize < 1 || minPoolSize > 50) {
+                            errors.push('Minimum pool size must be between 1 and 50');
+                        }
+
+                        if (isNaN(maxPoolSize) || maxPoolSize < 5 || maxPoolSize > 100) {
+                            errors.push('Maximum pool size must be between 5 and 100');
+                        }
+
+                        if (minPoolSize > maxPoolSize) {
+                            errors.push('Minimum pool size cannot be greater than maximum pool size');
+                        }
+
+                        // Validate load threshold
+                        const loadThreshold = parseFloat(document.getElementById('loadThresholdForScaling').value);
+                        if (isNaN(loadThreshold) || loadThreshold < 0.1 || loadThreshold > 0.9) {
+                            errors.push('Load threshold must be between 0.1 and 0.9');
+                        }
+
+                        return errors;
+                    }
+
+                    function clearValidationErrors() {
+                        // Remove existing error messages
+                        document.querySelectorAll('.validation-error').forEach(el => el.remove());
+
+                        // Remove error styling
+                        document.querySelectorAll('.error-input').forEach(el => {
+                            el.classList.remove('error-input');
+                        });
+                    }
+
+                    function showValidationErrors(errors) {
+                        const statusDiv = document.getElementById('statusMessage');
+                        statusDiv.innerHTML = errors.map(error => '<div>' + error + '</div>').join('');
+                        statusDiv.className = 'status-message status-error';
+                        statusDiv.style.display = 'block';
+
+                        // Add error styling to invalid inputs
+                        if (errors.some(e => e.includes('batch size'))) {
+                            document.getElementById('migrationBatchSize').classList.add('error-input');
+                        }
+                        if (errors.some(e => e.includes('pool size'))) {
+                            document.getElementById('minPoolSize').classList.add('error-input');
+                            document.getElementById('maxPoolSize').classList.add('error-input');
+                        }
+                        if (errors.some(e => e.includes('threshold'))) {
+                            document.getElementById('loadThresholdForScaling').classList.add('error-input');
+                        }
+                    }
+
                     function resetSettings() {
                         vscode.postMessage({
                             command: 'resetSettings'
@@ -603,10 +689,10 @@ export class SettingsView {
                     function updateIgnoreSchemasTags() {
                         const container = document.getElementById('ignoreSchemasTags');
                         container.innerHTML = ignoreSchemas.map(schema =>
-                            \`<div class="tag">
-                                \${schema}
-                                <span class="tag-remove" onclick="removeIgnoreSchema('\${schema}')">×</span>
-                            </div>\`
+                            '<div class="tag">' +
+                                schema +
+                                '<span class="tag-remove" onclick="removeIgnoreSchema(\'' + schema + '\')">×</span>' +
+                            '</div>'
                         ).join('');
                     }
 
@@ -643,6 +729,13 @@ export class SettingsView {
 
     private async handleSaveSettings(newSettings: ExtensionSettings): Promise<void> {
         try {
+            if (!newSettings || typeof newSettings !== 'object') {
+                throw new Error('Invalid settings object provided');
+            }
+
+            // Validate settings before saving
+            this.validateSettingsForSaving(newSettings);
+
             const config = vscode.workspace.getConfiguration('postgresql-schema-sync');
 
             // Update configuration values
@@ -672,7 +765,7 @@ export class SettingsView {
 
         } catch (error) {
             Logger.error('Failed to save settings', error as Error);
-            vscode.window.showErrorMessage('Failed to save settings');
+            vscode.window.showErrorMessage(`Failed to save settings: ${(error as Error).message}`);
         }
     }
 
@@ -787,6 +880,101 @@ export class SettingsView {
             return true;
         } catch {
             return false;
+        }
+    }
+
+    private validateSettingsForSaving(settings: ExtensionSettings): void {
+        // Validate comparison settings
+        if (!settings.compare || typeof settings.compare.mode !== 'string' ||
+            !['strict', 'lenient'].includes(settings.compare.mode)) {
+            throw new Error('Invalid comparison mode setting');
+        }
+
+        if (!Array.isArray(settings.compare.ignoreSchemas)) {
+            throw new Error('Ignore schemas must be an array');
+        }
+
+        // Validate migration settings
+        if (typeof settings.migration.dryRun !== 'boolean') {
+            throw new Error('Migration dry run must be a boolean');
+        }
+
+        if (typeof settings.migration.batchSize !== 'number' ||
+            settings.migration.batchSize < 10 || settings.migration.batchSize > 200) {
+            throw new Error('Migration batch size must be between 10 and 200');
+        }
+
+        // Validate notification settings
+        if (typeof settings.notifications.enabled !== 'boolean') {
+            throw new Error('Notifications enabled must be a boolean');
+        }
+
+        // Validate theme settings
+        if (!settings.theme || typeof settings.theme.colorScheme !== 'string' ||
+            !['auto', 'light', 'dark'].includes(settings.theme.colorScheme)) {
+            throw new Error('Invalid theme color scheme');
+        }
+
+        // Validate debug settings
+        if (typeof settings.debug.enabled !== 'boolean') {
+            throw new Error('Debug enabled must be a boolean');
+        }
+
+        if (!settings.debug || typeof settings.debug.logLevel !== 'string' ||
+            !['trace', 'debug', 'info', 'warn', 'error'].includes(settings.debug.logLevel)) {
+            throw new Error('Invalid debug log level');
+        }
+
+        // Validate connection pooling settings
+        if (typeof settings.connectionPooling.enabled !== 'boolean') {
+            throw new Error('Connection pooling enabled must be a boolean');
+        }
+
+        if (typeof settings.connectionPooling.minPoolSize !== 'number' ||
+            settings.connectionPooling.minPoolSize < 1 || settings.connectionPooling.minPoolSize > 50) {
+            throw new Error('Min pool size must be between 1 and 50');
+        }
+
+        if (typeof settings.connectionPooling.maxPoolSize !== 'number' ||
+            settings.connectionPooling.maxPoolSize < 5 || settings.connectionPooling.maxPoolSize > 100) {
+            throw new Error('Max pool size must be between 5 and 100');
+        }
+
+        if (settings.connectionPooling.minPoolSize > settings.connectionPooling.maxPoolSize) {
+            throw new Error('Min pool size cannot be greater than max pool size');
+        }
+
+        // Validate timeout settings
+        if (typeof settings.connectionPooling.acquireTimeoutMs !== 'number' ||
+            settings.connectionPooling.acquireTimeoutMs < 1000) {
+            throw new Error('Acquire timeout must be at least 1000ms');
+        }
+
+        if (typeof settings.connectionPooling.idleTimeoutMs !== 'number' ||
+            settings.connectionPooling.idleTimeoutMs < 1000) {
+            throw new Error('Idle timeout must be at least 1000ms');
+        }
+
+        if (typeof settings.connectionPooling.healthCheckIntervalMs !== 'number' ||
+            settings.connectionPooling.healthCheckIntervalMs < 1000) {
+            throw new Error('Health check interval must be at least 1000ms');
+        }
+
+        if (typeof settings.connectionPooling.maxConnectionAgeMs !== 'number' ||
+            settings.connectionPooling.maxConnectionAgeMs < 1000) {
+            throw new Error('Max connection age must be at least 1000ms');
+        }
+
+        if (typeof settings.connectionPooling.leaseTimeoutMs !== 'number' ||
+            settings.connectionPooling.leaseTimeoutMs < 1000) {
+            throw new Error('Lease timeout must be at least 1000ms');
+        }
+
+        // Validate load threshold
+        if (typeof settings.connectionPooling.loadThresholdForScaling !== 'number' ||
+            settings.connectionPooling.loadThresholdForScaling < 0.1 ||
+            settings.connectionPooling.loadThresholdForScaling > 0.9) {
+            throw new Error('Load threshold must be between 0.1 and 0.9');
         }
     }
 }

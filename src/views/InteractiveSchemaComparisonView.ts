@@ -52,13 +52,10 @@ export interface ComparisonFilter {
 export class InteractiveSchemaComparisonView {
     private panel: vscode.WebviewPanel | undefined;
     private comparisonData: InteractiveComparisonData | undefined;
-    private selectedDifferences: Set<string> = new Set();
     private filters: ComparisonFilter = {};
     private viewMode: 'list' | 'tree' | 'graph' = 'list';
-    private sortBy: 'type' | 'name' | 'severity' | 'impact' = 'type';
-    private sortOrder: 'asc' | 'desc' = 'asc';
 
-    constructor(private performanceMonitor?: any) {} // Removed PerformanceMonitor
+    constructor() { }
 
     async showComparison(comparisonData: InteractiveComparisonData): Promise<void> {
         try {
@@ -86,7 +83,6 @@ export class InteractiveSchemaComparisonView {
             this.panel.onDidDispose(() => {
                 this.panel = undefined;
                 this.comparisonData = undefined;
-                this.selectedDifferences.clear();
             });
 
             // Generate and set HTML content
@@ -548,6 +544,92 @@ export class InteractiveSchemaComparisonView {
                         display: none !important;
                     }
 
+                    .tree-group {
+                        margin-bottom: 20px;
+                    }
+
+                    .tree-group-header {
+                        background: var(--vscode-titleBar-activeBackground, '#2f2f2f');
+                        padding: 8px 12px;
+                        font-size: 12px;
+                        font-weight: bold;
+                        border-radius: 4px 4px 0 0;
+                        border: 1px solid var(--vscode-panel-border);
+                        border-bottom: none;
+                    }
+
+                    .tree-group-items {
+                        border: 1px solid var(--vscode-panel-border);
+                        border-top: none;
+                        border-radius: 0 0 4px 4px;
+                    }
+
+                    .graph-container {
+                        padding: 20px;
+                        min-height: 400px;
+                    }
+
+                    .graph-legend {
+                        display: flex;
+                        gap: 20px;
+                        margin-bottom: 20px;
+                        font-size: 12px;
+                    }
+
+                    .legend-item {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    }
+
+                    .legend-color {
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 50%;
+                    }
+
+                    .graph-nodes {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                        gap: 15px;
+                    }
+
+                    .graph-node {
+                        padding: 10px;
+                        border-radius: 6px;
+                        text-align: center;
+                        cursor: pointer;
+                        font-size: 12px;
+                        font-weight: bold;
+                        border: 2px solid transparent;
+                        transition: all 0.2s ease;
+                    }
+
+                    .graph-node:hover {
+                        border-color: var(--vscode-textLink-foreground);
+                        transform: translateY(-2px);
+                    }
+
+                    .graph-node.severity-critical {
+                        background: rgba(244, 135, 113, 0.2);
+                        border-color: var(--vscode-gitDecoration-deletedResourceForeground);
+                    }
+
+                    .graph-node.severity-high {
+                        background: rgba(255, 107, 53, 0.2);
+                        border-color: #ff6b35;
+                    }
+
+                    .graph-node.severity-medium {
+                        background: rgba(77, 166, 255, 0.2);
+                        border-color: var(--vscode-gitDecoration-modifiedResourceForeground);
+                    }
+
+                    .graph-node.severity-low {
+                        background: rgba(75, 183, 74, 0.2);
+                        border-color: var(--vscode-gitDecoration-addedResourceForeground);
+                    }
+
                     @media (max-width: 768px) {
                         .content-area {
                             flex-direction: column;
@@ -560,6 +642,10 @@ export class InteractiveSchemaComparisonView {
 
                         .difference-details {
                             grid-template-columns: 1fr;
+                        }
+
+                        .graph-nodes {
+                            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
                         }
                     }
                 </style>
@@ -687,7 +773,7 @@ export class InteractiveSchemaComparisonView {
 
                     <div class="main-content">
                         <div id="differencesContainer" class="differences-container">
-                            ${sortedDifferences.map(diff => this.generateDifferenceCard(diff)).join('')}
+                            ${this.renderViewMode(sortedDifferences)}
                         </div>
 
                         ${sortedDifferences.length === 0 ? `
@@ -700,7 +786,7 @@ export class InteractiveSchemaComparisonView {
 
                 <div class="footer">
                     <div class="selection-info">
-                        <span id="selectionCount">${this.selectedDifferences.size}</span> of ${data.differences.length} differences selected
+                        <span id="selectionCount">0</span> of ${data.differences.length} differences selected
                     </div>
                     <div class="action-buttons">
                         <button class="btn btn-secondary" onclick="selectAll()">Select All</button>
@@ -712,7 +798,7 @@ export class InteractiveSchemaComparisonView {
 
                 <script>
                     const vscode = acquireVsCodeApi();
-                    let selectedDifferences = new Set(${JSON.stringify(Array.from(this.selectedDifferences))});
+                    let selectedDifferences = new Set();
                     let currentFilters = ${JSON.stringify(this.filters)};
                     let currentViewMode = '${this.viewMode}';
 
@@ -824,7 +910,6 @@ export class InteractiveSchemaComparisonView {
 
     private generateDifferenceCard(diff: InteractiveDifference): string {
         const typeClass = `icon-${diff.type.toLowerCase()}`;
-        const isSelected = this.selectedDifferences.has(diff.id);
 
         return `
             <div class="difference-card">
@@ -846,9 +931,8 @@ export class InteractiveSchemaComparisonView {
                     </div>
                     <div class="difference-actions">
                         <input type="checkbox" class="action-btn"
-                               id="checkbox-${diff.id}"
-                               ${isSelected ? 'checked' : ''}
-                               onchange="toggleDifferenceSelection('${diff.id}', this)">
+                                id="checkbox-${diff.id}"
+                                onchange="toggleDifferenceSelection('${diff.id}', this)">
                         <button class="action-btn" onclick="viewDifferenceDetails('${diff.id}')" title="View Details">👁</button>
                     </div>
                 </div>
@@ -941,25 +1025,22 @@ export class InteractiveSchemaComparisonView {
 
     private sortDifferences(differences: InteractiveDifference[]): InteractiveDifference[] {
         return differences.sort((a, b) => {
-            let comparison = 0;
+            // Sort by severity first (critical > high > medium > low)
+            const severityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+            const severityDiff = severityOrder[b.severity] - severityOrder[a.severity];
 
-            switch (this.sortBy) {
-                case 'name':
-                    comparison = a.objectName.localeCompare(b.objectName);
-                    break;
-                case 'severity':
-                    const severityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
-                    comparison = severityOrder[b.severity] - severityOrder[a.severity];
-                    break;
-                case 'impact':
-                    const impactOrder = { dangerous: 3, warning: 2, safe: 1 };
-                    comparison = impactOrder[b.impact || 'safe'] - impactOrder[a.impact || 'safe'];
-                    break;
-                default:
-                    comparison = a.type.localeCompare(b.type);
+            if (severityDiff !== 0) {
+                return severityDiff;
             }
 
-            return this.sortOrder === 'asc' ? comparison : -comparison;
+            // Then by type
+            const typeDiff = a.type.localeCompare(b.type);
+            if (typeDiff !== 0) {
+                return typeDiff;
+            }
+
+            // Finally by name
+            return a.objectName.localeCompare(b.objectName);
         });
     }
 
@@ -981,25 +1062,12 @@ export class InteractiveSchemaComparisonView {
                 break;
 
             case 'toggleSelection':
-                if (message.selected) {
-                    this.selectedDifferences.add(message.differenceId);
-                } else {
-                    this.selectedDifferences.delete(message.differenceId);
-                }
+                // Selection state is managed by webview - no server-side tracking needed
                 break;
 
             case 'selectAll':
-                if (this.comparisonData) {
-                    this.comparisonData.differences.forEach(diff => {
-                        this.selectedDifferences.add(diff.id);
-                    });
-                    await this.refreshView();
-                }
-                break;
-
             case 'selectNone':
-                this.selectedDifferences.clear();
-                await this.refreshView();
+                // Selection state is managed by webview - no server-side tracking needed
                 break;
 
             case 'generateMigration':
@@ -1017,6 +1085,14 @@ export class InteractiveSchemaComparisonView {
             case 'showConflictResolver':
                 await this.handleShowConflictResolver();
                 break;
+
+            case 'applyAutoResolution':
+                await this.handleApplyAutoResolution(message.differenceId);
+                break;
+
+            case 'markAsReviewed':
+                await this.handleMarkAsReviewed(message.differenceId);
+                break;
         }
     }
 
@@ -1025,6 +1101,82 @@ export class InteractiveSchemaComparisonView {
             const htmlContent = await this.generateInteractiveHtml(this.comparisonData);
             this.panel.webview.html = htmlContent;
         }
+    }
+
+    private renderViewMode(differences: InteractiveDifference[]): string {
+        switch (this.viewMode) {
+            case 'tree':
+                return this.renderTreeView(differences);
+            case 'graph':
+                return this.renderGraphView(differences);
+            default:
+                return differences.map(diff => this.generateDifferenceCard(diff)).join('');
+        }
+    }
+
+    private renderTreeView(differences: InteractiveDifference[]): string {
+        // Group differences by object type and schema for tree view
+        const grouped = differences.reduce((acc, diff) => {
+            const key = `${diff.objectType}:${diff.schema}`;
+            if (!acc[key]) {
+                acc[key] = [];
+            }
+            acc[key].push(diff);
+            return acc;
+        }, {} as Record<string, InteractiveDifference[]>);
+
+        return Object.entries(grouped).map(([groupKey, groupDifferences]) => {
+            const [objectType] = groupKey.split(':');
+            return `
+                <div class="tree-group">
+                    <div class="tree-group-header">
+                        <strong>${objectType}</strong> (${groupDifferences.length} differences)
+                    </div>
+                    <div class="tree-group-items">
+                        ${groupDifferences.map(diff => this.generateDifferenceCard(diff)).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    private renderGraphView(differences: InteractiveDifference[]): string {
+        // Simple graph representation showing relationships
+        const nodes = differences.map(diff => ({
+            id: diff.id,
+            label: diff.objectName,
+            type: diff.objectType,
+            severity: diff.severity,
+            impact: diff.impact
+        }));
+
+        return `
+            <div class="graph-container">
+                <div class="graph-legend">
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: var(--vscode-gitDecoration-addedResourceForeground);"></span>
+                        Safe Changes
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: var(--vscode-gitDecoration-renamedResourceForeground);"></span>
+                        Warning Changes
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: var(--vscode-gitDecoration-deletedResourceForeground);"></span>
+                        Dangerous Changes
+                    </div>
+                </div>
+                <div class="graph-nodes">
+                    ${nodes.map(node => `
+                        <div class="graph-node severity-${node.severity} impact-${node.impact || 'safe'}"
+                             onclick="viewDifferenceDetails('${node.id}')"
+                             title="${node.label} (${node.type})">
+                            ${node.label}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
     }
 
     private async handleGenerateMigration(selectedDifferences: string[]): Promise<void> {
@@ -1052,36 +1204,235 @@ export class InteractiveSchemaComparisonView {
     }
 
     private generateDetailedDifferenceView(diff: InteractiveDifference): string {
+        const impactColor = {
+            'dangerous': 'var(--vscode-gitDecoration-deletedResourceForeground)',
+            'warning': 'var(--vscode-gitDecoration-renamedResourceForeground)',
+            'safe': 'var(--vscode-gitDecoration-addedResourceForeground)'
+        };
+
         return `
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
-                <title>Difference Details</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Difference Details: ${diff.objectName}</title>
                 <style>
+                    :root {
+                        --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        --vscode-editor-background: #1e1e1e;
+                        --vscode-editor-foreground: #cccccc;
+                        --vscode-panel-border: #3c3c3c;
+                        --vscode-textLink-foreground: #4da6ff;
+                        --vscode-button-background: #0e639c;
+                        --vscode-button-foreground: #ffffff;
+                        --vscode-gitDecoration-addedResourceForeground: #4bb74a;
+                        --vscode-gitDecoration-deletedResourceForeground: #f48771;
+                        --vscode-gitDecoration-modifiedResourceForeground: #4da6ff;
+                    }
+
                     body {
                         font-family: var(--vscode-font-family);
                         padding: 20px;
                         background: var(--vscode-editor-background);
                         color: var(--vscode-editor-foreground);
+                        line-height: 1.5;
                     }
+
                     .detail-container {
-                        max-width: 800px;
+                        max-width: 900px;
+                        margin: 0 auto;
                     }
+
                     .detail-header {
-                        margin-bottom: 20px;
-                        padding-bottom: 15px;
-                        border-bottom: 1px solid var(--vscode-panel-border);
+                        margin-bottom: 25px;
+                        padding: 20px;
+                        background: var(--vscode-editor-background);
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 6px;
                     }
+
                     .detail-title {
-                        font-size: 20px;
+                        font-size: 24px;
                         font-weight: bold;
-                        margin-bottom: 10px;
+                        margin-bottom: 15px;
+                        color: var(--vscode-textLink-foreground);
                     }
+
                     .detail-meta {
-                        display: flex;
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
                         gap: 15px;
                         font-size: 14px;
+                    }
+
+                    .meta-item {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 5px;
+                    }
+
+                    .meta-label {
+                        font-weight: bold;
+                        color: var(--vscode-textLink-foreground);
+                        font-size: 12px;
+                        text-transform: uppercase;
+                    }
+
+                    .meta-value {
+                        padding: 8px 12px;
+                        background: var(--vscode-badge-background);
+                        border-radius: 4px;
+                        font-family: 'Courier New', monospace;
+                    }
+
+                    .severity-critical { background: var(--vscode-gitDecoration-deletedResourceForeground); color: white; }
+                    .severity-high { background: #ff6b35; color: white; }
+                    .severity-medium { background: var(--vscode-gitDecoration-renamedResourceForeground); color: white; }
+                    .severity-low { background: var(--vscode-gitDecoration-addedResourceForeground); color: white; }
+
+                    .impact-dangerous { color: var(--vscode-gitDecoration-deletedResourceForeground); }
+                    .impact-warning { color: var(--vscode-gitDecoration-renamedResourceForeground); }
+                    .impact-safe { color: var(--vscode-gitDecoration-addedResourceForeground); }
+
+                    .detail-section {
+                        margin-bottom: 25px;
+                        padding: 20px;
+                        background: var(--vscode-editor-background);
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 6px;
+                    }
+
+                    .section-title {
+                        font-size: 16px;
+                        font-weight: bold;
+                        margin-bottom: 15px;
+                        color: var(--vscode-textLink-foreground);
+                        border-bottom: 1px solid var(--vscode-panel-border);
+                        padding-bottom: 8px;
+                    }
+
+                    .definition-diff {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 20px;
+                        margin-bottom: 20px;
+                    }
+
+                    .definition-panel {
+                        background: var(--vscode-textCodeBlock-background, '#1e1e1e');
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 4px;
+                        padding: 15px;
+                    }
+
+                    .definition-panel.source {
+                        border-left: 3px solid var(--vscode-gitDecoration-deletedResourceForeground);
+                    }
+
+                    .definition-panel.target {
+                        border-left: 3px solid var(--vscode-gitDecoration-addedResourceForeground);
+                    }
+
+                    .panel-title {
+                        font-weight: bold;
+                        margin-bottom: 10px;
+                        font-size: 13px;
+                        color: var(--vscode-textLink-foreground);
+                    }
+
+                    .definition-content {
+                        font-family: 'Courier New', monospace;
+                        font-size: 12px;
+                        line-height: 1.4;
+                        max-height: 300px;
+                        overflow: auto;
+                        white-space: pre-wrap;
+                    }
+
+                    .details-list {
+                        list-style: none;
+                        padding: 0;
+                        margin: 0;
+                    }
+
+                    .detail-item {
+                        padding: 8px 0;
+                        border-bottom: 1px solid var(--vscode-panel-border);
+                        font-size: 13px;
+                    }
+
+                    .detail-item:last-child {
+                        border-bottom: none;
+                    }
+
+                    .tags-container {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 8px;
+                        margin-top: 15px;
+                    }
+
+                    .tag {
+                        background: var(--vscode-badge-background);
+                        color: var(--vscode-badge-foreground);
+                        padding: 4px 10px;
+                        border-radius: 12px;
+                        font-size: 11px;
+                    }
+
+                    .dependency-info {
+                        background: var(--vscode-textBlockQuote-background);
+                        border: 1px solid var(--vscode-textBlockQuote-border);
+                        border-radius: 4px;
+                        padding: 15px;
+                        margin-top: 15px;
+                    }
+
+                    .dependency-item {
+                        margin-bottom: 10px;
+                    }
+
+                    .dependency-title {
+                        font-weight: bold;
+                        color: var(--vscode-textLink-foreground);
+                        margin-bottom: 5px;
+                    }
+
+                    .dependency-list {
+                        font-family: 'Courier New', monospace;
+                        font-size: 12px;
+                        color: var(--vscode-descriptionForeground);
+                    }
+
+                    .actions {
+                        margin-top: 25px;
+                        padding: 15px;
+                        background: var(--vscode-editor-background);
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 6px;
+                        display: flex;
+                        justify-content: flex-end;
+                        gap: 10px;
+                    }
+
+                    .btn {
+                        padding: 8px 16px;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 13px;
+                        font-weight: bold;
+                    }
+
+                    .btn-primary {
+                        background: var(--vscode-button-background);
+                        color: var(--vscode-button-foreground);
+                    }
+
+                    .btn-secondary {
+                        background: var(--vscode-button-secondaryBackground, '#3c3c3c');
+                        color: var(--vscode-button-secondaryForeground, '#cccccc');
                     }
                 </style>
             </head>
@@ -1090,14 +1441,130 @@ export class InteractiveSchemaComparisonView {
                     <div class="detail-header">
                         <div class="detail-title">${diff.objectName}</div>
                         <div class="detail-meta">
-                            <span><strong>Type:</strong> ${diff.type}</span>
-                            <span><strong>Object:</strong> ${diff.objectType}</span>
-                            <span><strong>Schema:</strong> ${diff.schema}</span>
-                            <span><strong>Severity:</strong> ${diff.severity}</span>
+                            <div class="meta-item">
+                                <div class="meta-label">Change Type</div>
+                                <div class="meta-value">${diff.type}</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Object Type</div>
+                                <div class="meta-value">${diff.objectType}</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Schema</div>
+                                <div class="meta-value">${diff.schema}</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Severity</div>
+                                <div class="meta-value severity-${diff.severity}">${diff.severity.toUpperCase()}</div>
+                            </div>
+                            ${diff.impact ? `
+                            <div class="meta-item">
+                                <div class="meta-label">Impact</div>
+                                <div class="meta-value impact-${diff.impact}">${diff.impact.toUpperCase()}</div>
+                            </div>
+                            ` : ''}
+                            ${diff.breakingChange ? `
+                            <div class="meta-item">
+                                <div class="meta-label">Status</div>
+                                <div class="meta-value" style="background: var(--vscode-gitDecoration-deletedResourceForeground); color: white;">BREAKING CHANGE</div>
+                            </div>
+                            ` : ''}
                         </div>
                     </div>
-                    <!-- Detailed view content would go here -->
+
+                    ${diff.sourceDefinition || diff.targetDefinition ? `
+                    <div class="detail-section">
+                        <div class="section-title">Definition Changes</div>
+                        <div class="definition-diff">
+                            ${diff.sourceDefinition ? `
+                            <div class="definition-panel source">
+                                <div class="panel-title">Source Definition</div>
+                                <div class="definition-content">${diff.sourceDefinition.replace(/</g, '<').replace(/>/g, '>')}</div>
+                            </div>
+                            ` : ''}
+                            ${diff.targetDefinition ? `
+                            <div class="definition-panel target">
+                                <div class="panel-title">Target Definition</div>
+                                <div class="definition-content">${diff.targetDefinition.replace(/</g, '<').replace(/>/g, '>')}</div>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${diff.differenceDetails.length > 0 ? `
+                    <div class="detail-section">
+                        <div class="section-title">Change Details</div>
+                        <ul class="details-list">
+                            ${diff.differenceDetails.map(detail => `<li class="detail-item">${detail}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+
+                    ${diff.dependencies || diff.dependents ? `
+                    <div class="detail-section">
+                        <div class="section-title">Dependencies & Dependents</div>
+                        <div class="dependency-info">
+                            ${diff.dependencies && diff.dependencies.length > 0 ? `
+                            <div class="dependency-item">
+                                <div class="dependency-title">Dependencies (${diff.dependencies.length})</div>
+                                <div class="dependency-list">${diff.dependencies.join(', ')}</div>
+                            </div>
+                            ` : ''}
+
+                            ${diff.dependents && diff.dependents.length > 0 ? `
+                            <div class="dependency-item">
+                                <div class="dependency-title">Dependents (${diff.dependents.length})</div>
+                                <div class="dependency-list">${diff.dependents.join(', ')}</div>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${diff.estimatedMigrationTime ? `
+                    <div class="detail-section">
+                        <div class="section-title">Migration Information</div>
+                        <div style="font-size: 14px;">
+                            <div><strong>Estimated Migration Time:</strong> ${diff.estimatedMigrationTime}</div>
+                            ${diff.conflictLevel ? `<div><strong>Conflict Level:</strong> ${diff.conflictLevel}/10</div>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${diff.tags && diff.tags.length > 0 ? `
+                    <div class="detail-section">
+                        <div class="section-title">Tags</div>
+                        <div class="tags-container">
+                            ${diff.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <div class="actions">
+                        <button class="btn btn-secondary" onclick="window.close()">Close</button>
+                        ${diff.resolution === 'auto' ? `<button class="btn btn-primary" onclick="applyAutoResolution()">Apply Auto Resolution</button>` : ''}
+                        <button class="btn btn-primary" onclick="markAsReviewed()">Mark as Reviewed</button>
+                    </div>
                 </div>
+
+                <script>
+                    const vscode = acquireVsCodeApi();
+
+                    function applyAutoResolution() {
+                        vscode.postMessage({
+                            command: 'applyAutoResolution',
+                            differenceId: '${diff.id}'
+                        });
+                    }
+
+                    function markAsReviewed() {
+                        vscode.postMessage({
+                            command: 'markAsReviewed',
+                            differenceId: '${diff.id}'
+                        });
+                    }
+                </script>
             </body>
             </html>
         `;
@@ -1129,22 +1596,22 @@ export class InteractiveSchemaComparisonView {
 
     private generateComparisonReport(data: InteractiveComparisonData): string {
         let report = `Interactive Schema Comparison Report
-Generated: ${new Date(data.createdAt).toLocaleString()}
-Comparison ID: ${data.comparisonId}
-Source: ${data.sourceConnection}
-Target: ${data.targetConnection}
-Mode: ${data.comparisonMode}
-Execution Time: ${data.executionTime}
-Total Differences: ${data.totalDifferences}
+                    Generated: ${new Date(data.createdAt).toLocaleString()}
+                    Comparison ID: ${data.comparisonId}
+                    Source: ${data.sourceConnection}
+                    Target: ${data.targetConnection}
+                    Mode: ${data.comparisonMode}
+                    Execution Time: ${data.executionTime}
+                    Total Differences: ${data.totalDifferences}
 
-Summary:
-- Added: ${data.differences.filter(d => d.type === 'Added').length}
-- Removed: ${data.differences.filter(d => d.type === 'Removed').length}
-- Modified: ${data.differences.filter(d => d.type === 'Modified').length}
-- Moved: ${data.differences.filter(d => d.type === 'Moved').length}
+                    Summary:
+                    - Added: ${data.differences.filter(d => d.type === 'Added').length}
+                    - Removed: ${data.differences.filter(d => d.type === 'Removed').length}
+                    - Modified: ${data.differences.filter(d => d.type === 'Modified').length}
+                    - Moved: ${data.differences.filter(d => d.type === 'Moved').length}
 
-Differences by Severity:
-`;
+                    Differences by Severity:
+                    `;
 
         const bySeverity = data.differences.reduce((acc, diff) => {
             acc[diff.severity] = (acc[diff.severity] || 0) + 1;
@@ -1199,12 +1666,59 @@ Differences by Severity:
         }
     }
 
+    private async handleApplyAutoResolution(differenceId: string): Promise<void> {
+        const difference = this.comparisonData?.differences.find(d => d.id === differenceId);
+        if (!difference) return;
+
+        try {
+            Logger.info('Applying auto resolution for difference', { differenceId, objectName: difference.objectName });
+
+            // Mark the difference as resolved
+            difference.resolution = 'auto';
+
+            vscode.window.showInformationMessage(
+                `Auto resolution applied for ${difference.objectName}`,
+                'Undo', 'View Details'
+            ).then(selection => {
+                if (selection === 'Undo') {
+                    difference.resolution = 'manual';
+                } else if (selection === 'View Details') {
+                    this.handleViewDifferenceDetails(differenceId);
+                }
+            });
+
+        } catch (error) {
+            Logger.error('Failed to apply auto resolution', error as Error);
+            vscode.window.showErrorMessage('Failed to apply auto resolution');
+        }
+    }
+
+    private async handleMarkAsReviewed(differenceId: string): Promise<void> {
+        const difference = this.comparisonData?.differences.find(d => d.id === differenceId);
+        if (!difference) return;
+
+        try {
+            Logger.info('Marking difference as reviewed', { differenceId, objectName: difference.objectName });
+
+            // Add a reviewed tag to track that this has been manually reviewed
+            if (!difference.tags) {
+                difference.tags = [];
+            }
+            difference.tags.push('reviewed');
+
+            vscode.window.showInformationMessage(`Marked ${difference.objectName} as reviewed`);
+
+        } catch (error) {
+            Logger.error('Failed to mark difference as reviewed', error as Error);
+            vscode.window.showErrorMessage('Failed to mark difference as reviewed');
+        }
+    }
+
     dispose(): void {
         if (this.panel) {
             this.panel.dispose();
             this.panel = undefined;
         }
         this.comparisonData = undefined;
-        this.selectedDifferences.clear();
     }
 }

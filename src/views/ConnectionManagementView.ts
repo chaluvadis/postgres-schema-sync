@@ -45,21 +45,34 @@ export class ConnectionManagementView {
                         try {
                             const connection = message.connection as DatabaseConnection;
 
-                            // Test basic connection
-                            const success = await this.connectionManager.testConnection(connection.id);
-
+                            // Test connection - use connection data directly for new connections
+                            let success = false;
+                            if (connection.id && connection.id.trim() !== '') {
+                                // Existing connection - use ID-based test
+                                success = await this.connectionManager.testConnection(connection.id);
+                            } else {
+                                // New connection - use data-based test
+                                success = await this.connectionManager.testConnectionData({
+                                    name: connection.name,
+                                    host: connection.host,
+                                    port: connection.port,
+                                    database: connection.database,
+                                    username: connection.username,
+                                    password: connection.password
+                                });
+                            }
 
                             panel.webview.postMessage({
                                 command: 'connectionTestResult',
                                 success,
-                                connectionId: connection.id
+                                connectionId: connection.id || 'new'
                             });
                         } catch (error) {
                             Logger.error('Failed to test connection', error as Error);
                             panel.webview.postMessage({
                                 command: 'connectionTestResult',
                                 success: false,
-                                connectionId: message.connection.id,
+                                connectionId: message.connection.id || 'new',
                                 error: (error as Error).message
                             });
                         }

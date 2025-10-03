@@ -14,6 +14,10 @@ export class SchemaBrowserView {
 
     async showSchemaBrowser(connectionId: string, schemaName?: string): Promise<void> {
         try {
+            if (!connectionId) {
+                throw new Error('Connection ID is required');
+            }
+
             Logger.info('Opening schema browser', { connectionId, schemaName });
 
             const panel = vscode.window.createWebviewPanel(
@@ -37,8 +41,8 @@ export class SchemaBrowserView {
                     case 'refreshSchema':
                         await this.handleRefreshSchema(panel, connectionId, schemaName);
                         break;
-                    case 'filterObjects':
-                        await this.handleFilterObjects(panel, message.filter, connectionId, schemaName);
+                    default:
+                        Logger.warn('Unknown schema browser command', { command: message.command });
                         break;
                 }
             });
@@ -70,10 +74,13 @@ export class SchemaBrowserView {
 
             // Get connection info
             const connection = this.connectionManager.getConnection(connectionId);
+            if (!connection) {
+                throw new Error(`Connection not found: ${connectionId}`);
+            }
 
             return {
                 connectionId,
-                connectionName: connection?.name || 'Unknown',
+                connectionName: connection.name || 'Unknown',
                 schemaName: schemaName || 'All Schemas',
                 objectsByType,
                 totalObjects: filteredObjects.length,
@@ -218,11 +225,11 @@ export class SchemaBrowserView {
                         background: var(--vscode-button-hoverBackground);
                     }
                     .btn-secondary {
-                        background: var(--vscode-button-secondaryBackground);
-                        color: var(--vscode-button-secondaryForeground);
+                        background: var(--vscode-button-secondaryBackground, #3c3c3c);
+                        color: var(--vscode-button-secondaryForeground, #cccccc);
                     }
                     .btn-secondary:hover {
-                        background: var(--vscode-button-secondaryHoverBackground);
+                        background: var(--vscode-button-secondaryHoverBackground, #2a2d2e);
                     }
                     .collapsed .type-content {
                         display: none;
@@ -335,8 +342,22 @@ export class SchemaBrowserView {
     }
 
     private async handleViewObjectDetails(object: DatabaseObject): Promise<void> {
-        // This would trigger the viewObjectDetails command
-        await vscode.commands.executeCommand('postgresql.viewObjectDetails', object);
+        if (!object || !object.name) {
+            Logger.warn('Invalid object provided for details view', { object });
+            return;
+        }
+
+        try {
+            // TODO: Implement object details view
+            // For now, show object information in a quick info message
+            const objectInfo = `${object.type}: ${object.name}${object.schema ? ` (Schema: ${object.schema})` : ''}`;
+            vscode.window.showInformationMessage(`Object Details: ${objectInfo}`);
+
+            Logger.info('Viewing object details', { object: object.name, type: object.type });
+        } catch (error) {
+            Logger.error('Failed to view object details', error as Error, { object });
+            vscode.window.showErrorMessage(`Failed to view object details: ${(error as Error).message}`);
+        }
     }
 
     private async handleRefreshSchema(panel: vscode.WebviewPanel, connectionId: string, schemaName?: string): Promise<void> {
@@ -350,29 +371,6 @@ export class SchemaBrowserView {
         }
     }
 
-    private async handleFilterObjects(panel: vscode.WebviewPanel, filter: string, connectionId: string, schemaName?: string): Promise<void> {
-        try {
-            const schemaData = await this.loadSchemaData(connectionId, schemaName);
-            const filteredData = {
-                ...schemaData,
-                objectsByType: Object.fromEntries(
-                    Object.entries(schemaData.objectsByType).map(([type, objects]) => [
-                        type,
-                        objects.filter(obj =>
-                            obj.name.toLowerCase().includes(filter.toLowerCase()) ||
-                            obj.type.toLowerCase().includes(filter.toLowerCase())
-                        )
-                    ])
-                ),
-                totalObjects: Object.values(schemaData.objectsByType).flat().length
-            };
-
-            const browserHtml = await this.generateSchemaBrowserHtml(filteredData);
-            panel.webview.html = browserHtml;
-        } catch (error) {
-            Logger.error('Failed to filter objects', error as Error);
-        }
-    }
 }
 
 interface SchemaBrowserData {

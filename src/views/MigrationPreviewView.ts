@@ -205,11 +205,7 @@ export class MigrationPreviewView {
                     }
                     .btn-success {
                         background: var(--vscode-gitDecoration-addedResourceForeground);
-                        color: var(--vscode-gitDecoration-addedResourceForeground);
-                    }
-                    .btn-danger {
-                        background: var(--vscode-statusBarItem-errorBackground);
-                        color: var(--vscode-statusBarItem-errorForeground);
+                        color: var(--vscode-editor-background);
                     }
                     .btn:disabled {
                         opacity: 0.5;
