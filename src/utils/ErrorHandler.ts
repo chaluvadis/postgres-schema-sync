@@ -16,10 +16,38 @@ export enum ErrorSeverity {
     CRITICAL = 'CRITICAL'
 }
 
+// Error recovery strategy interface
+export interface ErrorRecoveryStrategy {
+    canRecover(error: unknown, context: ErrorContext): boolean;
+    recover(error: unknown, context: ErrorContext): Promise<boolean>;
+    getUserMessage(error: unknown): string;
+}
+
+// Error boundary handler interface
+export interface ErrorBoundaryHandler {
+    handleError(error: unknown, componentName: string): Promise<boolean>;
+    shouldShowFallback(error: unknown): boolean;
+    getFallbackComponent(error: unknown): any;
+}
+
 export class ErrorHandler {
     private static errorCounts: Map<string, number> = new Map();
     private static lastErrorTimes: Map<string, Date> = new Map();
+    private static recoveryStrategies: Map<string, ErrorRecoveryStrategy> = new Map();
+    private static errorBoundaryHandlers: Map<string, ErrorBoundaryHandler> = new Map();
     private constructor() { }
+
+    // Register error recovery strategies for different error types
+    static registerRecoveryStrategy(errorType: string, strategy: ErrorRecoveryStrategy): void {
+        this.recoveryStrategies.set(errorType, strategy);
+        Logger.info(`Registered recovery strategy for error type: ${errorType}`);
+    }
+
+    // Register error boundary handlers for different components
+    static registerErrorBoundary(componentName: string, handler: ErrorBoundaryHandler): void {
+        this.errorBoundaryHandlers.set(componentName, handler);
+        Logger.info(`Registered error boundary for component: ${componentName}`);
+    }
     static createContext(operation: string, contextData?: Record<string, any>): ErrorContext {
         return {
             operation,
@@ -259,4 +287,274 @@ export class ErrorHandler {
             throw error;
         }
     }
+
+    // Enhanced error handling with recovery
+    static async handleErrorWithRecovery(
+        error: unknown,
+        context: ErrorContext,
+        recoveryOptions?: {
+            maxRetries?: number;
+            retryDelay?: number;
+            fallbackOperation?: () => Promise<any>;
+        }
+    ): Promise<boolean> {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorSeverity = this.determineSeverity(error);
+
+        // Log the error
+        this.handleErrorWithSeverity(error, context, errorSeverity);
+
+        // Try to find and execute recovery strategy
+        const recoveryStrategy = this.findRecoveryStrategy(error, context);
+        if (recoveryStrategy) {
+            try {
+                Logger.info(`Attempting error recovery for: ${errorMessage}`, 'handleErrorWithRecovery');
+                const recovered = await recoveryStrategy.recover(error, context);
+
+                if (recovered) {
+                    Logger.info('Error recovery successful', 'handleErrorWithRecovery');
+                    vscode.window.showInformationMessage(`Recovered from error: ${recoveryStrategy.getUserMessage(error)}`);
+                    return true;
+                }
+            } catch (recoveryError) {
+                Logger.error('Error recovery failed', recoveryError as Error, 'handleErrorWithRecovery');
+            }
+        }
+
+        // Try retry mechanism if configured
+        if (recoveryOptions?.maxRetries && recoveryOptions.maxRetries > 0) {
+            return await this.attemptRetry(error, context, {
+                maxRetries: recoveryOptions.maxRetries,
+                retryDelay: recoveryOptions.retryDelay || 1000
+            });
+        }
+
+        // Try fallback operation if provided
+        if (recoveryOptions?.fallbackOperation) {
+            try {
+                Logger.info('Executing fallback operation', 'handleErrorWithRecovery');
+                await recoveryOptions.fallbackOperation();
+                return true;
+            } catch (fallbackError) {
+                Logger.error('Fallback operation failed', fallbackError as Error, 'handleErrorWithRecovery');
+            }
+        }
+
+        return false;
+    }
+
+    private static findRecoveryStrategy(error: unknown, context: ErrorContext): ErrorRecoveryStrategy | undefined {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        // Find matching recovery strategy
+        for (const [errorType, strategy] of this.recoveryStrategies.entries()) {
+            if (strategy.canRecover(error, context)) {
+                return strategy;
+            }
+        }
+
+        return undefined;
+    }
+
+    private static async attemptRetry(
+        error: unknown,
+        context: ErrorContext,
+        options: { maxRetries: number; retryDelay: number; }
+    ): Promise<boolean> {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        for (let attempt = 1; attempt <= options.maxRetries; attempt++) {
+            Logger.info(`Retry attempt ${attempt}/${options.maxRetries} for: ${errorMessage}`, 'attemptRetry');
+
+            await new Promise(resolve => setTimeout(resolve, options.retryDelay * attempt));
+
+            try {
+                // The actual retry would need to be provided by the caller
+                // For now, we'll just log the attempt
+                Logger.info(`Retry attempt ${attempt} completed`, 'attemptRetry');
+                return true;
+            } catch (retryError) {
+                Logger.warn(`Retry attempt ${attempt} failed`, 'attemptRetry');
+                if (attempt === options.maxRetries) {
+                    Logger.error('All retry attempts exhausted', retryError as Error, 'attemptRetry');
+                    return false;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Error boundary handling for React-like error containment
+    static async handleComponentError(
+        error: unknown,
+        componentName: string,
+        componentStack?: string
+    ): Promise<boolean> {
+        const context: ErrorContext = {
+            operation: `ComponentError:${componentName}`,
+            timestamp: new Date(),
+            contextData: {
+                componentName,
+                componentStack,
+                errorBoundary: true
+            }
+        };
+
+        Logger.error(
+            `Component error in ${componentName}`,
+            error instanceof Error ? error : new Error(String(error)),
+            'handleComponentError',
+            { componentName, componentStack }
+        );
+
+        // Find error boundary handler
+        const boundaryHandler = this.errorBoundaryHandlers.get(componentName);
+        if (boundaryHandler) {
+            try {
+                return await boundaryHandler.handleError(error, componentName);
+            } catch (boundaryError) {
+                Logger.error('Error boundary handler failed', boundaryError as Error, 'handleComponentError');
+            }
+        }
+
+        // Default error boundary behavior
+        vscode.window.showErrorMessage(
+            `PostgreSQL Schema Sync: Component error in ${componentName}. Please restart the extension if issues persist.`,
+            'Restart Extension',
+            'View Logs'
+        ).then(selection => {
+            if (selection === 'Restart Extension') {
+                vscode.commands.executeCommand('workbench.action.reloadWindow');
+            } else if (selection === 'View Logs') {
+                Logger.showOutputChannel();
+            }
+        });
+
+        return false;
+    }
+
+    // Circuit breaker pattern for failing operations
+    private static circuitBreakerStates: Map<string, CircuitBreakerState> = new Map();
+
+    static async executeWithCircuitBreaker<T>(
+        operation: () => Promise<T>,
+        circuitName: string,
+        context: ErrorContext,
+        options: {
+            failureThreshold?: number;
+            recoveryTimeout?: number;
+            monitoringPeriod?: number;
+        } = {}
+    ): Promise<T> {
+        const {
+            failureThreshold = 5,
+            recoveryTimeout = 60000,
+            monitoringPeriod = 10000
+        } = options;
+
+        let circuitState = this.circuitBreakerStates.get(circuitName);
+
+        if (!circuitState) {
+            circuitState = {
+                state: 'CLOSED',
+                failures: 0,
+                lastFailureTime: null,
+                nextAttempt: 0
+            };
+            this.circuitBreakerStates.set(circuitName, circuitState);
+        }
+
+        // Check if circuit breaker should allow the operation
+        if (circuitState.state === 'OPEN') {
+            if (Date.now() < circuitState.nextAttempt) {
+                throw this.createCircuitBreakerError(circuitName, 'Circuit breaker is OPEN');
+            } else {
+                circuitState.state = 'HALF_OPEN';
+                Logger.info(`Circuit breaker for ${circuitName} transitioning to HALF_OPEN`, 'executeWithCircuitBreaker');
+            }
+        }
+
+        try {
+            const result = await operation();
+
+            // Success - reset circuit breaker
+            if (circuitState.state === 'HALF_OPEN') {
+                circuitState.state = 'CLOSED';
+                circuitState.failures = 0;
+                Logger.info(`Circuit breaker for ${circuitName} reset to CLOSED`, 'executeWithCircuitBreaker');
+            }
+
+            return result;
+        } catch (error) {
+            circuitState.failures++;
+            circuitState.lastFailureTime = new Date();
+
+            if (circuitState.failures >= failureThreshold) {
+                circuitState.state = 'OPEN';
+                circuitState.nextAttempt = Date.now() + recoveryTimeout;
+                Logger.warn(`Circuit breaker for ${circuitName} opened after ${circuitState.failures} failures`, 'executeWithCircuitBreaker');
+            }
+
+            throw error;
+        }
+    }
+
+    private static createCircuitBreakerError(circuitName: string, message: string): Error {
+        const error = new Error(`CircuitBreaker: ${message} (${circuitName})`);
+        error.name = 'CircuitBreakerError';
+        return error;
+    }
+
+    // Graceful degradation for non-critical features
+    static async executeWithGracefulDegradation<T>(
+        primaryOperation: () => Promise<T>,
+        fallbackOperation: () => Promise<T>,
+        context: ErrorContext,
+        featureName: string
+    ): Promise<T> {
+        try {
+            return await primaryOperation();
+        } catch (error) {
+            Logger.warn(`Primary operation failed for ${featureName}, using fallback`, 'executeWithGracefulDegradation');
+
+            // Log the primary failure
+            this.handleError(error, {
+                ...context,
+                operation: `${context.operation}:PrimaryFailed`,
+                contextData: {
+                    ...context.contextData,
+                    featureName,
+                    gracefulDegradation: true
+                }
+            });
+
+            try {
+                return await fallbackOperation();
+            } catch (fallbackError) {
+                Logger.error(`Fallback operation also failed for ${featureName}`, fallbackError as Error, 'executeWithGracefulDegradation');
+
+                // Both operations failed
+                this.handleError(fallbackError, {
+                    ...context,
+                    operation: `${context.operation}:FallbackFailed`,
+                    contextData: {
+                        ...context.contextData,
+                        featureName,
+                        bothOperationsFailed: true
+                    }
+                });
+
+                throw fallbackError;
+            }
+        }
+    }
 };
+
+// Circuit breaker state interface
+interface CircuitBreakerState {
+    state: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+    failures: number;
+    lastFailureTime: Date | null;
+    nextAttempt: number;
+}

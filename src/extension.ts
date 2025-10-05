@@ -28,7 +28,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
         Logger.info('Activating PostgreSQL Schema Compare & Sync extension');
 
-        // Initialize .NET integration service
         const isDotNetAvailable = await ExtensionInitializer.initializeDotNetService();
 
         if (!isDotNetAvailable) {
@@ -53,6 +52,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // Register tree view
         const treeView = ExtensionInitializer.registerTreeView(components.treeProvider, context);
 
+        // Store tree view in components for later access
+        components.treeView = treeView;
+
         // Initialize main extension
         extension = ExtensionInitializer.initializeComponent(
             'PostgreSqlExtension',
@@ -68,7 +70,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         // Register commands and event handlers
         registerCommands(context, extension, components!);
-        registerEventHandlers(context, components!.treeProvider);
+        registerEventHandlers(context, components!.treeProvider, components);
 
         Logger.info('PostgreSQL Schema Compare & Sync extension activated successfully');
 
@@ -194,94 +196,113 @@ export function deactivate(): Thenable<void> | undefined {
     }
 }
 
-function registerCommands(context: vscode.ExtensionContext, extension: PostgreSqlExtension, components: ExtensionComponents): void {
+function registerCommands(
+    context: vscode.ExtensionContext,
+    extension: PostgreSqlExtension,
+    components: ExtensionComponents
+): void {
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.addConnection', () =>
-            extension.addConnection()
+        vscode.commands.registerCommand(
+            'postgresql.addConnection',
+            () => extension.addConnection()
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.editConnection', (connection) =>
-            extension.editConnection(connection)
+        vscode.commands.registerCommand(
+            'postgresql.editConnection',
+            (connection) => extension.editConnection(connection)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.removeConnection', (connection) =>
-            extension.removeConnection(connection)
+        vscode.commands.registerCommand(
+            'postgresql.removeConnection',
+            (connection) => extension.removeConnection(connection)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.testConnection', (connection) =>
-            extension.testConnection(connection)
+        vscode.commands.registerCommand(
+            'postgresql.testConnection',
+            (connection) => extension.testConnection(connection)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.refreshExplorer', () =>
-            extension.refreshExplorer()
+        vscode.commands.registerCommand(
+            'postgresql.refreshExplorer',
+            () => extension.refreshExplorer()
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.browseSchema', (connectionId, schemaName) =>
-            extension.browseSchema(connectionId, schemaName)
+        vscode.commands.registerCommand(
+            'postgresql.browseSchema',
+            (connectionId, schemaName) => extension.browseSchema(connectionId, schemaName)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.compareSchemas', (source, target) =>
-            extension.compareSchemas(source, target)
+        vscode.commands.registerCommand(
+            'postgresql.compareSchemas',
+            (source, target) => extension.compareSchemas(source, target)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.generateMigration', (comparison) =>
-            extension.generateMigration(comparison)
+        vscode.commands.registerCommand(
+            'postgresql.generateMigration',
+            (comparison) => extension.generateMigration(comparison)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.executeMigration', (migration) =>
-            extension.executeMigration(migration)
+        vscode.commands.registerCommand(
+            'postgresql.executeMigration',
+            (migration) => extension.executeMigration(migration)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.previewMigration', (migration) =>
-            extension.previewMigration(migration)
+        vscode.commands.registerCommand(
+            'postgresql.previewMigration',
+            (migration) => extension.previewMigration(migration)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.rollbackMigration', (migration) =>
-            extension.rollbackMigration(migration)
+        vscode.commands.registerCommand(
+            'postgresql.rollbackMigration',
+            (migration) => extension.rollbackMigration(migration)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.viewObjectDetails', (databaseObject) =>
-            extension.viewObjectDetails(databaseObject)
+        vscode.commands.registerCommand(
+            'postgresql.viewObjectDetails',
+            (databaseObject) => extension.viewObjectDetails(databaseObject)
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.showHelp', () =>
-            extension.showHelp()
+        vscode.commands.registerCommand(
+            'postgresql.showHelp',
+            () => extension.showHelp()
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.showLogs', () =>
-            extension.showLogs()
+        vscode.commands.registerCommand(
+            'postgresql.showLogs',
+            () => extension.showLogs()
         )
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.openSettings', () =>
-            extension.openSettings()
+        vscode.commands.registerCommand(
+            'postgresql.openSettings',
+            () => extension.openSettings()
         )
     );
 
@@ -311,6 +332,46 @@ function registerCommands(context: vscode.ExtensionContext, extension: PostgreSq
                 components.enhancedStatusBarProvider.showOperationDetails();
             } else {
                 vscode.window.showErrorMessage('Enhanced status bar not available');
+            }
+        })
+    );
+
+    // Enhanced keyboard shortcuts for better productivity
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.quickConnect', async () => {
+            // Quick connection dialog
+            const connectionName = await vscode.window.showInputBox({
+                prompt: 'Enter connection name',
+                placeHolder: 'My Database Connection'
+            });
+
+            if (connectionName) {
+                vscode.commands.executeCommand('postgresql.addConnection');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.compareSelectedSchemas', async () => {
+            // Compare schemas from tree selection
+            const selectedItems = await vscode.commands.executeCommand('postgresql.getSelectedTreeItems');
+            if (selectedItems && Array.isArray(selectedItems) && selectedItems.length === 2) {
+                vscode.commands.executeCommand('postgresql.compareSchemas', selectedItems[0], selectedItems[1]);
+            } else {
+                vscode.window.showErrorMessage('Please select exactly 2 schemas to compare');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.runQuickMigration', async () => {
+            // Quick migration execution
+            const confirm = await vscode.window.showQuickPick(['Yes', 'No'], {
+                placeHolder: 'Run migration in dry-run mode?'
+            });
+
+            if (confirm === 'Yes') {
+                vscode.commands.executeCommand('postgresql.executeMigration');
             }
         })
     );
@@ -435,15 +496,53 @@ function registerCommands(context: vscode.ExtensionContext, extension: PostgreSq
             if (components.enhancedTreeProvider) {
                 components.enhancedTreeProvider.refresh();
             }
+            if (components.treeView) {
+                // Refresh the tree view to show updated state
+                components.treeView.title = `PostgreSQL Explorer (${new Date().toLocaleTimeString()})`;
+            }
         })
     );
 
+    // Tree view specific commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.expandTree', () => {
+            if (components.treeView) {
+                vscode.commands.executeCommand('workbench.actions.treeView.postgresqlExplorer.expand');
+            } else {
+                vscode.window.showErrorMessage('PostgreSQL tree view not available');
+            }
+        })
+    );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.collapseTree', () => {
+            if (components.treeView) {
+                vscode.commands.executeCommand('workbench.actions.treeView.postgresqlExplorer.collapse');
+            } else {
+                vscode.window.showErrorMessage('PostgreSQL tree view not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.focusTree', () => {
+            if (components.treeView) {
+                vscode.commands.executeCommand('postgresqlExplorer.focus');
+            } else {
+                vscode.window.showErrorMessage('PostgreSQL tree view not available');
+            }
+        })
+    );
 }
 
-function registerEventHandlers(context: vscode.ExtensionContext, treeProvider: any): void {
+function registerEventHandlers(context: vscode.ExtensionContext, treeProvider: any, components?: ExtensionComponents): void {
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(() => {
+            // Optional: Refresh tree when switching to SQL files
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor && (activeEditor.document.languageId === 'sql' || activeEditor.document.languageId === 'postgresql')) {
+                // Could refresh tree view when opening SQL files
+            }
         })
     );
 
@@ -452,6 +551,11 @@ function registerEventHandlers(context: vscode.ExtensionContext, treeProvider: a
             if (event.affectsConfiguration('postgresql-schema-sync')) {
                 Logger.info('Configuration changed, refreshing extension state');
                 treeProvider.refresh();
+
+                // Update tree view title to reflect changes
+                if (components?.treeView) {
+                    components.treeView.title = `PostgreSQL Explorer (Updated: ${new Date().toLocaleTimeString()})`;
+                }
             }
         })
     );
@@ -462,4 +566,26 @@ function registerEventHandlers(context: vscode.ExtensionContext, treeProvider: a
             treeProvider.refresh();
         })
     );
+
+    // Tree view specific event handlers
+    if (components?.treeView) {
+        context.subscriptions.push(
+            components.treeView.onDidChangeVisibility((visible) => {
+                if (visible) {
+                    Logger.debug('PostgreSQL tree view became visible');
+                    // Optional: Refresh data when tree view becomes visible
+                    treeProvider.refresh();
+                }
+            })
+        );
+
+        context.subscriptions.push(
+            components.treeView.onDidChangeSelection((selection) => {
+                Logger.debug('PostgreSQL tree view selection changed', 'registerEventHandlers', {
+                    selectionCount: selection.selection.length
+                });
+                // Optional: Handle tree view selection changes
+            })
+        );
+    }
 }

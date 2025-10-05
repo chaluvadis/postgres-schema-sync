@@ -15,13 +15,13 @@ import { ErrorDisplayView } from '../views/ErrorDisplayView';
 import { NotificationManager } from '../views/NotificationManager';
 import { DotNetIntegrationService } from '../services/DotNetIntegrationService';
 import { Logger } from './Logger';
-import { ErrorHandler } from './ErrorHandler';
 
 export interface ExtensionComponents {
     connectionManager: ConnectionManager;
     schemaManager: SchemaManager;
     migrationManager: MigrationManager;
     treeProvider: PostgreSqlTreeProvider;
+    treeView?: vscode.TreeView<any>;
     activityBarProvider?: ActivityBarProvider;
     enhancedStatusBarProvider?: EnhancedStatusBarProvider;
     dashboardView?: DashboardView;
@@ -39,10 +39,6 @@ export interface ExtensionComponents {
 
 export class ExtensionInitializer {
     private static dotNetService: DotNetIntegrationService;
-
-    /**
-     * Initializes the .NET integration service
-     */
     static async initializeDotNetService(): Promise<boolean> {
         try {
             Logger.info('Initializing .NET integration service');
@@ -62,10 +58,6 @@ export class ExtensionInitializer {
             return false;
         }
     }
-
-    /**
-     * Initializes core extension components
-     */
     static initializeCoreComponents(context: vscode.ExtensionContext): ExtensionComponents {
         try {
             Logger.info('Initializing core extension components');
@@ -91,11 +83,8 @@ export class ExtensionInitializer {
         }
     }
 
-    /**
-     * Initializes optional UI components
-     */
     static initializeOptionalComponents(
-        context: vscode.ExtensionContext,
+        context: vscode.ExtensionContext, // Reserved for future use by optional components
         coreComponents: ExtensionComponents
     ): ExtensionComponents {
         try {
@@ -108,8 +97,8 @@ export class ExtensionInitializer {
             const dashboardView = new DashboardView(coreComponents.connectionManager, coreComponents.schemaManager);
             const connectionView = new ConnectionManagementView(coreComponents.connectionManager);
             const schemaBrowserView = new SchemaBrowserView(coreComponents.schemaManager, coreComponents.connectionManager);
-            const schemaComparisonView = new SchemaComparisonView();
-            const migrationPreviewView = new MigrationPreviewView();
+            const schemaComparisonView = new SchemaComparisonView(this.getDotNetService());
+            const migrationPreviewView = new MigrationPreviewView(this.getDotNetService());
             const settingsView = new SettingsView();
             const errorDisplayView = new ErrorDisplayView();
 
@@ -137,25 +126,18 @@ export class ExtensionInitializer {
         }
     }
 
-    /**
-     * Registers the tree view with VSCode
-     */
     static registerTreeView(
         treeProvider: PostgreSqlTreeProvider,
         context: vscode.ExtensionContext
     ): vscode.TreeView<any> {
         try {
             Logger.info('Registering PostgreSQL tree view');
-
             const treeView = vscode.window.createTreeView('postgresqlExplorer', {
                 treeDataProvider: treeProvider,
                 showCollapseAll: true,
                 canSelectMany: false
             });
-
-            // Register tree view in subscriptions for proper disposal
             context.subscriptions.push(treeView);
-
             Logger.info('PostgreSQL tree view registered successfully');
             return treeView;
         } catch (error) {
@@ -163,10 +145,6 @@ export class ExtensionInitializer {
             throw error;
         }
     }
-
-    /**
-     * Initializes a specific component with error handling
-     */
     static initializeComponent<T>(
         componentName: string,
         factory: () => T,
@@ -191,10 +169,6 @@ export class ExtensionInitializer {
             }
         }
     }
-
-    /**
-     * Gets the .NET integration service instance
-     */
     static getDotNetService(): DotNetIntegrationService {
         if (!this.dotNetService) {
             throw new Error('.NET integration service not initialized');
@@ -202,9 +176,6 @@ export class ExtensionInitializer {
         return this.dotNetService;
     }
 
-    /**
-     * Validates that all required components are initialized
-     */
     static validateComponents(components: ExtensionComponents): void {
         try {
             Logger.info('Validating extension components');
@@ -232,9 +203,6 @@ export class ExtensionInitializer {
         }
     }
 
-    /**
-     * Disposes all extension components
-     */
     static async disposeComponentsAsync(components: ExtensionComponents): Promise<void> {
         try {
             Logger.info('Disposing extension components');

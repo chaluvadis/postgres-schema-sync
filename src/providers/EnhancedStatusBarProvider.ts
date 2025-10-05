@@ -23,6 +23,20 @@ export interface OperationIndicator {
     startTime: number;
     estimatedDuration?: number | undefined;
     message?: string | undefined;
+    steps?: OperationStep[] | undefined;
+    currentStep?: number | undefined;
+    cancellable?: boolean | undefined;
+    cancellationToken?: vscode.CancellationTokenSource | undefined;
+}
+
+export interface OperationStep {
+    id: string;
+    name: string;
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+    progress?: number | undefined;
+    message?: string | undefined;
+    startTime?: number | undefined;
+    endTime?: number | undefined;
 }
 
 export interface StatusBarConfig {
@@ -289,8 +303,34 @@ export class EnhancedStatusBarProvider {
             activeOperations.slice(0, this.config.maxOperationIndicators).forEach(op => {
                 const duration = Date.now() - op.startTime;
                 tooltip += `\n• ${op.name}: ${this.formatDuration(duration)}`;
+
                 if (op.message) {
                     tooltip += ` - ${op.message}`;
+                }
+
+                // Add step progress if available
+                if (op.steps && op.steps.length > 0) {
+                    const completedSteps = op.steps.filter(s => s.status === 'completed').length;
+                    tooltip += `\n  Steps: ${completedSteps}/${op.steps.length}`;
+
+                    // Show current step
+                    if (op.currentStep !== undefined && op.steps[op.currentStep]) {
+                        const currentStep = op.steps[op.currentStep];
+                        tooltip += ` | Current: ${currentStep.name}`;
+                        if (currentStep.message) {
+                            tooltip += ` - ${currentStep.message}`;
+                        }
+                    }
+                }
+
+                // Add progress percentage if available
+                if (op.progress !== undefined) {
+                    tooltip += `\n  Progress: ${Math.round(op.progress)}%`;
+                }
+
+                // Add cancellation option if cancellable
+                if (op.cancellable) {
+                    tooltip += `\n  [Click to cancel]`;
                 }
             });
 
@@ -404,7 +444,7 @@ export class EnhancedStatusBarProvider {
     }
 
     /**
-     * Start an operation indicator
+     * Start an operation indicator with enhanced progress tracking
      */
     startOperation(
         id: string,
@@ -413,22 +453,113 @@ export class EnhancedStatusBarProvider {
             message?: string;
             estimatedDuration?: number;
             cancellable?: boolean;
+            steps?: OperationStep[];
+            progress?: number;
         }
-    ): void {
+    ): OperationIndicator {
+        const cancellationToken = options?.cancellable ? new vscode.CancellationTokenSource() : undefined;
+
         const indicator: OperationIndicator = {
             id,
             name,
             status: 'pending',
             startTime: Date.now(),
             estimatedDuration: options?.estimatedDuration,
-            message: options?.message
+            message: options?.message,
+            steps: options?.steps,
+            currentStep: 0,
+            cancellable: options?.cancellable,
+            cancellationToken: cancellationToken
         };
 
         this.operationIndicators.set(id, indicator);
         this.currentOperations.add(id);
         this.updateOperationIndicators();
 
-        Logger.debug('Operation started', 'startOperation', { operationId: id, name });
+        Logger.debug('Operation started', 'startOperation', {
+            operationId: id,
+            name,
+            stepCount: options?.steps?.length || 0,
+            cancellable: options?.cancellable
+        });
+
+        return indicator;
+    }
+
+    /**
+     * Update operation with step progress
+     */
+    updateOperationStep(
+        id: string,
+        stepIndex: number,
+        status: OperationStep['status'],
+        options?: {
+            message?: string;
+            progress?: number;
+        }
+    ): void {
+        const indicator = this.operationIndicators.get(id);
+        if (!indicator || !indicator.steps) return;
+
+        if (indicator.steps[stepIndex]) {
+            const step = indicator.steps[stepIndex];
+            step.status = status;
+            step.startTime = step.startTime || Date.now();
+
+            if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+                step.endTime = Date.now();
+            }
+
+            if (options?.message) {
+                step.message = options.message;
+            }
+
+            if (options?.progress !== undefined) {
+                step.progress = options.progress;
+            }
+
+            indicator.currentStep = stepIndex;
+            indicator.status = status === 'running' ? 'running' : indicator.status;
+        }
+
+        this.updateOperationIndicators();
+    }
+
+    /**
+     * Cancel an operation
+     */
+    cancelOperation(id: string): boolean {
+        const indicator = this.operationIndicators.get(id);
+        if (!indicator || !indicator.cancellable || !indicator.cancellationToken) {
+            return false;
+        }
+
+        try {
+            indicator.cancellationToken.cancel();
+            indicator.status = 'cancelled';
+            this.updateOperationIndicators();
+
+            Logger.info('Operation cancelled', 'cancelOperation', { operationId: id });
+            return true;
+        } catch (error) {
+            Logger.error('Failed to cancel operation', error as Error, 'cancelOperation', { operationId: id });
+            return false;
+        }
+    }
+
+    /**
+     * Get operation details
+     */
+    getOperation(id: string): OperationIndicator | undefined {
+        return this.operationIndicators.get(id);
+    }
+
+    /**
+     * Get all active operations
+     */
+    getActiveOperations(): OperationIndicator[] {
+        return Array.from(this.operationIndicators.values())
+            .filter(op => op.status === 'running' || op.status === 'pending');
     }
 
     /**
@@ -475,6 +606,270 @@ export class EnhancedStatusBarProvider {
     }
 
     /**
+     * Show operation details in a webview
+     */
+    async showOperationDetails(): Promise<void> {
+        const activeOperations = this.getActiveOperations();
+
+        if (activeOperations.length === 0) {
+            vscode.window.showInformationMessage('No active operations');
+            return;
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+            'postgresqlOperationDetails',
+            'Operation Details',
+            vscode.ViewColumn.One,
+            { enableScripts: true }
+        );
+
+        const htmlContent = this.generateOperationDetailsHtml(activeOperations);
+        panel.webview.html = htmlContent;
+
+        // Handle messages from webview
+        panel.webview.onDidReceiveMessage(async (message) => {
+            if (message.command === 'cancelOperation') {
+                const cancelled = this.cancelOperation(message.operationId);
+                if (cancelled) {
+                    vscode.window.showInformationMessage(`Operation ${message.operationId} cancelled`);
+                    // Refresh the view
+                    const updatedOperations = this.getActiveOperations();
+                    panel.webview.html = this.generateOperationDetailsHtml(updatedOperations);
+                } else {
+                    vscode.window.showErrorMessage(`Failed to cancel operation ${message.operationId}`);
+                }
+            }
+        });
+
+        panel.onDidDispose(() => {
+            // Refresh status bar when panel closes
+            this.updateOperationIndicators();
+        });
+    }
+
+    private generateOperationDetailsHtml(operations: OperationIndicator[]): string {
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Operation Details</title>
+                <style>
+                    body {
+                        font-family: var(--vscode-font-family);
+                        padding: 20px;
+                        margin: 0;
+                        background: var(--vscode-editor-background);
+                        color: var(--vscode-editor-foreground);
+                    }
+                    .operation-card {
+                        background: var(--vscode-editor-background);
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 6px;
+                        margin-bottom: 15px;
+                        overflow: hidden;
+                    }
+                    .operation-header {
+                        background: var(--vscode-titleBar-activeBackground, #2f2f2f);
+                        padding: 12px 15px;
+                        border-bottom: 1px solid var(--vscode-panel-border);
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                    }
+                    .operation-title {
+                        font-weight: bold;
+                        font-size: 13px;
+                    }
+                    .operation-status {
+                        padding: 4px 8px;
+                        border-radius: 12px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        text-transform: uppercase;
+                    }
+                    .status-running { background: var(--vscode-gitDecoration-modifiedResourceForeground); color: var(--vscode-editor-background); }
+                    .status-pending { background: var(--vscode-gitDecoration-renamedResourceForeground); color: var(--vscode-editor-background); }
+                    .status-completed { background: var(--vscode-gitDecoration-addedResourceForeground); color: var(--vscode-editor-background); }
+                    .status-failed { background: var(--vscode-gitDecoration-deletedResourceForeground); color: var(--vscode-editor-background); }
+                    .status-cancelled { background: var(--vscode-panel-border); color: var(--vscode-editor-foreground); }
+                    .operation-content {
+                        padding: 15px;
+                    }
+                    .operation-meta {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                        gap: 15px;
+                        margin-bottom: 15px;
+                    }
+                    .meta-item {
+                        font-size: 12px;
+                    }
+                    .meta-label {
+                        color: var(--vscode-descriptionForeground);
+                        margin-bottom: 2px;
+                    }
+                    .meta-value {
+                        font-weight: bold;
+                    }
+                    .progress-container {
+                        margin-bottom: 15px;
+                    }
+                    .progress-bar {
+                        width: 100%;
+                        height: 8px;
+                        background: var(--vscode-panel-border);
+                        border-radius: 4px;
+                        overflow: hidden;
+                    }
+                    .progress-fill {
+                        height: 100%;
+                        background: var(--vscode-button-background);
+                        transition: width 0.3s ease;
+                    }
+                    .steps-container {
+                        max-height: 200px;
+                        overflow-y: auto;
+                    }
+                    .step-item {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        padding: 6px 0;
+                        border-bottom: 1px solid var(--vscode-panel-border);
+                    }
+                    .step-number {
+                        width: 20px;
+                        height: 20px;
+                        border-radius: 50%;
+                        background: var(--vscode-panel-border);
+                        color: var(--vscode-editor-foreground);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 10px;
+                        font-weight: bold;
+                        flex-shrink: 0;
+                    }
+                    .step-completed .step-number { background: var(--vscode-gitDecoration-addedResourceForeground); color: var(--vscode-editor-background); }
+                    .step-running .step-number { background: var(--vscode-gitDecoration-modifiedResourceForeground); color: var(--vscode-editor-background); }
+                    .step-failed .step-number { background: var(--vscode-gitDecoration-deletedResourceForeground); color: var(--vscode-editor-background); }
+                    .step-content {
+                        flex: 1;
+                    }
+                    .step-title {
+                        font-size: 12px;
+                        font-weight: bold;
+                        margin-bottom: 2px;
+                    }
+                    .step-message {
+                        font-size: 11px;
+                        color: var(--vscode-descriptionForeground);
+                    }
+                    .btn {
+                        background: var(--vscode-button-background);
+                        color: var(--vscode-button-foreground);
+                        border: none;
+                        padding: 6px 12px;
+                        border-radius: 3px;
+                        cursor: pointer;
+                        font-size: 11px;
+                        margin-right: 8px;
+                    }
+                    .btn:hover {
+                        background: var(--vscode-button-hoverBackground);
+                    }
+                    .btn-danger {
+                        background: var(--vscode-gitDecoration-deletedResourceForeground);
+                    }
+                    .btn-danger:hover {
+                        opacity: 0.9;
+                    }
+                </style>
+            </head>
+            <body>
+                <h2>Active Operations</h2>
+                ${operations.length === 0 ? '<p>No active operations</p>' : ''}
+                ${operations.map(op => `
+                    <div class="operation-card">
+                        <div class="operation-header">
+                            <div class="operation-title">${op.name}</div>
+                            <div>
+                                <span class="operation-status status-${op.status}">${op.status}</span>
+                                ${op.cancellable ? `<button class="btn btn-danger" onclick="cancelOperation('${op.id}')">Cancel</button>` : ''}
+                            </div>
+                        </div>
+                        <div class="operation-content">
+                            <div class="operation-meta">
+                                <div class="meta-item">
+                                    <div class="meta-label">Duration</div>
+                                    <div class="meta-value">${this.formatDuration(Date.now() - op.startTime)}</div>
+                                </div>
+                                ${op.estimatedDuration ? `
+                                    <div class="meta-item">
+                                        <div class="meta-label">Estimated Total</div>
+                                        <div class="meta-value">${this.formatDuration(op.estimatedDuration)}</div>
+                                    </div>
+                                ` : ''}
+                                ${op.progress !== undefined ? `
+                                    <div class="meta-item">
+                                        <div class="meta-label">Progress</div>
+                                        <div class="meta-value">${Math.round(op.progress)}%</div>
+                                    </div>
+                                ` : ''}
+                            </div>
+
+                            ${op.progress !== undefined ? `
+                                <div class="progress-container">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: ${op.progress}%"></div>
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            ${op.message ? `
+                                <div style="margin-bottom: 15px; font-size: 12px;">
+                                    <strong>Message:</strong> ${op.message}
+                                </div>
+                            ` : ''}
+
+                            ${op.steps && op.steps.length > 0 ? `
+                                <div>
+                                    <div style="font-size: 12px; font-weight: bold; margin-bottom: 10px;">Steps</div>
+                                    <div class="steps-container">
+                                        ${op.steps.map((step, index) => `
+                                            <div class="step-item step-${step.status}">
+                                                <div class="step-number">${index + 1}</div>
+                                                <div class="step-content">
+                                                    <div class="step-title">${step.name}</div>
+                                                    ${step.message ? `<div class="step-message">${step.message}</div>` : ''}
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+
+                <script>
+                    const vscode = acquireVsCodeApi();
+
+                    function cancelOperation(operationId) {
+                        vscode.postMessage({
+                            command: 'cancelOperation',
+                            operationId: operationId
+                        });
+                    }
+                </script>
+            </body>
+            </html>
+        `;
+    }
+
+    /**
      * Dispose of the provider
      */
     dispose(): void {
@@ -482,6 +877,13 @@ export class EnhancedStatusBarProvider {
             clearInterval(this.updateTimer);
             this.updateTimer = undefined;
         }
+
+        // Cancel all cancellable operations
+        this.operationIndicators.forEach((indicator, id) => {
+            if (indicator.cancellable && indicator.cancellationToken) {
+                indicator.cancellationToken.cancel();
+            }
+        });
 
         this.statusBarItems.forEach(item => item.dispose());
         this.statusBarItems.clear();

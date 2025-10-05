@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '../utils/Logger';
 import { DotNetIntegrationService, DotNetConnectionInfo } from '../services/DotNetIntegrationService';
+import { SecurityManager } from '../services/SecurityManager';
 
 export interface DatabaseConnection {
     id: string;
@@ -35,6 +36,12 @@ export class ConnectionManager {
                 id: this.generateId()
             };
 
+            // Store password securely using VS Code Secret Storage
+            if (connectionInfo.password && this.secrets) {
+                await this.secrets.store(`connection_${connection.id}_password`, connectionInfo.password);
+                Logger.info(`Password stored securely for connection: ${connection.id}`);
+            }
+
             this.connections.set(connection.id, {
                 ...connection,
                 password: '' // Don't store password in memory
@@ -43,7 +50,7 @@ export class ConnectionManager {
             await this.saveConnections();
             Logger.info(`Connection added: ${connection.id}`);
         } catch (error) {
-            Logger.error(`Failed to add connection: ${(error as Error).message}`);
+            Logger.error(`Failed to add connection: ${(error as Error).message}`, error as Error, 'addConnection');
             throw error;
         }
     }
@@ -57,8 +64,17 @@ export class ConnectionManager {
                 throw new Error(`Connection with id ${id} not found`);
             }
 
-            if (connectionInfo.password && this.secrets) {
-                await this.secrets.store(`connection_${id}_password`, connectionInfo.password);
+            // Handle password update securely
+            if (connectionInfo.password) {
+                if (this.secrets) {
+                    // Delete old password if it exists
+                    await this.secrets.delete(`connection_${id}_password`);
+                    // Store new password securely
+                    await this.secrets.store(`connection_${id}_password`, connectionInfo.password);
+                    Logger.info(`Password updated securely for connection: ${id}`);
+                } else {
+                    Logger.warn('Secret storage not available, password not updated');
+                }
             }
 
             this.connections.set(id, {
@@ -70,7 +86,7 @@ export class ConnectionManager {
             await this.saveConnections();
             Logger.info(`Connection updated: ${id}`);
         } catch (error) {
-            Logger.error(`Failed to update connection: ${(error as Error).message}`);
+            Logger.error(`Failed to update connection: ${(error as Error).message}`, error as Error, 'updateConnection');
             throw error;
         }
     }
@@ -104,23 +120,73 @@ export class ConnectionManager {
 
             const connection = this.connections.get(id);
             if (!connection) {
-                Logger.error(`Connection not found: ${id}`);
+                Logger.error(`Connection not found: ${id}`, new Error(`Connection ${id} not found`), 'testConnection');
                 return false;
             }
 
             if (!this.dotNetService) {
-                Logger.error('DotNet service not available');
+                Logger.error('DotNet service not available', new Error('DotNet service is null'), 'testConnection');
                 return false;
             }
 
+            // Retrieve password securely from VS Code Secret Storage
             let password = '';
             if (this.secrets) {
                 password = await this.secrets.get(`connection_${id}_password`) || '';
             }
 
             if (!password) {
-                Logger.error(`Password not found for connection: ${id}`);
-                return false;
+                Logger.error(`Password not found for connection: ${id}`, new Error('Password not available'), 'testConnection');
+                throw new Error('Password not configured for this connection. Please edit the connection and set the password.');
+            }
+
+            // Validate connection parameters before testing
+            if (!this.validateConnectionInfo(connection)) {
+                Logger.error(`Invalid connection parameters for: ${id}`, new Error('Invalid connection info'), 'testConnection');
+                throw new Error('Connection parameters are invalid. Please check host, port, and database name.');
+            }
+
+            // Perform security validation if SSL is enabled
+            if (connection.port === 5432) { // Default PostgreSQL SSL port
+                const securityManager = SecurityManager.getInstance();
+                const securityValidation = securityManager.validateConnectionSecurity(
+                    connection.host,
+                    connection.port,
+                    true // Assume SSL for port 5432
+                );
+
+                if (!securityValidation.allowed) {
+                    Logger.warn(`Security validation failed for connection ${id}`, 'testConnection');
+                    if (!securityValidation.requiresSSL) {
+                        throw new Error(`Security policy violation: ${securityValidation.reason}`);
+                    }
+                }
+
+                // Validate SSL certificate if using SSL
+                try {
+                    const certValidation = await securityManager.validateCertificate(
+                        connection.host,
+                        connection.port,
+                        id
+                    );
+
+                    if (!certValidation.valid) {
+                        Logger.warn(`Certificate validation failed for ${connection.host}`, 'testConnection');
+                        vscode.window.showWarningMessage(
+                            `Certificate validation failed for ${connection.host}. Connection may not be secure.`,
+                            'View Details', 'Continue Anyway'
+                        ).then(selection => {
+                            if (selection === 'View Details' && certValidation.warnings) {
+                                vscode.window.showInformationMessage(
+                                    `Certificate warnings: ${certValidation.warnings.join(', ')}`
+                                );
+                            }
+                        });
+                    }
+                } catch (certError) {
+                    Logger.warn('Certificate validation error', 'testConnection', certError as Error);
+                    // Continue with connection test even if certificate validation fails
+                }
             }
 
             const dotNetConnection: DotNetConnectionInfo = {
@@ -133,15 +199,56 @@ export class ConnectionManager {
                 password: password
             };
 
-            const result = await this.dotNetService.testConnection(dotNetConnection);
+            // Test the connection with timeout
+            const result = await Promise.race([
+                this.dotNetService.testConnection(dotNetConnection),
+                new Promise<boolean>((_, reject) =>
+                    setTimeout(() => reject(new Error('Connection test timed out after 30 seconds')), 30000)
+                )
+            ]);
+
             const success = !!result;
 
-            Logger.info(`Connection test ${success ? 'successful' : 'failed'}: ${id}`);
+            // Update connection status
+            connection.status = success ? 'Connected' : 'Error';
+
+            Logger.info(`Connection test ${success ? 'successful' : 'failed'}: ${id}`, 'testConnection');
             return success;
         } catch (error) {
-            Logger.error(`Connection test error: ${(error as Error).message}`);
+            Logger.error(`Connection test error: ${(error as Error).message}`, error as Error, 'testConnection');
+
+            // Update connection status on error
+            const connection = this.connections.get(id);
+            if (connection) {
+                connection.status = 'Error';
+            }
+
+            // Show user-friendly error message
+            const errorMessage = (error as Error).message;
+            if (errorMessage.includes('password') || errorMessage.includes('authentication')) {
+                vscode.window.showErrorMessage(`Connection failed: Authentication error. Please check username and password.`);
+            } else if (errorMessage.includes('host') || errorMessage.includes('port')) {
+                vscode.window.showErrorMessage(`Connection failed: Network error. Please check host and port.`);
+            } else {
+                vscode.window.showErrorMessage(`Connection test failed: ${errorMessage}`);
+            }
+
             return false;
         }
+    }
+
+    private validateConnectionInfo(connection: DatabaseConnection): boolean {
+        return !!(
+            connection.host &&
+            connection.host.length > 0 &&
+            connection.port &&
+            connection.port > 0 &&
+            connection.port <= 65535 &&
+            connection.database &&
+            connection.database.length > 0 &&
+            connection.username &&
+            connection.username.length > 0
+        );
     }
 
     async testConnectionData(connectionData: Omit<DatabaseConnection, 'id'> & { password: string; }): Promise<boolean> {

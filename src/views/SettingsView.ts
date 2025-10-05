@@ -1,458 +1,848 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { Logger } from '../utils/Logger';
-import { TemplateEngine } from '../utils/TemplateEngine';
 
 export interface ExtensionSettings {
     compare: {
         mode: 'strict' | 'lenient';
         ignoreSchemas: string[];
+        includeSystemObjects: boolean;
+        caseSensitive: boolean;
     };
     migration: {
         dryRun: boolean;
         batchSize: number;
+        stopOnError: boolean;
+        transactionMode: 'all_or_nothing' | 'continue_on_error';
     };
     notifications: {
         enabled: boolean;
+        showProgress: boolean;
+        soundEnabled: boolean;
     };
     theme: {
         colorScheme: 'auto' | 'light' | 'dark';
+        compactMode: boolean;
     };
     debug: {
         enabled: boolean;
         logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
     };
-    connectionPooling: {
-        enabled: boolean;
-        minPoolSize: number;
-        maxPoolSize: number;
-        acquireTimeoutMs: number;
-        idleTimeoutMs: number;
-        healthCheckIntervalMs: number;
-        maxConnectionAgeMs: number;
-        enableDynamicSizing: boolean;
-        loadThresholdForScaling: number;
-        enableConnectionLeasing: boolean;
-        leaseTimeoutMs: number;
+    security: {
+        certificateValidation: boolean;
+        allowSelfSigned: boolean;
+        securityLevel: 'strict' | 'warning' | 'permissive';
     };
 }
 
 export class SettingsView {
-    private templateEngine: TemplateEngine;
+    private panel: vscode.WebviewPanel | undefined;
+    private settings: ExtensionSettings;
 
-    constructor(extensionPath?: string) {
-        this.templateEngine = new TemplateEngine(extensionPath || '');
+    constructor() {
+        this.settings = this.loadSettings();
     }
 
     async showSettings(): Promise<void> {
         try {
-            Logger.info('Opening settings view');
+            Logger.info('Opening extension settings view');
 
-            const panel = vscode.window.createWebviewPanel(
-                'extensionSettings',
-                'PostgreSQL Schema Sync - Settings',
+            this.panel = vscode.window.createWebviewPanel(
+                'postgresqlSettings',
+                'PostgreSQL Extension Settings',
                 vscode.ViewColumn.One,
-                { enableScripts: true, retainContextWhenHidden: true }
+                {
+                    enableScripts: true,
+                    retainContextWhenHidden: true,
+                    localResourceRoots: [
+                        vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.parse(''), 'resources')
+                    ]
+                }
             );
 
-            const currentSettings = await this.getCurrentSettings();
+            // Handle panel disposal
+            this.panel.onDidDispose(() => {
+                this.panel = undefined;
+            });
 
-            // Load external files
-            const cssContent = await this.templateEngine.loadCss('SettingsView.css');
-            const jsContent = await this.templateEngine.loadJavaScript('SettingsView.js');
-
-            // Prepare template data
-            const templateData = {
-                title: 'PostgreSQL Schema Sync - Settings',
-                description: 'Configure extension behavior and preferences',
-                cssContent: cssContent,
-                jsContent: jsContent,
-                cssPath: panel.webview.asWebviewUri(vscode.Uri.file(
-                    path.join(this.templateEngine['templatesDir'], 'SettingsView.css')
-                )).toString(),
-                ...this.prepareTemplateData(currentSettings)
-            };
-
-            const settingsHtml = await this.templateEngine.render('SettingsView.html', templateData);
-            panel.webview.html = settingsHtml;
+            // Generate and set HTML content
+            const htmlContent = await this.generateSettingsHtml(this.settings);
+            this.panel.webview.html = htmlContent;
 
             // Handle messages from webview
-            panel.webview.onDidReceiveMessage(async (message) => {
-                switch (message.command) {
-                    case 'saveSettings':
-                        await this.handleSaveSettings(message.settings);
-                        break;
-                    case 'resetSettings':
-                        await this.handleResetSettings(panel);
-                        break;
-                    case 'exportSettings':
-                        await this.handleExportSettings(currentSettings);
-                        break;
-                    case 'importSettings':
-                        await this.handleImportSettings(panel);
-                        break;
-                    default:
-                        Logger.warn('Unknown settings command', { command: message.command });
-                        break;
-                }
+            this.panel.webview.onDidReceiveMessage(async (message) => {
+                await this.handleWebviewMessage(message);
             });
+
         } catch (error) {
-            Logger.error('Failed to show settings', error as Error);
+            Logger.error('Failed to show settings view', error as Error, 'showSettings');
             vscode.window.showErrorMessage(
                 `Failed to open settings: ${(error as Error).message}`
             );
         }
     }
 
-    private async getCurrentSettings(): Promise<ExtensionSettings> {
+    private loadSettings(): ExtensionSettings {
         const config = vscode.workspace.getConfiguration('postgresql-schema-sync');
 
         return {
             compare: {
                 mode: config.get('compare.mode', 'strict'),
-                ignoreSchemas: config.get('compare.ignoreSchemas', ['information_schema', 'pg_catalog', 'pg_toast'])
+                ignoreSchemas: config.get('compare.ignoreSchemas', ['information_schema', 'pg_catalog', 'pg_toast']),
+                includeSystemObjects: config.get('compare.includeSystemObjects', false),
+                caseSensitive: config.get('compare.caseSensitive', true)
             },
             migration: {
                 dryRun: config.get('migration.dryRun', true),
-                batchSize: config.get('migration.batchSize', 50)
+                batchSize: config.get('migration.batchSize', 50),
+                stopOnError: config.get('migration.stopOnError', true),
+                transactionMode: config.get('migration.transactionMode', 'all_or_nothing')
             },
             notifications: {
-                enabled: config.get('notifications.enabled', true)
+                enabled: config.get('notifications.enabled', true),
+                showProgress: config.get('notifications.showProgress', true),
+                soundEnabled: config.get('notifications.soundEnabled', false)
             },
             theme: {
-                colorScheme: config.get('theme.colorScheme', 'auto')
+                colorScheme: config.get('theme.colorScheme', 'auto'),
+                compactMode: config.get('theme.compactMode', false)
             },
             debug: {
                 enabled: config.get('debug.enabled', false),
                 logLevel: config.get('debug.logLevel', 'info')
             },
-            connectionPooling: {
-                enabled: config.get('connectionPooling.enabled', true),
-                minPoolSize: config.get('connectionPooling.minPoolSize', 2),
-                maxPoolSize: config.get('connectionPooling.maxPoolSize', 20),
-                acquireTimeoutMs: config.get('connectionPooling.acquireTimeoutMs', 30000),
-                idleTimeoutMs: config.get('connectionPooling.idleTimeoutMs', 300000),
-                healthCheckIntervalMs: config.get('connectionPooling.healthCheckIntervalMs', 60000),
-                maxConnectionAgeMs: config.get('connectionPooling.maxConnectionAgeMs', 3600000),
-                enableDynamicSizing: config.get('connectionPooling.enableDynamicSizing', true),
-                loadThresholdForScaling: config.get('connectionPooling.loadThresholdForScaling', 0.8),
-                enableConnectionLeasing: config.get('connectionPooling.enableConnectionLeasing', true),
-                leaseTimeoutMs: config.get('connectionPooling.leaseTimeoutMs', 300000)
+            security: {
+                certificateValidation: config.get('security.certificateValidation', true),
+                allowSelfSigned: config.get('security.allowSelfSigned', false),
+                securityLevel: config.get('security.securityLevel', 'warning')
             }
         };
     }
 
-    private prepareTemplateData(settings: ExtensionSettings): any {
-        return {
-            // Comparison settings
-            compareModeStrict: settings.compare.mode === 'strict' ? 'selected' : '',
-            compareModeLenient: settings.compare.mode === 'lenient' ? 'selected' : '',
-
-            // Migration settings
-            migrationDryRunChecked: settings.migration.dryRun ? 'checked' : '',
-            migrationBatchSize: settings.migration.batchSize,
-
-            // Notification settings
-            notificationsEnabledChecked: settings.notifications.enabled ? 'checked' : '',
-
-            // Theme settings
-            themeAutoSelected: settings.theme.colorScheme === 'auto' ? 'selected' : '',
-            themeLightSelected: settings.theme.colorScheme === 'light' ? 'selected' : '',
-            themeDarkSelected: settings.theme.colorScheme === 'dark' ? 'selected' : '',
-
-            // Debug settings
-            debugEnabledChecked: settings.debug.enabled ? 'checked' : '',
-            logLevelTrace: settings.debug.logLevel === 'trace' ? 'selected' : '',
-            logLevelDebug: settings.debug.logLevel === 'debug' ? 'selected' : '',
-            logLevelInfo: settings.debug.logLevel === 'info' ? 'selected' : '',
-            logLevelWarn: settings.debug.logLevel === 'warn' ? 'selected' : '',
-            logLevelError: settings.debug.logLevel === 'error' ? 'selected' : '',
-
-            // Connection pooling settings
-            connectionPoolingEnabledChecked: settings.connectionPooling.enabled ? 'checked' : '',
-            minPoolSize: settings.connectionPooling.minPoolSize,
-            maxPoolSize: settings.connectionPooling.maxPoolSize,
-            acquireTimeoutMs: settings.connectionPooling.acquireTimeoutMs,
-            idleTimeoutMs: settings.connectionPooling.idleTimeoutMs,
-            healthCheckIntervalMs: settings.connectionPooling.healthCheckIntervalMs,
-            maxConnectionAgeMs: settings.connectionPooling.maxConnectionAgeMs,
-            enableDynamicSizingChecked: settings.connectionPooling.enableDynamicSizing ? 'checked' : '',
-            loadThresholdForScaling: settings.connectionPooling.loadThresholdForScaling,
-            enableConnectionLeasingChecked: settings.connectionPooling.enableConnectionLeasing ? 'checked' : '',
-            leaseTimeoutMs: settings.connectionPooling.leaseTimeoutMs,
-
-            // Schema tags
-            ignoreSchemasTags: settings.compare.ignoreSchemas.map(schema =>
-                `<div class="tag">${schema}<span class="tag-remove" onclick="removeIgnoreSchema('${schema}')">×</span></div>`
-            ).join('')
-        };
-    }
-
-    private async handleSaveSettings(newSettings: ExtensionSettings): Promise<void> {
+    private async saveSettings(newSettings: ExtensionSettings): Promise<void> {
         try {
-            if (!newSettings || typeof newSettings !== 'object') {
-                throw new Error('Invalid settings object provided');
-            }
-
-            // Validate settings before saving
-            this.validateSettingsForSaving(newSettings);
-
             const config = vscode.workspace.getConfiguration('postgresql-schema-sync');
 
             // Update configuration values
-            await config.update('compare.mode', newSettings.compare.mode, vscode.ConfigurationTarget.Global);
-            await config.update('compare.ignoreSchemas', newSettings.compare.ignoreSchemas, vscode.ConfigurationTarget.Global);
-            await config.update('migration.dryRun', newSettings.migration.dryRun, vscode.ConfigurationTarget.Global);
-            await config.update('migration.batchSize', newSettings.migration.batchSize, vscode.ConfigurationTarget.Global);
-            await config.update('notifications.enabled', newSettings.notifications.enabled, vscode.ConfigurationTarget.Global);
-            await config.update('theme.colorScheme', newSettings.theme.colorScheme, vscode.ConfigurationTarget.Global);
-            await config.update('debug.enabled', newSettings.debug.enabled, vscode.ConfigurationTarget.Global);
-            await config.update('debug.logLevel', newSettings.debug.logLevel, vscode.ConfigurationTarget.Global);
+            await config.update('compare.mode', newSettings.compare.mode);
+            await config.update('compare.ignoreSchemas', newSettings.compare.ignoreSchemas);
+            await config.update('compare.includeSystemObjects', newSettings.compare.includeSystemObjects);
+            await config.update('compare.caseSensitive', newSettings.compare.caseSensitive);
 
-            // Update connection pooling configuration
-            await config.update('connectionPooling.enabled', newSettings.connectionPooling.enabled, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.minPoolSize', newSettings.connectionPooling.minPoolSize, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.maxPoolSize', newSettings.connectionPooling.maxPoolSize, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.acquireTimeoutMs', newSettings.connectionPooling.acquireTimeoutMs, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.idleTimeoutMs', newSettings.connectionPooling.idleTimeoutMs, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.healthCheckIntervalMs', newSettings.connectionPooling.healthCheckIntervalMs, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.maxConnectionAgeMs', newSettings.connectionPooling.maxConnectionAgeMs, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.enableDynamicSizing', newSettings.connectionPooling.enableDynamicSizing, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.loadThresholdForScaling', newSettings.connectionPooling.loadThresholdForScaling, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.enableConnectionLeasing', newSettings.connectionPooling.enableConnectionLeasing, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.leaseTimeoutMs', newSettings.connectionPooling.leaseTimeoutMs, vscode.ConfigurationTarget.Global);
+            await config.update('migration.dryRun', newSettings.migration.dryRun);
+            await config.update('migration.batchSize', newSettings.migration.batchSize);
+            await config.update('migration.stopOnError', newSettings.migration.stopOnError);
+            await config.update('migration.transactionMode', newSettings.migration.transactionMode);
+
+            await config.update('notifications.enabled', newSettings.notifications.enabled);
+            await config.update('notifications.showProgress', newSettings.notifications.showProgress);
+            await config.update('notifications.soundEnabled', newSettings.notifications.soundEnabled);
+
+            await config.update('theme.colorScheme', newSettings.theme.colorScheme);
+            await config.update('theme.compactMode', newSettings.theme.compactMode);
+
+            await config.update('debug.enabled', newSettings.debug.enabled);
+            await config.update('debug.logLevel', newSettings.debug.logLevel);
+
+            await config.update('security.certificateValidation', newSettings.security.certificateValidation);
+            await config.update('security.allowSelfSigned', newSettings.security.allowSelfSigned);
+            await config.update('security.securityLevel', newSettings.security.securityLevel);
+
+            this.settings = newSettings;
+
+            Logger.info('Settings saved successfully', 'saveSettings');
 
             vscode.window.showInformationMessage('Settings saved successfully');
 
         } catch (error) {
-            Logger.error('Failed to save settings', error as Error);
-            vscode.window.showErrorMessage(`Failed to save settings: ${(error as Error).message}`);
+            Logger.error('Failed to save settings', error as Error, 'saveSettings');
+            vscode.window.showErrorMessage('Failed to save settings');
         }
     }
 
-    private async handleResetSettings(panel: vscode.WebviewPanel): Promise<void> {
+    private async generateSettingsHtml(settings: ExtensionSettings): Promise<string> {
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>PostgreSQL Extension Settings</title>
+                <style>
+                    :root {
+                        --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        --vscode-editor-background: #1e1e1e;
+                        --vscode-editor-foreground: #cccccc;
+                        --vscode-panel-border: #3c3c3c;
+                        --vscode-textLink-foreground: #4da6ff;
+                        --vscode-button-background: #0e639c;
+                        --vscode-button-foreground: #ffffff;
+                        --vscode-button-hoverBackground: #1177bb;
+                        --vscode-input-background: #3c3c3c;
+                        --vscode-input-foreground: #cccccc;
+                        --vscode-input-border: #3c3c3c;
+                        --vscode-list-hoverBackground: #2a2d2e;
+                        --vscode-badge-background: #4d4d4d;
+                        --vscode-badge-foreground: #ffffff;
+                    }
+
+                    body {
+                        font-family: var(--vscode-font-family);
+                        padding: 0;
+                        margin: 0;
+                        background: var(--vscode-editor-background);
+                        color: var(--vscode-editor-foreground);
+                        height: 100vh;
+                        display: flex;
+                        flex-direction: column;
+                    }
+
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        padding: 15px 20px;
+                        border-bottom: 1px solid var(--vscode-panel-border);
+                        background: var(--vscode-editor-background);
+                    }
+
+                    .content-area {
+                        flex: 1;
+                        overflow: auto;
+                        padding: 20px;
+                    }
+
+                    .settings-container {
+                        max-width: 800px;
+                        margin: 0 auto;
+                    }
+
+                    .settings-section {
+                        background: var(--vscode-editor-background);
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 6px;
+                        margin-bottom: 20px;
+                        overflow: hidden;
+                    }
+
+                    .section-header {
+                        background: var(--vscode-titleBar-activeBackground, #2f2f2f);
+                        padding: 12px 15px;
+                        border-bottom: 1px solid var(--vscode-panel-border);
+                    }
+
+                    .section-title {
+                        font-weight: bold;
+                        font-size: 13px;
+                        margin: 0;
+                    }
+
+                    .section-content {
+                        padding: 15px;
+                    }
+
+                    .setting-item {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        padding: 10px 0;
+                        border-bottom: 1px solid var(--vscode-panel-border);
+                    }
+
+                    .setting-item:last-child {
+                        border-bottom: none;
+                    }
+
+                    .setting-label {
+                        flex: 1;
+                        font-size: 12px;
+                    }
+
+                    .setting-description {
+                        font-size: 11px;
+                        color: var(--vscode-descriptionForeground);
+                        margin-top: 2px;
+                    }
+
+                    .setting-control {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+
+                    .setting-input {
+                        background: var(--vscode-input-background);
+                        color: var(--vscode-input-foreground);
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 3px;
+                        padding: 4px 8px;
+                        font-size: 12px;
+                    }
+
+                    .setting-input:focus {
+                        outline: none;
+                        border-color: var(--vscode-textLink-foreground);
+                    }
+
+                    .setting-select {
+                        background: var(--vscode-input-background);
+                        color: var(--vscode-input-foreground);
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 3px;
+                        padding: 4px 8px;
+                        font-size: 12px;
+                    }
+
+                    .setting-checkbox {
+                        margin: 0;
+                    }
+
+                    .setting-array {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 5px;
+                    }
+
+                    .array-item {
+                        display: flex;
+                        gap: 5px;
+                        align-items: center;
+                    }
+
+                    .array-input {
+                        flex: 1;
+                        background: var(--vscode-input-background);
+                        color: var(--vscode-input-foreground);
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 3px;
+                        padding: 4px 8px;
+                        font-size: 12px;
+                    }
+
+                    .remove-btn {
+                        background: var(--vscode-gitDecoration-deletedResourceForeground);
+                        color: var(--vscode-editor-background);
+                        border: none;
+                        border-radius: 3px;
+                        padding: 4px 8px;
+                        cursor: pointer;
+                        font-size: 10px;
+                    }
+
+                    .add-btn {
+                        background: var(--vscode-gitDecoration-addedResourceForeground);
+                        color: var(--vscode-editor-background);
+                        border: none;
+                        border-radius: 3px;
+                        padding: 4px 8px;
+                        cursor: pointer;
+                        font-size: 10px;
+                        margin-top: 5px;
+                    }
+
+                    .footer {
+                        padding: 15px 20px;
+                        border-top: 1px solid var(--vscode-panel-border);
+                        background: var(--vscode-editor-background);
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                    }
+
+                    .btn {
+                        padding: 8px 16px;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        font-weight: bold;
+                        transition: background-color 0.2s;
+                    }
+
+                    .btn-primary {
+                        background: var(--vscode-button-background);
+                        color: var(--vscode-button-foreground);
+                    }
+
+                    .btn-primary:hover {
+                        background: var(--vscode-button-hoverBackground);
+                    }
+
+                    .btn-secondary {
+                        background: var(--vscode-button-secondaryBackground, #3c3c3c);
+                        color: var(--vscode-button-secondaryForeground, #cccccc);
+                    }
+
+                    .btn-secondary:hover {
+                        background: var(--vscode-list-hoverBackground);
+                    }
+
+                    .btn-danger {
+                        background: var(--vscode-gitDecoration-deletedResourceForeground);
+                        color: var(--vscode-editor-background);
+                    }
+
+                    .btn-danger:hover {
+                        opacity: 0.9;
+                    }
+
+                    .status-message {
+                        padding: 8px 12px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        margin-bottom: 10px;
+                    }
+
+                    .status-success {
+                        background: var(--vscode-gitDecoration-addedResourceForeground);
+                        color: var(--vscode-editor-background);
+                    }
+
+                    .status-error {
+                        background: var(--vscode-gitDecoration-deletedResourceForeground);
+                        color: var(--vscode-editor-background);
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>PostgreSQL Extension Settings</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" onclick="resetToDefaults()">Reset to Defaults</button>
+                        <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                    </div>
+                </div>
+
+                <div class="content-area">
+                    <div class="settings-container">
+                        <!-- Schema Comparison Settings -->
+                        <div class="settings-section">
+                            <div class="section-header">
+                                <h3 class="section-title">Schema Comparison</h3>
+                            </div>
+                            <div class="section-content">
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Comparison Mode</div>
+                                        <div class="setting-description">How strict the schema comparison should be</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <select class="setting-select" id="compareMode">
+                                            <option value="strict" ${settings.compare.mode === 'strict' ? 'selected' : ''}>Strict</option>
+                                            <option value="lenient" ${settings.compare.mode === 'lenient' ? 'selected' : ''}>Lenient</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Case Sensitive</div>
+                                        <div class="setting-description">Whether comparison is case sensitive</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="checkbox" class="setting-checkbox" id="caseSensitive"
+                                               ${settings.compare.caseSensitive ? 'checked' : ''}>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Include System Objects</div>
+                                        <div class="setting-description">Include system schemas in comparison</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="checkbox" class="setting-checkbox" id="includeSystemObjects"
+                                               ${settings.compare.includeSystemObjects ? 'checked' : ''}>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Ignore Schemas</div>
+                                        <div class="setting-description">Schemas to exclude from comparison</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <div class="setting-array" id="ignoreSchemas">
+                                            ${settings.compare.ignoreSchemas.map(schema => `
+                                                <div class="array-item">
+                                                    <input type="text" class="array-input" value="${schema}">
+                                                    <button class="remove-btn" onclick="removeArrayItem(this)">×</button>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <button class="add-btn" onclick="addArrayItem('ignoreSchemas')">Add Schema</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Migration Settings -->
+                        <div class="settings-section">
+                            <div class="section-header">
+                                <h3 class="section-title">Migration</h3>
+                            </div>
+                            <div class="section-content">
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Dry Run Mode</div>
+                                        <div class="setting-description">Preview migrations without executing them</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="checkbox" class="setting-checkbox" id="dryRun"
+                                               ${settings.migration.dryRun ? 'checked' : ''}>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Batch Size</div>
+                                        <div class="setting-description">Number of operations per migration batch</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="number" class="setting-input" id="batchSize"
+                                               value="${settings.migration.batchSize}" min="10" max="200">
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Stop on Error</div>
+                                        <div class="setting-description">Stop migration if any error occurs</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="checkbox" class="setting-checkbox" id="stopOnError"
+                                               ${settings.migration.stopOnError ? 'checked' : ''}>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Transaction Mode</div>
+                                        <div class="setting-description">How to handle transaction rollbacks</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <select class="setting-select" id="transactionMode">
+                                            <option value="all_or_nothing" ${settings.migration.transactionMode === 'all_or_nothing' ? 'selected' : ''}>All or Nothing</option>
+                                            <option value="continue_on_error" ${settings.migration.transactionMode === 'continue_on_error' ? 'selected' : ''}>Continue on Error</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Security Settings -->
+                        <div class="settings-section">
+                            <div class="section-header">
+                                <h3 class="section-title">Security</h3>
+                            </div>
+                            <div class="section-content">
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Certificate Validation</div>
+                                        <div class="setting-description">Validate SSL/TLS certificates</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="checkbox" class="setting-checkbox" id="certificateValidation"
+                                               ${settings.security.certificateValidation ? 'checked' : ''}>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Allow Self-Signed Certificates</div>
+                                        <div class="setting-description">Allow self-signed SSL certificates (not recommended for production)</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="checkbox" class="setting-checkbox" id="allowSelfSigned"
+                                               ${settings.security.allowSelfSigned ? 'checked' : ''}>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Security Level</div>
+                                        <div class="setting-description">How strict security validation should be</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <select class="setting-select" id="securityLevel">
+                                            <option value="strict" ${settings.security.securityLevel === 'strict' ? 'selected' : ''}>Strict</option>
+                                            <option value="warning" ${settings.security.securityLevel === 'warning' ? 'selected' : ''}>Warning</option>
+                                            <option value="permissive" ${settings.security.securityLevel === 'permissive' ? 'selected' : ''}>Permissive</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Theme Settings -->
+                        <div class="settings-section">
+                            <div class="section-header">
+                                <h3 class="section-title">Theme & UI</h3>
+                            </div>
+                            <div class="section-content">
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Color Scheme</div>
+                                        <div class="setting-description">Color scheme for the extension interface</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <select class="setting-select" id="colorScheme">
+                                            <option value="auto" ${settings.theme.colorScheme === 'auto' ? 'selected' : ''}>Auto</option>
+                                            <option value="light" ${settings.theme.colorScheme === 'light' ? 'selected' : ''}>Light</option>
+                                            <option value="dark" ${settings.theme.colorScheme === 'dark' ? 'selected' : ''}>Dark</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Compact Mode</div>
+                                        <div class="setting-description">Use compact layout for UI elements</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="checkbox" class="setting-checkbox" id="compactMode"
+                                               ${settings.theme.compactMode ? 'checked' : ''}>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Debug Settings -->
+                        <div class="settings-section">
+                            <div class="section-header">
+                                <h3 class="section-title">Debug & Logging</h3>
+                            </div>
+                            <div class="section-content">
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Debug Logging</div>
+                                        <div class="setting-description">Enable detailed debug logging</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="checkbox" class="setting-checkbox" id="debugEnabled"
+                                               ${settings.debug.enabled ? 'checked' : ''}>
+                                    </div>
+                                </div>
+
+                                <div class="setting-item">
+                                    <div class="setting-label">
+                                        <div>Log Level</div>
+                                        <div class="setting-description">Minimum level for log messages</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <select class="setting-select" id="logLevel">
+                                            <option value="trace" ${settings.debug.logLevel === 'trace' ? 'selected' : ''}>Trace</option>
+                                            <option value="debug" ${settings.debug.logLevel === 'debug' ? 'selected' : ''}>Debug</option>
+                                            <option value="info" ${settings.debug.logLevel === 'info' ? 'selected' : ''}>Info</option>
+                                            <option value="warn" ${settings.debug.logLevel === 'warn' ? 'selected' : ''}>Warning</option>
+                                            <option value="error" ${settings.debug.logLevel === 'error' ? 'selected' : ''}>Error</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="footer">
+                    <div class="info">
+                        Settings are automatically saved to VS Code configuration
+                    </div>
+                    <div class="actions">
+                        <button class="btn btn-secondary" onclick="exportSettings()">Export</button>
+                        <button class="btn btn-secondary" onclick="importSettings()">Import</button>
+                        <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                    </div>
+                </div>
+
+                <script>
+                    const vscode = acquireVsCodeApi();
+
+                    function collectSettings() {
+                        return {
+                            compare: {
+                                mode: document.getElementById('compareMode').value,
+                                ignoreSchemas: Array.from(document.querySelectorAll('#ignoreSchemas .array-input')).map(input => input.value),
+                                includeSystemObjects: document.getElementById('includeSystemObjects').checked,
+                                caseSensitive: document.getElementById('caseSensitive').checked
+                            },
+                            migration: {
+                                dryRun: document.getElementById('dryRun').checked,
+                                batchSize: parseInt(document.getElementById('batchSize').value),
+                                stopOnError: document.getElementById('stopOnError').checked,
+                                transactionMode: document.getElementById('transactionMode').value
+                            },
+                            security: {
+                                certificateValidation: document.getElementById('certificateValidation').checked,
+                                allowSelfSigned: document.getElementById('allowSelfSigned').checked,
+                                securityLevel: document.getElementById('securityLevel').value
+                            },
+                            theme: {
+                                colorScheme: document.getElementById('colorScheme').value,
+                                compactMode: document.getElementById('compactMode').checked
+                            },
+                            debug: {
+                                enabled: document.getElementById('debugEnabled').checked,
+                                logLevel: document.getElementById('logLevel').value
+                            }
+                        };
+                    }
+
+                    function saveSettings() {
+                        const settings = collectSettings();
+                        vscode.postMessage({
+                            command: 'saveSettings',
+                            settings: settings
+                        });
+                    }
+
+                    function resetToDefaults() {
+                        if (confirm('Reset all settings to defaults? This cannot be undone.')) {
+                            vscode.postMessage({
+                                command: 'resetToDefaults'
+                            });
+                        }
+                    }
+
+                    function exportSettings() {
+                        const settings = collectSettings();
+                        const dataStr = JSON.stringify(settings, null, 2);
+                        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+
+                        const exportFileDefaultName = 'postgresql-extension-settings.json';
+
+                        const linkElement = document.createElement('a');
+                        linkElement.setAttribute('href', dataUri);
+                        linkElement.setAttribute('download', exportFileDefaultName);
+                        linkElement.click();
+                    }
+
+                    function importSettings() {
+                        vscode.postMessage({
+                            command: 'importSettings'
+                        });
+                    }
+
+                    function addArrayItem(arrayId) {
+                        const container = document.getElementById(arrayId);
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'array-item';
+                        itemDiv.innerHTML = \`
+                            <input type="text" class="array-input" placeholder="Schema name">
+                            <button class="remove-btn" onclick="removeArrayItem(this)">×</button>
+                        \`;
+                        container.appendChild(itemDiv);
+                    }
+
+                    function removeArrayItem(button) {
+                        button.parentElement.remove();
+                    }
+
+                    // Auto-save on changes (optional)
+                    let autoSaveTimeout;
+                    function scheduleAutoSave() {
+                        clearTimeout(autoSaveTimeout);
+                        autoSaveTimeout = setTimeout(() => {
+                            saveSettings();
+                        }, 2000); // Auto-save after 2 seconds of inactivity
+                    }
+
+                    // Add change listeners
+                    document.querySelectorAll('input, select').forEach(element => {
+                        element.addEventListener('change', scheduleAutoSave);
+                    });
+
+                    document.querySelectorAll('.array-input').forEach(element => {
+                        element.addEventListener('input', scheduleAutoSave);
+                    });
+                </script>
+            </body>
+            </html>
+        `;
+    }
+
+    private async handleWebviewMessage(message: any): Promise<void> {
+        switch (message.command) {
+            case 'saveSettings':
+                await this.saveSettings(message.settings);
+                break;
+            case 'resetToDefaults':
+                await this.resetToDefaults();
+                break;
+            case 'importSettings':
+                await this.importSettings();
+                break;
+        }
+    }
+
+    private async resetToDefaults(): Promise<void> {
         try {
             const config = vscode.workspace.getConfiguration('postgresql-schema-sync');
 
-            // Reset to default values
-            await config.update('compare.mode', 'strict', vscode.ConfigurationTarget.Global);
-            await config.update('compare.ignoreSchemas', ['information_schema', 'pg_catalog', 'pg_toast'], vscode.ConfigurationTarget.Global);
-            await config.update('migration.dryRun', true, vscode.ConfigurationTarget.Global);
-            await config.update('migration.batchSize', 50, vscode.ConfigurationTarget.Global);
-            await config.update('notifications.enabled', true, vscode.ConfigurationTarget.Global);
-            await config.update('theme.colorScheme', 'auto', vscode.ConfigurationTarget.Global);
-            await config.update('debug.enabled', false, vscode.ConfigurationTarget.Global);
-            await config.update('debug.logLevel', 'info', vscode.ConfigurationTarget.Global);
+            // Reset all settings to defaults
+            await config.update('compare.mode', undefined);
+            await config.update('compare.ignoreSchemas', undefined);
+            await config.update('compare.includeSystemObjects', undefined);
+            await config.update('compare.caseSensitive', undefined);
 
-            // Reset connection pooling to defaults
-            await config.update('connectionPooling.enabled', true, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.minPoolSize', 2, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.maxPoolSize', 20, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.acquireTimeoutMs', 30000, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.idleTimeoutMs', 300000, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.healthCheckIntervalMs', 60000, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.maxConnectionAgeMs', 3600000, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.enableDynamicSizing', true, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.loadThresholdForScaling', 0.8, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.enableConnectionLeasing', true, vscode.ConfigurationTarget.Global);
-            await config.update('connectionPooling.leaseTimeoutMs', 300000, vscode.ConfigurationTarget.Global);
+            await config.update('migration.dryRun', undefined);
+            await config.update('migration.batchSize', undefined);
+            await config.update('migration.stopOnError', undefined);
+            await config.update('migration.transactionMode', undefined);
 
+            await config.update('security.certificateValidation', undefined);
+            await config.update('security.allowSelfSigned', undefined);
+            await config.update('security.securityLevel', undefined);
+
+            await config.update('theme.colorScheme', undefined);
+            await config.update('theme.compactMode', undefined);
+
+            await config.update('debug.enabled', undefined);
+            await config.update('debug.logLevel', undefined);
+
+            this.settings = this.loadSettings();
+
+            // Refresh the webview
+            if (this.panel) {
+                const htmlContent = await this.generateSettingsHtml(this.settings);
+                this.panel.webview.html = htmlContent;
+            }
+
+            Logger.info('Settings reset to defaults', 'resetToDefaults');
             vscode.window.showInformationMessage('Settings reset to defaults');
 
         } catch (error) {
-            Logger.error('Failed to reset settings', error as Error);
+            Logger.error('Failed to reset settings', error as Error, 'resetToDefaults');
             vscode.window.showErrorMessage('Failed to reset settings');
         }
     }
 
-    private async handleExportSettings(settings: ExtensionSettings): Promise<void> {
-        try {
-            const content = JSON.stringify(settings, null, 2);
-            const uri = await vscode.window.showSaveDialog({
-                filters: {
-                    'JSON Files': ['json'],
-                    'All Files': ['*']
-                },
-                defaultUri: vscode.Uri.file('postgresql-schema-sync-settings.json')
-            });
-
-            if (uri) {
-                await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
-                vscode.window.showInformationMessage('Settings exported successfully');
-            }
-        } catch (error) {
-            Logger.error('Failed to export settings', error as Error);
-            vscode.window.showErrorMessage('Failed to export settings');
-        }
-    }
-
-    private async handleImportSettings(panel: vscode.WebviewPanel): Promise<void> {
+    private async importSettings(): Promise<void> {
         try {
             const uri = await vscode.window.showOpenDialog({
                 filters: {
                     'JSON Files': ['json'],
                     'All Files': ['*']
                 },
-                canSelectMany: false
+                openLabel: 'Import Settings'
             });
 
             if (uri && uri[0]) {
                 const content = await vscode.workspace.fs.readFile(uri[0]);
                 const importedSettings = JSON.parse(content.toString());
 
-                // Validate imported settings
-                if (this.validateSettings(importedSettings)) {
-                    await this.handleSaveSettings(importedSettings);
-                    vscode.window.showInformationMessage('Settings imported successfully');
-
-                    // Reload the panel with imported settings to reflect changes in UI
-                    try {
-                        const updatedSettings = await this.getCurrentSettings();
-                        const cssContent = await this.templateEngine.loadCss('SettingsView.css');
-                        const jsContent = await this.templateEngine.loadJavaScript('SettingsView.js');
-
-                        const templateData = {
-                            title: 'PostgreSQL Schema Sync - Settings',
-                            description: 'Configure extension behavior and preferences',
-                            cssContent: cssContent,
-                            jsContent: jsContent,
-                            cssPath: panel.webview.asWebviewUri(vscode.Uri.file(
-                                path.join(this.templateEngine['templatesDir'], 'SettingsView.css')
-                            )).toString(),
-                            ...this.prepareTemplateData(updatedSettings)
-                        };
-
-                        const settingsHtml = await this.templateEngine.render('SettingsView.html', templateData);
-                        panel.webview.html = settingsHtml;
-
-                        Logger.info('Settings view reloaded with imported settings');
-                    } catch (reloadError) {
-                        Logger.warn('Failed to reload settings view after import', reloadError as Error);
-                        // Don't show error to user as import was successful
-                    }
-                } else {
-                    vscode.window.showErrorMessage('Invalid settings file format');
-                }
+                await this.saveSettings(importedSettings);
+                vscode.window.showInformationMessage('Settings imported successfully');
             }
         } catch (error) {
-            Logger.error('Failed to import settings', error as Error);
+            Logger.error('Failed to import settings', error as Error, 'importSettings');
             vscode.window.showErrorMessage('Failed to import settings');
         }
     }
 
-    private validateSettings(settings: any): boolean {
-        try {
-            // Basic validation
-            if (!settings || typeof settings !== 'object') {
-                return false;
-            }
-
-            // Check required sections
-            const requiredSections = ['compare', 'migration', 'notifications', 'theme', 'debug'];
-            for (const section of requiredSections) {
-                if (!settings[section] || typeof settings[section] !== 'object') {
-                    return false;
-                }
-            }
-
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
-    private validateSettingsForSaving(settings: ExtensionSettings): void {
-        // Validate comparison settings
-        if (!settings.compare || typeof settings.compare.mode !== 'string' ||
-            !['strict', 'lenient'].includes(settings.compare.mode)) {
-            throw new Error('Invalid comparison mode setting');
-        }
-
-        if (!Array.isArray(settings.compare.ignoreSchemas)) {
-            throw new Error('Ignore schemas must be an array');
-        }
-
-        // Validate migration settings
-        if (typeof settings.migration.dryRun !== 'boolean') {
-            throw new Error('Migration dry run must be a boolean');
-        }
-
-        if (typeof settings.migration.batchSize !== 'number' ||
-            settings.migration.batchSize < 10 || settings.migration.batchSize > 200) {
-            throw new Error('Migration batch size must be between 10 and 200');
-        }
-
-        // Validate notification settings
-        if (typeof settings.notifications.enabled !== 'boolean') {
-            throw new Error('Notifications enabled must be a boolean');
-        }
-
-        // Validate theme settings
-        if (!settings.theme || typeof settings.theme.colorScheme !== 'string' ||
-            !['auto', 'light', 'dark'].includes(settings.theme.colorScheme)) {
-            throw new Error('Invalid theme color scheme');
-        }
-
-        // Validate debug settings
-        if (typeof settings.debug.enabled !== 'boolean') {
-            throw new Error('Debug enabled must be a boolean');
-        }
-
-        if (!settings.debug || typeof settings.debug.logLevel !== 'string' ||
-            !['trace', 'debug', 'info', 'warn', 'error'].includes(settings.debug.logLevel)) {
-            throw new Error('Invalid debug log level');
-        }
-
-        // Validate connection pooling settings
-        if (typeof settings.connectionPooling.enabled !== 'boolean') {
-            throw new Error('Connection pooling enabled must be a boolean');
-        }
-
-        if (typeof settings.connectionPooling.minPoolSize !== 'number' ||
-            settings.connectionPooling.minPoolSize < 1 || settings.connectionPooling.minPoolSize > 50) {
-            throw new Error('Min pool size must be between 1 and 50');
-        }
-
-        if (typeof settings.connectionPooling.maxPoolSize !== 'number' ||
-            settings.connectionPooling.maxPoolSize < 5 || settings.connectionPooling.maxPoolSize > 100) {
-            throw new Error('Max pool size must be between 5 and 100');
-        }
-
-        if (settings.connectionPooling.minPoolSize > settings.connectionPooling.maxPoolSize) {
-            throw new Error('Min pool size cannot be greater than max pool size');
-        }
-
-        // Validate timeout settings
-        if (typeof settings.connectionPooling.acquireTimeoutMs !== 'number' ||
-            settings.connectionPooling.acquireTimeoutMs < 1000) {
-            throw new Error('Acquire timeout must be at least 1000ms');
-        }
-
-        if (typeof settings.connectionPooling.idleTimeoutMs !== 'number' ||
-            settings.connectionPooling.idleTimeoutMs < 1000) {
-            throw new Error('Idle timeout must be at least 1000ms');
-        }
-
-        if (typeof settings.connectionPooling.healthCheckIntervalMs !== 'number' ||
-            settings.connectionPooling.healthCheckIntervalMs < 1000) {
-            throw new Error('Health check interval must be at least 1000ms');
-        }
-
-        if (typeof settings.connectionPooling.maxConnectionAgeMs !== 'number' ||
-            settings.connectionPooling.maxConnectionAgeMs < 1000) {
-            throw new Error('Max connection age must be at least 1000ms');
-        }
-
-        if (typeof settings.connectionPooling.leaseTimeoutMs !== 'number' ||
-            settings.connectionPooling.leaseTimeoutMs < 1000) {
-            throw new Error('Lease timeout must be at least 1000ms');
-        }
-
-        // Validate load threshold
-        if (typeof settings.connectionPooling.loadThresholdForScaling !== 'number' ||
-            settings.connectionPooling.loadThresholdForScaling < 0.1 ||
-            settings.connectionPooling.loadThresholdForScaling > 0.9) {
-            throw new Error('Load threshold must be between 0.1 and 0.9');
+    dispose(): void {
+        if (this.panel) {
+            this.panel.dispose();
+            this.panel = undefined;
         }
     }
 }
