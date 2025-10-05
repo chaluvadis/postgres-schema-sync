@@ -1,8 +1,6 @@
 import { ConnectionManager } from './ConnectionManager';
 import { Logger } from '../utils/Logger';
-import { ErrorHandler } from '../utils/ErrorHandler';
 import { DotNetIntegrationService, DotNetConnectionInfo, DotNetSchemaComparison, DotNetMigrationScript } from '../services/DotNetIntegrationService';
-import { ErrorSeverity } from '../extension';
 
 export interface MigrationScript {
     id: string;
@@ -55,7 +53,7 @@ export class MigrationManager {
 
     async generateMigration(sourceConnectionId: string, targetConnectionId: string): Promise<MigrationScript> {
         try {
-            Logger.info('Generating migration', { sourceConnectionId, targetConnectionId });
+            Logger.info('Generating migration', 'generateMigration', { sourceConnectionId, targetConnectionId });
 
             // Check if migration generation service is available
             if (!this.dotNetService) {
@@ -161,7 +159,7 @@ export class MigrationManager {
         let migrationSuccess = false;
 
         try {
-            Logger.info('Executing migration', { migrationId });
+            Logger.info('Executing migration', 'executeMigration', { migrationId });
 
             // Check if migration execution service is available
             if (!this.dotNetService) {
@@ -228,7 +226,7 @@ export class MigrationManager {
 
                 // Log rollback availability but don't attempt automatic rollback
                 if (migration.rollbackScript) {
-                    Logger.info('Rollback script available for manual execution', { migrationId });
+                    Logger.info('Rollback script available for manual execution', 'executeMigration', { migrationId });
                 }
 
                 throw error;
@@ -280,7 +278,7 @@ export class MigrationManager {
         let rollbackReason = '';
 
         try {
-            Logger.info('Executing migration with options', { migrationId, options });
+            Logger.info('Executing migration with options', 'executeMigrationWithOptions', { migrationId, options });
 
             const migration = this.migrations.get(migrationId);
             if (!migration) {
@@ -349,7 +347,7 @@ export class MigrationManager {
             const success = result.status === 'Completed';
 
             if (!success && migration.canRollback && !options.dryRun) {
-                Logger.info('Migration failed, attempting rollback', { migrationId });
+                Logger.info('Migration failed, attempting rollback', 'executeMigrationWithOptions', { migrationId });
                 rollbackReason = 'Migration execution failed';
 
                 try {
@@ -363,7 +361,7 @@ export class MigrationManager {
 
             const executionTime = Date.now() - startTime;
 
-            Logger.info('Migration execution completed', {
+            Logger.info('Migration execution completed', 'executeMigrationWithOptions', {
                 migrationId,
                 success,
                 executionTime,
@@ -406,7 +404,7 @@ export class MigrationManager {
 
     async rollbackMigration(migrationId: string): Promise<boolean> {
         try {
-            Logger.info('Rolling back migration', { migrationId });
+            Logger.info('Rolling back migration', 'rollbackMigration', { migrationId });
 
             const migration = this.migrations.get(migrationId);
             if (!migration) {
@@ -464,7 +462,7 @@ export class MigrationManager {
 
             const success = result.status === 'Completed';
 
-            Logger.info('Rollback completed', { migrationId, success });
+            Logger.info('Rollback completed', 'rollbackMigration', { migrationId, success });
 
             return success;
         } catch (error) {
@@ -511,11 +509,6 @@ export class MigrationManager {
 
         return warnings;
     }
-
-    private generateId(): string {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
-    }
-
     async dispose(): Promise<void> {
         Logger.info('Disposing MigrationManager');
         this.migrations.clear();

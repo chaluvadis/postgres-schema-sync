@@ -428,7 +428,7 @@ export class EnhancedStatusBarProvider {
         this.currentOperations.add(id);
         this.updateOperationIndicators();
 
-        Logger.debug('Operation started', { operationId: id, name });
+        Logger.debug('Operation started', 'startOperation', { operationId: id, name });
     }
 
     /**
@@ -471,7 +471,7 @@ export class EnhancedStatusBarProvider {
         this.currentOperations.delete(id);
         this.updateOperationIndicators();
 
-        Logger.debug('Operation completed', { operationId: id });
+        Logger.debug('Operation completed', 'completeOperation', { operationId: id });
     }
 
     /**

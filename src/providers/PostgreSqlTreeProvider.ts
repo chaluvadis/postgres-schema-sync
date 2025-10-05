@@ -338,13 +338,6 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
         }
     }
 
-    // Enhanced features for better UX
-
-
-
-
-
-
     private isContainerType(type: string): boolean {
         return ['table', 'view'].includes(type);
     }

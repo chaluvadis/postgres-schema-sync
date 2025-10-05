@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { Logger } from '../utils/Logger';
-import { TemplateEngine } from './utils/TemplateEngine';
+import { TemplateEngine } from '../utils/TemplateEngine';
 
 export interface ExtensionSettings {
     compare: {

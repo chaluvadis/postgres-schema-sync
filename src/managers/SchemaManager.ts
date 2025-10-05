@@ -45,7 +45,7 @@ export class SchemaManager {
 
     async getDatabaseObjects(connectionId: string, schemaFilter?: string): Promise<DatabaseObject[]> {
         try {
-            Logger.info('Getting database objects', { connectionId });
+            Logger.info('Getting database objects', 'getDatabaseObjects', { connectionId });
 
             // Get connection and password directly
             const connection = this.connectionManager.getConnection(connectionId);
@@ -74,7 +74,7 @@ export class SchemaManager {
             const dotNetObjects = await this.dotNetService.browseSchema(dotNetConnection, schemaFilter || undefined);
 
             if (!dotNetObjects || dotNetObjects.length === 0) {
-                Logger.warn('No objects found in schema', { connectionId });
+                Logger.warn('No objects found in schema', 'getDatabaseObjects', { connectionId });
                 return [];
             }
 
@@ -87,7 +87,7 @@ export class SchemaManager {
                 database: dotNetObj.database
             }));
 
-            Logger.info('Database objects retrieved', {
+            Logger.info('Database objects retrieved', 'getDatabaseObjects', {
                 connectionId,
                 objectCount: objects.length
             });
@@ -101,7 +101,7 @@ export class SchemaManager {
 
     async getObjectDetails(connectionId: string, objectType: string, schema: string, objectName: string): Promise<any> {
         try {
-            Logger.info('Getting object details', { connectionId, objectType, schema, objectName });
+            Logger.info('Getting object details', 'getObjectDetails', { connectionId, objectType, schema, objectName });
 
             // Get connection and password directly
             const connection = this.connectionManager.getConnection(connectionId);
@@ -138,7 +138,7 @@ export class SchemaManager {
                 throw new Error('Object details returned null or undefined');
             }
 
-            Logger.info('Object details retrieved', {
+            Logger.info('Object details retrieved', 'getObjectDetails', {
                 connectionId,
                 objectType,
                 objectName
@@ -152,7 +152,7 @@ export class SchemaManager {
     }
 
     private mapDotNetTypeToLocal(dotNetType: string): string {
-        const typeMap: { [key: string]: string } = {
+        const typeMap: { [key: string]: string; } = {
             'table': 'table', 'view': 'view', 'function': 'function',
             'procedure': 'procedure', 'sequence': 'sequence', 'type': 'type',
             'domain': 'domain', 'index': 'index', 'trigger': 'trigger',
@@ -168,7 +168,7 @@ export class SchemaManager {
         // Check cache first
         const cached = this.schemaCache.get(cacheKey);
         if (cached && !this.isCacheStale(cached)) {
-            Logger.debug('Returning cached schema objects', {
+            Logger.debug('Returning cached schema objects', 'getDatabaseObjectsWithCache', {
                 connectionId,
                 objectCount: cached.objects.length
             });
@@ -195,7 +195,7 @@ export class SchemaManager {
     }
 
     async refreshSchemaCache(connectionId: string): Promise<void> {
-        Logger.info('Refreshing schema cache', { connectionId });
+        Logger.info('Refreshing schema cache', 'refreshSchemaCache', { connectionId });
 
         // Clear all cache entries for this connection
         for (const [key, cache] of Array.from(this.schemaCache.entries())) {
@@ -214,7 +214,7 @@ export class SchemaManager {
         options: SchemaComparisonOptions = { mode: 'strict' }
     ): Promise<SchemaComparisonResult> {
         try {
-            Logger.info('Comparing schemas', {
+            Logger.info('Comparing schemas', 'compareSchemas', {
                 sourceConnectionId,
                 targetConnectionId,
                 mode: options.mode
@@ -245,7 +245,7 @@ export class SchemaManager {
                 executionTime: Date.now() - Date.now() // Will be updated when comparison completes
             };
 
-            Logger.info('Schema comparison completed', {
+            Logger.info('Schema comparison completed', 'compareSchemas', {
                 comparisonId: result.comparisonId,
                 differenceCount: differences.length
             });
@@ -346,8 +346,8 @@ export class SchemaManager {
     private objectsDiffer(source: DatabaseObject, target: DatabaseObject, mode: 'strict' | 'lenient'): boolean {
         if (mode === 'strict') {
             return source.definition !== target.definition ||
-                   source.owner !== target.owner ||
-                   source.sizeInBytes !== target.sizeInBytes;
+                source.owner !== target.owner ||
+                source.sizeInBytes !== target.sizeInBytes;
         } else {
             // Lenient mode: ignore formatting and whitespace differences
             const sourceDef = this.normalizeDefinition(source.definition || '');
@@ -442,11 +442,11 @@ export class SchemaManager {
                 // Search in name, schema, or definition
                 const searchLower = searchTerm.toLowerCase();
                 return obj.name.toLowerCase().includes(searchLower) ||
-                       obj.schema.toLowerCase().includes(searchLower) ||
-                       (obj.definition && obj.definition.toLowerCase().includes(searchLower));
+                    obj.schema.toLowerCase().includes(searchLower) ||
+                    (obj.definition && obj.definition.toLowerCase().includes(searchLower));
             });
 
-            Logger.info('Object search completed', {
+            Logger.info('Object search completed', 'searchObjects', {
                 connectionId,
                 searchTerm,
                 resultCount: filtered.length

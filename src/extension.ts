@@ -4,7 +4,6 @@ import { ExtensionInitializer, ExtensionComponents } from './utils/ExtensionInit
 import { Logger } from './utils/Logger';
 import { ErrorHandler } from './utils/ErrorHandler';
 import { DotNetIntegrationService } from './services/DotNetIntegrationService';
-// ErrorSeverity enum - moved from ErrorRecoveryService
 export enum ErrorSeverity {
     LOW = 'LOW',
     MEDIUM = 'MEDIUM',
@@ -133,12 +132,12 @@ export function deactivate(): Thenable<void> | undefined {
                 dotNetService.dispose();
                 promises.push(Promise.resolve());
             } catch (error) {
-                Logger.warn('Error disposing .NET service, continuing with other disposals', error as Error);
+                Logger.warn('Error disposing .NET service, continuing with other disposals', 'deactivate', error as Error);
                 ErrorHandler.handleError(error, ErrorHandler.createContext('DotNetServiceDisposal'));
                 promises.push(Promise.resolve()); // Don't fail deactivation for .NET disposal errors
             }
         } catch (error) {
-            Logger.warn('Failed to get .NET service instance during deactivation', error as Error);
+            Logger.warn('Failed to get .NET service instance during deactivation', 'deactivate', error as Error);
         }
 
         if (extension) {
@@ -445,7 +444,6 @@ function registerCommands(context: vscode.ExtensionContext, extension: PostgreSq
 function registerEventHandlers(context: vscode.ExtensionContext, treeProvider: any): void {
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(() => {
-            // Update tree view based on active editor context
         })
     );
 

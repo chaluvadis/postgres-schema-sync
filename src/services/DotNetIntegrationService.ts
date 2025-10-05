@@ -1,7 +1,7 @@
 import { Logger } from '../utils/Logger';
 
 // Import Edge.js for .NET interop
-const edge = require('edge-js');
+import edge from 'edge-js';
 
 export interface DotNetConnectionInfo {
     id: string;
@@ -176,12 +176,12 @@ export class DotNetIntegrationService {
         await this.ensureInitialized();
 
         try {
-            Logger.debug('Testing connection via .NET library', { connectionId: connectionInfo.id });
+            Logger.debug('Testing connection via .NET library', 'testConnection', { connectionId: connectionInfo.id });
 
             // Call .NET library method
             const result = await this.callDotNetMethod<boolean>('TestConnectionAsync', connectionInfo);
 
-            Logger.debug('Connection test completed', { connectionId: connectionInfo.id, success: result });
+            Logger.debug('Connection test completed', 'testConnection', { connectionId: connectionInfo.id, success: result });
             return result;
         } catch (error) {
             Logger.error('Failed to test connection via .NET library', error as Error);
@@ -193,7 +193,7 @@ export class DotNetIntegrationService {
         await this.ensureInitialized();
 
         try {
-            Logger.debug('Browsing schema via .NET library', {
+            Logger.debug('Browsing schema via .NET library', 'browseSchema', {
                 connectionId: connectionInfo.id,
                 schemaFilter
             });
@@ -205,7 +205,7 @@ export class DotNetIntegrationService {
                 schemaFilter || null
             );
 
-            Logger.info('Schema browsing completed', {
+            Logger.info('Schema browsing completed', 'browseSchema', {
                 connectionId: connectionInfo.id,
                 objectCount: objects.length
             });
@@ -225,7 +225,7 @@ export class DotNetIntegrationService {
         await this.ensureInitialized();
 
         try {
-            Logger.debug('Comparing schemas via .NET library', {
+            Logger.debug('Comparing schemas via .NET library', 'compareSchemas', {
                 sourceConnection: sourceConnection.id,
                 targetConnection: targetConnection.id
             });
@@ -238,7 +238,7 @@ export class DotNetIntegrationService {
                 options
             );
 
-            Logger.info('Schema comparison completed', {
+            Logger.info('Schema comparison completed', 'compareSchemas', {
                 comparisonId: comparison.id,
                 differenceCount: comparison.differences.length
             });
@@ -257,7 +257,8 @@ export class DotNetIntegrationService {
         await this.ensureInitialized();
 
         try {
-            Logger.debug('Generating migration via .NET library', {
+            Logger.debug('Generating migration via .NET library',
+                'generateMigration', {
                 comparisonId: comparison.id
             });
 
@@ -268,7 +269,7 @@ export class DotNetIntegrationService {
                 options
             );
 
-            Logger.info('Migration generation completed', {
+            Logger.info('Migration generation completed', 'generateMigration', {
                 migrationId: migration.id,
                 operationCount: migration.sqlScript.split('\n').length
             });
@@ -287,7 +288,8 @@ export class DotNetIntegrationService {
         await this.ensureInitialized();
 
         try {
-            Logger.debug('Executing migration via .NET library', {
+            Logger.debug('Executing migration via .NET library',
+                'executeMigration', {
                 migrationId: migration.id,
                 targetConnection: connection.id
             });
@@ -299,7 +301,7 @@ export class DotNetIntegrationService {
                 connection
             );
 
-            Logger.info('Migration execution completed', {
+            Logger.info('Migration execution completed', 'executeMigration', {
                 migrationId: migration.id,
                 status: result.status,
                 operationsExecuted: result.operationsExecuted
@@ -321,7 +323,7 @@ export class DotNetIntegrationService {
         await this.ensureInitialized();
 
         try {
-            Logger.debug('Getting object details via .NET library', {
+            Logger.debug('Getting object details via .NET library', 'getObjectDetails', {
                 connectionId: connectionInfo.id,
                 objectType,
                 schema,
@@ -337,7 +339,7 @@ export class DotNetIntegrationService {
                 objectName
             );
 
-            Logger.debug('Object details retrieved', {
+            Logger.debug('Object details retrieved', 'getObjectDetails', {
                 connectionId: connectionInfo.id,
                 objectType,
                 objectName
@@ -357,7 +359,7 @@ export class DotNetIntegrationService {
         ...args: any[]
     ): Promise<TResult> {
         try {
-            Logger.debug('Calling .NET method', { methodName, argCount: args.length });
+            Logger.debug('Calling .NET method', 'getObjectDetails', { methodName, argCount: args.length });
 
             // Get .NET function
             const dotNetFunction = this.dotNetFunctions[methodName];
@@ -372,14 +374,14 @@ export class DotNetIntegrationService {
                         Logger.error('Edge.js call failed', error, { methodName });
                         reject(new Error(`.NET method call failed: ${error.message || error.toString()}`));
                     } else {
-                        Logger.debug('.NET method call completed successfully', { methodName });
+                        Logger.debug('.NET method call completed successfully', 'getObjectDetails', { methodName });
                         resolve(result);
                     }
                 });
             });
 
         } catch (error) {
-            Logger.error('Failed to call .NET method', error as Error, { methodName });
+            Logger.error('Failed to call .NET method', error as Error, 'callDotNetMethod', { methodName });
             throw error;
         }
     }
@@ -390,10 +392,6 @@ export class DotNetIntegrationService {
         if (!initialized) {
             throw new Error('.NET integration service failed to initialize');
         }
-    }
-
-    private generateId(): string {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
     }
 
     async dispose(): Promise<void> {

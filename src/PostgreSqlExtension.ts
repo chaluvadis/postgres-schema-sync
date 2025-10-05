@@ -109,7 +109,6 @@ export class PostgreSqlExtension {
             );
         }
     }
-
     async testConnection(connection: any): Promise<void> {
         const context = ErrorHandler.createEnhancedContext(
             'TestConnection',
@@ -185,7 +184,7 @@ export class PostgreSqlExtension {
                             }
                         });
 
-                        Logger.info('Connection test successful', { connectionId: connection.id, connectionName: connection.name });
+                        Logger.info('Connection test successful', 'testConnection', { connectionId: connection.id, connectionName: connection.name });
                     } else {
                         const errorMsg = `Connection "${connection.name}" failed. Please check your host, port, database name, username, and password.`;
                         vscode.window.showErrorMessage(
@@ -228,7 +227,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, context);
         }
     }
-
     async refreshExplorer(): Promise<void> {
         try {
             Logger.info('Refreshing PostgreSQL explorer');
@@ -241,10 +239,9 @@ export class PostgreSqlExtension {
             );
         }
     }
-
     async browseSchema(connectionId: string, schemaName?: string): Promise<void> {
         try {
-            Logger.info('Opening schema browser', { connectionId, schemaName });
+            Logger.info('Opening schema browser', 'browseSchema', { connectionId, schemaName });
 
             if (!connectionId) {
                 vscode.window.showErrorMessage('No connection specified for schema browsing');
@@ -256,7 +253,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, ErrorHandler.createContext('BrowseSchema'));
         }
     }
-
     async compareSchemas(source: any, target: any): Promise<void> {
         const context = ErrorHandler.createEnhancedContext(
             'CompareSchemas',
@@ -264,7 +260,7 @@ export class PostgreSqlExtension {
         );
 
         try {
-            Logger.info('Comparing schemas', { source, target });
+            Logger.info('Comparing schemas', 'browseSchema', { source, target });
 
             if (!source?.id || !target?.id) {
                 const error = new Error('Source and target connections are required for schema comparison');
@@ -441,7 +437,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, ErrorHandler.createContext('CompareSchemas'));
         }
     }
-
     async generateMigration(comparison: any): Promise<void> {
         try {
             Logger.info('Generating migration', comparison);
@@ -488,7 +483,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, ErrorHandler.createContext('GenerateMigration'));
         }
     }
-
     async executeMigration(migration: any): Promise<void> {
         const context = ErrorHandler.createEnhancedContext(
             'ExecuteMigration',
@@ -665,7 +659,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, ErrorHandler.createContext('ExecuteMigration'));
         }
     }
-
     async previewMigration(migration: any): Promise<void> {
         try {
             Logger.info('Previewing migration', migration);
@@ -695,7 +688,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, ErrorHandler.createContext('PreviewMigration'));
         }
     }
-
     async rollbackMigration(migration: any): Promise<void> {
         try {
             Logger.info('Rolling back migration', migration);
@@ -743,7 +735,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, ErrorHandler.createContext('RollbackMigration'));
         }
     }
-
     async viewObjectDetails(databaseObject: any): Promise<void> {
         try {
             Logger.info('Viewing object details', databaseObject);
@@ -795,7 +786,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, ErrorHandler.createContext('ViewObjectDetails'));
         }
     }
-
     async showHelp(): Promise<void> {
         try {
             Logger.info('Showing help');
@@ -816,7 +806,6 @@ export class PostgreSqlExtension {
             );
         }
     }
-
     async showLogs(): Promise<void> {
         try {
             Logger.info('Showing logs');
@@ -828,7 +817,6 @@ export class PostgreSqlExtension {
             );
         }
     }
-
     async openSettings(): Promise<void> {
         try {
             Logger.info('Opening settings');

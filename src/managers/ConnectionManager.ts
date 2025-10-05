@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '../utils/Logger';
-import { ErrorHandler } from '../utils/ErrorHandler';
 import { DotNetIntegrationService, DotNetConnectionInfo } from '../services/DotNetIntegrationService';
-import { ErrorSeverity } from '../extension';
 
 export interface DatabaseConnection {
     id: string;

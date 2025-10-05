@@ -19,12 +19,7 @@ export enum ErrorSeverity {
 export class ErrorHandler {
     private static errorCounts: Map<string, number> = new Map();
     private static lastErrorTimes: Map<string, Date> = new Map();
-
     private constructor() { }
-
-    /**
-     * Creates an error context for logging and tracking
-     */
     static createContext(operation: string, contextData?: Record<string, any>): ErrorContext {
         return {
             operation,
@@ -32,10 +27,6 @@ export class ErrorHandler {
             contextData
         };
     }
-
-    /**
-     * Creates an enhanced error context with additional metadata
-     */
     static createEnhancedContext(
         operation: string,
         contextData?: Record<string, any>,
@@ -55,9 +46,6 @@ export class ErrorHandler {
         };
     }
 
-    /**
-     * Handles an error with context information
-     */
     static handleError(error: unknown, context: ErrorContext): void {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : undefined;
@@ -83,10 +71,6 @@ export class ErrorHandler {
             this.showUserErrorNotification(errorMessage, context);
         }
     }
-
-    /**
-     * Handles an error with severity level
-     */
     static handleErrorWithSeverity(
         error: unknown,
         context: ErrorContext,
@@ -128,9 +112,6 @@ export class ErrorHandler {
         }
     }
 
-    /**
-     * Tracks error statistics for monitoring
-     */
     private static trackError(operation: string, errorMessage: string): void {
         const key = `${operation}:${errorMessage}`;
         const currentCount = this.errorCounts.get(key) || 0;
@@ -139,14 +120,11 @@ export class ErrorHandler {
 
         // Log error statistics periodically
         if (currentCount > 0 && currentCount % 10 === 0) {
-            Logger.warn(`Error '{errorMessage}' in operation '{operation}' has occurred {currentCount} times",
-                operation, { errorMessage, count: currentCount });
+            Logger.warn(`Error '{errorMessage}' in operation '{operation}' has occurred {currentCount} times`, 'trackError',
+                { errorMessage, count: currentCount });
         }
     }
 
-    /**
-     * Determines if an error should show a user notification
-     */
     private static shouldShowUserNotification(errorMessage: string): boolean {
         const userNotificationKeywords = [
             'connection failed',
@@ -163,10 +141,6 @@ export class ErrorHandler {
             errorMessage.toLowerCase().includes(keyword)
         );
     }
-
-    /**
-     * Shows a user-friendly error notification
-     */
     private static showUserErrorNotification(errorMessage: string, context: ErrorContext): void {
         const actions: string[] = [];
 
@@ -195,10 +169,7 @@ export class ErrorHandler {
         });
     }
 
-    /**
-     * Gets error statistics for monitoring
-     */
-    static getErrorStatistics(): { totalErrors: number; errorsByOperation: Record<string, number>; recentErrors: Array<{ operation: string; message: string; timestamp: Date }> } {
+    static getErrorStatistics(): { totalErrors: number; errorsByOperation: Record<string, number>; recentErrors: Array<{ operation: string; message: string; timestamp: Date; }>; } {
         const totalErrors = Array.from(this.errorCounts.values()).reduce((sum, count) => sum + count, 0);
 
         const errorsByOperation: Record<string, number> = {};
@@ -225,19 +196,12 @@ export class ErrorHandler {
             recentErrors
         };
     }
-
-    /**
-     * Clears error statistics
-     */
     static clearErrorStatistics(): void {
         this.errorCounts.clear();
         this.lastErrorTimes.clear();
         Logger.info('Error statistics cleared');
     }
 
-    /**
-     * Determines error severity based on error type and message
-     */
     static determineSeverity(error: unknown): ErrorSeverity {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const message = errorMessage.toLowerCase();
@@ -266,14 +230,9 @@ export class ErrorHandler {
             message.includes('deadlock')) {
             return ErrorSeverity.MEDIUM;
         }
-
-        // Low severity errors
         return ErrorSeverity.LOW;
     }
 
-    /**
-     * Wraps an async operation with error handling
-     */
     static async wrapAsyncOperation<T>(
         operation: () => Promise<T>,
         context: ErrorContext,
@@ -287,10 +246,6 @@ export class ErrorHandler {
             throw error;
         }
     }
-
-    /**
-     * Wraps a sync operation with error handling
-     */
     static wrapSyncOperation<T>(
         operation: () => T,
         context: ErrorContext,
@@ -304,4 +259,4 @@ export class ErrorHandler {
             throw error;
         }
     }
-};;
+};
