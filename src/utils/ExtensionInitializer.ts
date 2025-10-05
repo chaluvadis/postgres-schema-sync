@@ -3,299 +3,286 @@ import { ConnectionManager } from '../managers/ConnectionManager';
 import { SchemaManager } from '../managers/SchemaManager';
 import { MigrationManager } from '../managers/MigrationManager';
 import { PostgreSqlTreeProvider } from '../providers/PostgreSqlTreeProvider';
+import { ActivityBarProvider } from '../providers/ActivityBarProvider';
 import { EnhancedStatusBarProvider } from '../providers/EnhancedStatusBarProvider';
-import { NotificationManager } from '../views/NotificationManager';
-import { EnhancedTreeProvider } from '../views/EnhancedTreeProvider';
-import { InteractiveSchemaComparisonView } from '../views/InteractiveSchemaComparisonView';
-import { AdvancedMigrationPreviewView } from '../views/AdvancedMigrationPreviewView';
+import { ConnectionManagementView } from '../views/ConnectionManagementView';
+import { SchemaBrowserView } from '../views/SchemaBrowserView';
+import { SchemaComparisonView } from '../views/SchemaComparisonView';
+import { MigrationPreviewView } from '../views/MigrationPreviewView';
+import { SettingsView } from '../views/SettingsView';
 import { DashboardView } from '../views/DashboardView';
+import { ErrorDisplayView } from '../views/ErrorDisplayView';
+import { NotificationManager } from '../views/NotificationManager';
+import { DotNetIntegrationService } from '../services/DotNetIntegrationService';
 import { Logger } from './Logger';
+import { ErrorHandler } from './ErrorHandler';
 
 export interface ExtensionComponents {
     connectionManager: ConnectionManager;
     schemaManager: SchemaManager;
     migrationManager: MigrationManager;
     treeProvider: PostgreSqlTreeProvider;
-    notificationManager?: NotificationManager;
+    activityBarProvider?: ActivityBarProvider;
     enhancedStatusBarProvider?: EnhancedStatusBarProvider;
-    enhancedTreeProvider?: EnhancedTreeProvider;
-    interactiveComparisonView?: InteractiveSchemaComparisonView;
-    advancedMigrationPreviewView?: AdvancedMigrationPreviewView;
     dashboardView?: DashboardView;
+    connectionView?: ConnectionManagementView;
+    schemaBrowserView?: SchemaBrowserView;
+    schemaComparisonView?: SchemaComparisonView;
+    migrationPreviewView?: MigrationPreviewView;
+    settingsView?: SettingsView;
+    errorDisplayView?: ErrorDisplayView;
+    notificationManager?: NotificationManager;
+    interactiveComparisonView?: any;
+    advancedMigrationPreviewView?: any;
+    enhancedTreeProvider?: any;
 }
 
 export class ExtensionInitializer {
+    private static dotNetService: DotNetIntegrationService;
+
     /**
-     * Initialize a component with standardized error handling and performance tracking
+     * Initializes the .NET integration service
+     */
+    static async initializeDotNetService(): Promise<boolean> {
+        try {
+            Logger.info('Initializing .NET integration service');
+
+            this.dotNetService = DotNetIntegrationService.getInstance();
+            const initialized = await this.dotNetService.initialize();
+
+            if (initialized) {
+                Logger.info('.NET integration service initialized successfully');
+                return true;
+            } else {
+                Logger.warn('.NET integration service initialization failed');
+                return false;
+            }
+        } catch (error) {
+            Logger.error('Failed to initialize .NET integration service', error as Error);
+            return false;
+        }
+    }
+
+    /**
+     * Initializes core extension components
+     */
+    static initializeCoreComponents(context: vscode.ExtensionContext): ExtensionComponents {
+        try {
+            Logger.info('Initializing core extension components');
+
+            // Initialize core managers
+            const connectionManager = new ConnectionManager(context);
+            const schemaManager = new SchemaManager(connectionManager);
+            const migrationManager = new MigrationManager(connectionManager);
+            const treeProvider = new PostgreSqlTreeProvider(connectionManager, schemaManager);
+
+            const components: ExtensionComponents = {
+                connectionManager,
+                schemaManager,
+                migrationManager,
+                treeProvider
+            };
+
+            Logger.info('Core extension components initialized successfully');
+            return components;
+        } catch (error) {
+            Logger.error('Failed to initialize core extension components', error as Error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initializes optional UI components
+     */
+    static initializeOptionalComponents(
+        context: vscode.ExtensionContext,
+        coreComponents: ExtensionComponents
+    ): ExtensionComponents {
+        try {
+            Logger.info('Initializing optional UI components');
+
+            // Initialize optional components
+            const activityBarProvider = new ActivityBarProvider(coreComponents.connectionManager);
+            const notificationManager = NotificationManager.getInstance();
+            const enhancedStatusBarProvider = EnhancedStatusBarProvider.getInstance(coreComponents.connectionManager, notificationManager);
+            const dashboardView = new DashboardView(coreComponents.connectionManager, coreComponents.schemaManager);
+            const connectionView = new ConnectionManagementView(coreComponents.connectionManager);
+            const schemaBrowserView = new SchemaBrowserView(coreComponents.schemaManager, coreComponents.connectionManager);
+            const schemaComparisonView = new SchemaComparisonView();
+            const migrationPreviewView = new MigrationPreviewView();
+            const settingsView = new SettingsView();
+            const errorDisplayView = new ErrorDisplayView();
+
+            // Add optional components to the core components
+            const components: ExtensionComponents = {
+                ...coreComponents,
+                activityBarProvider,
+                enhancedStatusBarProvider,
+                dashboardView,
+                connectionView,
+                schemaBrowserView,
+                schemaComparisonView,
+                migrationPreviewView,
+                settingsView,
+                errorDisplayView,
+                notificationManager
+            };
+
+            Logger.info('Optional UI components initialized successfully');
+            return components;
+        } catch (error) {
+            Logger.error('Failed to initialize optional UI components', error as Error);
+            // Return core components even if optional components fail
+            return coreComponents;
+        }
+    }
+
+    /**
+     * Registers the tree view with VSCode
+     */
+    static registerTreeView(
+        treeProvider: PostgreSqlTreeProvider,
+        context: vscode.ExtensionContext
+    ): vscode.TreeView<any> {
+        try {
+            Logger.info('Registering PostgreSQL tree view');
+
+            const treeView = vscode.window.createTreeView('postgresqlExplorer', {
+                treeDataProvider: treeProvider,
+                showCollapseAll: true,
+                canSelectMany: false
+            });
+
+            // Register tree view in subscriptions for proper disposal
+            context.subscriptions.push(treeView);
+
+            Logger.info('PostgreSQL tree view registered successfully');
+            return treeView;
+        } catch (error) {
+            Logger.error('Failed to register tree view', error as Error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initializes a specific component with error handling
      */
     static initializeComponent<T>(
         componentName: string,
-        initializer: () => T,
-        isCritical: boolean = false
+        factory: () => T,
+        required: boolean = false
     ): T | undefined {
-        const startTime = Date.now();
-
         try {
-            const component = initializer();
-            const initializationTime = Date.now() - startTime;
+            Logger.debug(`Initializing component: ${componentName}`);
 
-            Logger.debug(`${componentName} initialized successfully`, {
-                duration: `${initializationTime}ms`,
-                isCritical
-            });
+            const component = factory();
 
+            Logger.debug(`Component ${componentName} initialized successfully`);
             return component;
         } catch (error) {
-            const initializationTime = Date.now() - startTime;
-            const errorMessage = `Failed to initialize ${componentName} after ${initializationTime}ms`;
+            const errorMessage = `Failed to initialize component ${componentName}`;
+            Logger.error(errorMessage, error as Error);
 
-            Logger.error(errorMessage, {
-                error: error as Error,
-                isCritical,
-                duration: `${initializationTime}ms`
-            });
-
-            if (isCritical) {
+            if (required) {
                 throw new Error(`${errorMessage}: ${(error as Error).message}`);
             } else {
-                Logger.warn(`${errorMessage}, continuing without this component`);
+                Logger.warn(`Component ${componentName} is not required, continuing without it`);
                 return undefined;
             }
         }
     }
 
     /**
-     * Initialize all core components with enhanced error handling and performance tracking
+     * Gets the .NET integration service instance
      */
-    static initializeCoreComponents(context: vscode.ExtensionContext): ExtensionComponents {
-        Logger.info('Initializing core extension components');
-        const startTime = Date.now();
-
-        // Initialize ConnectionManager first (critical component)
-        const connectionManager = this.initializeComponent(
-            'ConnectionManager',
-            () => new ConnectionManager(context),
-            true
-        ) as ConnectionManager;
-
-        Logger.debug('ConnectionManager initialized successfully');
-
-        // Initialize managers that depend on ConnectionManager
-        const schemaManager = this.initializeComponent(
-            'SchemaManager',
-            () => new SchemaManager(connectionManager),
-            true
-        ) as SchemaManager;
-
-        Logger.debug('SchemaManager initialized successfully');
-
-        const migrationManager = this.initializeComponent(
-            'MigrationManager',
-            () => new MigrationManager(connectionManager),
-            true
-        ) as MigrationManager;
-
-        Logger.debug('MigrationManager initialized successfully');
-
-        // Initialize tree provider
-        const treeProvider = this.initializeComponent(
-            'PostgreSqlTreeProvider',
-            () => new PostgreSqlTreeProvider(connectionManager, schemaManager),
-            true
-        ) as PostgreSqlTreeProvider;
-
-        Logger.debug('PostgreSqlTreeProvider initialized successfully');
-
-        const initializationTime = Date.now() - startTime;
-        Logger.info('Core components initialization completed', {
-            duration: `${initializationTime}ms`,
-            componentsCount: 4
-        });
-
-        return {
-            connectionManager,
-            schemaManager,
-            migrationManager,
-            treeProvider
-        };
+    static getDotNetService(): DotNetIntegrationService {
+        if (!this.dotNetService) {
+            throw new Error('.NET integration service not initialized');
+        }
+        return this.dotNetService;
     }
 
     /**
-     * Initialize optional UI components with enhanced error handling and logging
+     * Validates that all required components are initialized
      */
-    static initializeOptionalComponents(
-        context: vscode.ExtensionContext,
-        components: ExtensionComponents
-    ): ExtensionComponents {
-        Logger.info('Initializing optional extension components');
-        const startTime = Date.now();
-
-        // Initialize notification manager
-        const notificationManager = this.initializeComponent(
-            'NotificationManager',
-            () => NotificationManager.getInstance(),
-            false
-        ) as NotificationManager;
-
-        Logger.debug('NotificationManager initialized', {
-            hasInstance: !!notificationManager
-        });
-
-        // Initialize enhanced status bar provider
-        const enhancedStatusBarProvider = this.initializeComponent(
-            'EnhancedStatusBarProvider',
-            () => EnhancedStatusBarProvider.getInstance(
-                components.connectionManager,
-                notificationManager || NotificationManager.getInstance()
-            ),
-            false
-        ) as EnhancedStatusBarProvider;
-
-        Logger.debug('EnhancedStatusBarProvider initialized', {
-            hasInstance: !!enhancedStatusBarProvider
-        });
-
-        // Initialize enhanced tree provider
-        const enhancedTreeProvider = this.initializeComponent(
-            'EnhancedTreeProvider',
-            () => new EnhancedTreeProvider(
-                components.connectionManager,
-                components.schemaManager
-            ),
-            false
-        ) as EnhancedTreeProvider;
-
-        Logger.debug('EnhancedTreeProvider initialized', {
-            hasInstance: !!enhancedTreeProvider
-        });
-
-        // Initialize interactive comparison view
-        const interactiveComparisonView = this.initializeComponent(
-            'InteractiveSchemaComparisonView',
-            () => new InteractiveSchemaComparisonView(),
-            false
-        ) as InteractiveSchemaComparisonView;
-
-        Logger.debug('InteractiveSchemaComparisonView initialized', {
-            hasInstance: !!interactiveComparisonView
-        });
-
-        // Initialize advanced migration preview view
-        const advancedMigrationPreviewView = this.initializeComponent(
-            'AdvancedMigrationPreviewView',
-            () => new AdvancedMigrationPreviewView(),
-            false
-        ) as AdvancedMigrationPreviewView;
-
-        Logger.debug('AdvancedMigrationPreviewView initialized', {
-            hasInstance: !!advancedMigrationPreviewView
-        });
-
-        // Initialize dashboard view
-        const dashboardView = this.initializeComponent(
-            'DashboardView',
-            () => new DashboardView(
-                components.connectionManager,
-                components.schemaManager
-            ),
-            false
-        ) as DashboardView;
-
-        Logger.debug('DashboardView initialized', {
-            hasInstance: !!dashboardView
-        });
-
-        const initializationTime = Date.now() - startTime;
-        Logger.info('Optional components initialization completed', {
-            duration: `${initializationTime}ms`,
-            componentsInitialized: [
-                notificationManager,
-                enhancedStatusBarProvider,
-                enhancedTreeProvider,
-                interactiveComparisonView,
-                advancedMigrationPreviewView,
-                dashboardView
-            ].filter(Boolean).length
-        });
-
-        return {
-            ...components,
-            notificationManager,
-            enhancedStatusBarProvider,
-            enhancedTreeProvider,
-            interactiveComparisonView,
-            advancedMigrationPreviewView,
-            dashboardView
-        };
-    }
-
-    /**
-     * Register VS Code tree view with enhanced configuration and error handling
-     */
-    static registerTreeView(
-        treeProvider: PostgreSqlTreeProvider,
-        context: vscode.ExtensionContext
-    ): vscode.TreeView<any> {
-        Logger.debug('Registering PostgreSQL tree view');
-
-        return this.initializeComponent(
-            'TreeView',
-            () => {
-                const treeView = vscode.window.createTreeView('postgresqlExplorer', {
-                    treeDataProvider: treeProvider,
-                    showCollapseAll: true,
-                    canSelectMany: false,
-                    manageCheckboxStateManually: false
-                });
-
-                // Register tree view disposal with context subscriptions
-                context.subscriptions.push(treeView);
-
-                Logger.info('PostgreSQL tree view registered successfully', {
-                    viewId: 'postgresqlExplorer',
-                    canSelectMany: false,
-                    showCollapseAll: true
-                });
-
-                return treeView;
-            },
-            true
-        ) as vscode.TreeView<any>;
-    }
-
-    /**
-     * Initialize .NET integration service with enhanced error handling and performance tracking
-     */
-    static async initializeDotNetService(): Promise<boolean> {
-        const startTime = Date.now();
-
+    static validateComponents(components: ExtensionComponents): void {
         try {
-            Logger.debug('Starting .NET integration service initialization');
+            Logger.info('Validating extension components');
 
-            const { DotNetIntegrationService } = await import('../services/DotNetIntegrationService');
-            const dotNetService = DotNetIntegrationService.getInstance();
-            const isAvailable = await dotNetService.initialize();
-
-            const initializationTime = Date.now() - startTime;
-
-            if (isAvailable) {
-                Logger.info('.NET library integration enabled successfully', {
-                    duration: `${initializationTime}ms`
-                });
-                return true;
-            } else {
-                Logger.warn('.NET library not available, running in compatibility mode', {
-                    duration: `${initializationTime}ms`
-                });
-                return false;
+            if (!components.connectionManager) {
+                throw new Error('ConnectionManager is required but not initialized');
             }
+
+            if (!components.schemaManager) {
+                throw new Error('SchemaManager is required but not initialized');
+            }
+
+            if (!components.migrationManager) {
+                throw new Error('MigrationManager is required but not initialized');
+            }
+
+            if (!components.treeProvider) {
+                throw new Error('PostgreSqlTreeProvider is required but not initialized');
+            }
+
+            Logger.info('All required extension components validated successfully');
         } catch (error) {
-            const initializationTime = Date.now() - startTime;
-            Logger.warn('.NET integration failed, continuing without .NET features', {
-                error: (error as Error).message,
-                duration: `${initializationTime}ms`
-            });
-            return false;
+            Logger.error('Component validation failed', error as Error);
+            throw error;
+        }
+    }
+
+    /**
+     * Disposes all extension components
+     */
+    static async disposeComponentsAsync(components: ExtensionComponents): Promise<void> {
+        try {
+            Logger.info('Disposing extension components');
+
+            const disposePromises: Promise<void>[] = [];
+
+            // Dispose managers
+            if (components.connectionManager) {
+                disposePromises.push(Promise.resolve(components.connectionManager.dispose()));
+            }
+
+            if (components.schemaManager) {
+                disposePromises.push(Promise.resolve(components.schemaManager.dispose()));
+            }
+
+            if (components.migrationManager) {
+                disposePromises.push(Promise.resolve(components.migrationManager.dispose()));
+            }
+
+            // Dispose providers
+            if (components.activityBarProvider) {
+                components.activityBarProvider.dispose();
+            }
+
+            if (components.enhancedStatusBarProvider) {
+                components.enhancedStatusBarProvider.dispose();
+            }
+
+            // Dispose views (if they have dispose methods)
+            if (components.dashboardView && typeof components.dashboardView.dispose === 'function') {
+                disposePromises.push(Promise.resolve(components.dashboardView.dispose()));
+            }
+
+            if (components.notificationManager) {
+                components.notificationManager.dispose();
+            }
+
+            // Dispose .NET service
+            if (this.dotNetService) {
+                disposePromises.push(this.dotNetService.dispose());
+            }
+
+            await Promise.all(disposePromises);
+
+            Logger.info('All extension components disposed successfully');
+        } catch (error) {
+            Logger.error('Error disposing extension components', error as Error);
+            throw error;
         }
     }
 }

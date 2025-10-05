@@ -1,205 +1,310 @@
 namespace PostgreSqlSchemaCompareSync.Core.Comparison.Cache;
 
-public class SchemaCacheManager : IDisposable, ISchemaCacheManager
+public class SchemaCacheManager : ISchemaCacheManager
 {
-    private readonly SchemaSettings _settings;
     private readonly ILogger<SchemaCacheManager> _logger;
-    private readonly SchemaMetadataExtractor _metadataExtractor;
+    private readonly AppSettings _settings;
     private readonly ConcurrentDictionary<string, CacheEntry> _cache;
-    private readonly Timer _refreshTimer;
-    private readonly SemaphoreSlim _cacheLock;
+    private readonly Timer _cleanupTimer;
+    private int _hitCount;
+    private int _missCount;
     private bool _disposed;
+
     public SchemaCacheManager(
-        IOptions<AppSettings> settings,
         ILogger<SchemaCacheManager> logger,
-        SchemaMetadataExtractor metadataExtractor)
+        IOptions<AppSettings> settings)
     {
-        _settings = settings.Value.Schema;
-        _logger = logger;
-        _metadataExtractor = metadataExtractor;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
+
         _cache = new ConcurrentDictionary<string, CacheEntry>();
-        _cacheLock = new SemaphoreSlim(1, 1);
-        // Start background refresh timer
-        _refreshTimer = new Timer(
-            RefreshCallback,
-            null,
-            TimeSpan.FromSeconds(_settings.BackgroundRefreshInterval),
-            TimeSpan.FromSeconds(_settings.BackgroundRefreshInterval));
-        _logger.LogInformation("Schema cache manager initialized with {Interval}s refresh interval",
-            _settings.BackgroundRefreshInterval);
+
+        // Setup cleanup timer (every 5 minutes)
+        _cleanupTimer = new Timer(CleanupExpiredEntries, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
     }
-    public async Task<List<DatabaseObject>> GetSchemaAsync(
-        ConnectionInfo connectionInfo,
+
+    /// <summary>
+    /// Gets cached database objects for a connection
+    /// </summary>
+    public Task<List<DatabaseObject>?> GetCachedObjectsAsync(
+        string connectionId,
         string? schemaFilter = null,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = GetCacheKey(connectionInfo, schemaFilter);
-        // Try to get from cache first
-        if (_cache.TryGetValue(cacheKey, out var cacheEntry))
+        if (string.IsNullOrEmpty(connectionId))
+            throw new ArgumentNullException(nameof(connectionId));
+
+        var cacheKey = GenerateCacheKey(connectionId, schemaFilter);
+
+        if (_cache.TryGetValue(cacheKey, out var entry))
         {
-            if (!cacheEntry.IsExpired)
+            if (IsEntryValid(entry))
             {
-                _logger.LogDebug("Cache hit for {CacheKey}", cacheKey);
-                return cacheEntry.Objects;
+                Interlocked.Increment(ref _hitCount);
+                _logger.LogDebug("Cache hit for connection {ConnectionId}, schema filter: {SchemaFilter}", connectionId, schemaFilter);
+
+                // Update access time
+                entry.LastAccessed = DateTime.UtcNow;
+                return Task.FromResult<List<DatabaseObject>?>(DeepClone(entry.Objects));
             }
             else
             {
-                _logger.LogDebug("Cache expired for {CacheKey}", cacheKey);
+                // Entry expired, remove it
+                _cache.TryRemove(cacheKey, out _);
+                _logger.LogDebug("Expired cache entry removed for connection {ConnectionId}", connectionId);
             }
         }
-        // Cache miss or expired - fetch from database
-        await _cacheLock.WaitAsync(cancellationToken);
-        try
-        {
-            // Double-check after acquiring lock
-            if (_cache.TryGetValue(cacheKey, out cacheEntry) && !cacheEntry.IsExpired)
-            {
-                return cacheEntry.Objects;
-            }
-            _logger.LogInformation("Fetching schema metadata for {Database}", connectionInfo.Database);
-            using var connection = new NpgsqlConnection(connectionInfo.ConnectionString);
-            await connection.OpenAsync(cancellationToken);
-            var objects = await _metadataExtractor.ExtractAllObjectsAsync(
-                connection, schemaFilter, cancellationToken);
-            // Update cache
-            cacheEntry = new CacheEntry
-            {
-                Objects = objects,
-                CachedAt = DateTime.UtcNow,
-                LastAccessedAt = DateTime.UtcNow,
-                AccessCount = 1
-            };
-            _cache[cacheKey] = cacheEntry;
-            _logger.LogInformation("Cached {ObjectCount} objects for {CacheKey}", objects.Count, cacheKey);
-            return objects;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to fetch schema for {CacheKey}", cacheKey);
-            throw;
-        }
-        finally
-        {
-            _cacheLock.Release();
-        }
+
+        Interlocked.Increment(ref _missCount);
+        _logger.LogDebug("Cache miss for connection {ConnectionId}, schema filter: {SchemaFilter}", connectionId, schemaFilter);
+        return Task.FromResult<List<DatabaseObject>?>(null);
     }
-    public async Task<DatabaseObject?> GetObjectAsync(
-        ConnectionInfo connectionInfo,
-        ObjectType objectType,
-        string schema,
-        string objectName,
-        CancellationToken cancellationToken = default)
-    {
-        var objects = await GetSchemaAsync(connectionInfo, schema, cancellationToken);
-        return objects.FirstOrDefault(obj =>
-            obj.Type == objectType &&
-            obj.Schema.Equals(schema, StringComparison.OrdinalIgnoreCase) &&
-            obj.Name.Equals(objectName, StringComparison.OrdinalIgnoreCase));
-    }
-    public async Task RefreshSchemaAsync(
-        ConnectionInfo connectionInfo,
+
+    /// <summary>
+    /// Caches database objects for a connection
+    /// </summary>
+    public Task CacheObjectsAsync(
+        string connectionId,
+        List<DatabaseObject> objects,
         string? schemaFilter = null,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = GetCacheKey(connectionInfo, schemaFilter);
-        await _cacheLock.WaitAsync(cancellationToken);
-        try
+        if (string.IsNullOrEmpty(connectionId))
+            throw new ArgumentNullException(nameof(connectionId));
+        if (objects == null)
+            throw new ArgumentNullException(nameof(objects));
+
+        var cacheKey = GenerateCacheKey(connectionId, schemaFilter);
+        var entry = new CacheEntry
         {
-            _cache.TryRemove(cacheKey, out _);
-            _logger.LogInformation("Cache cleared for {CacheKey}", cacheKey);
-            // Fetch fresh data
-            await GetSchemaAsync(connectionInfo, schemaFilter, cancellationToken);
-        }
-        finally
-        {
-            _cacheLock.Release();
-        }
-    }
-    public void ClearCache()
-    {
-        _cache.Clear();
-        _logger.LogInformation("All schema cache cleared");
-    }
-    public SchemaCacheStats GetStats()
-    {
-        var entries = _cache.ToArray();
-        var totalObjects = entries.Sum(e => e.Value.Objects.Count);
-        var totalSize = entries.Sum(e => e.Value.EstimatedSizeBytes);
-        return new SchemaCacheStats
-        {
-            TotalEntries = entries.Length,
-            TotalObjects = totalObjects,
-            TotalSizeBytes = totalSize,
-            OldestEntry = entries.Min(e => e.Value.CachedAt),
-            NewestEntry = entries.Max(e => e.Value.CachedAt),
-            AverageAccessCount = entries.Any() ? entries.Average(e => e.Value.AccessCount) : 0
+            ConnectionId = connectionId,
+            SchemaFilter = schemaFilter,
+            Objects = DeepClone(objects),
+            CachedAt = DateTime.UtcNow,
+            LastAccessed = DateTime.UtcNow,
+            SizeBytes = EstimateSize(objects)
         };
-    }
-    private void RefreshCallback(object? state)
-    {
-        Task.Run(PerformBackgroundRefreshAsync);
-    }
-    private void PerformBackgroundRefreshAsync()
-    {
-        var expiredKeys = _cache
-            .Where(kvp => kvp.Value.IsExpired)
-            .Select(kvp => kvp.Key)
-            .ToList();
-        if (expiredKeys.Count == 0)
+
+        // Check cache size limits
+        if (_cache.Count >= _settings.Schema.MaxCacheSize)
         {
-            return;
+            // Remove oldest entries to make space
+            CleanupOldEntriesAsync(10).Wait();
         }
-        _logger.LogInformation("Background refresh: removing {ExpiredCount} expired entries", expiredKeys.Count);
-        foreach (var key in expiredKeys)
+
+        _cache[cacheKey] = entry;
+
+        _logger.LogDebug("Cached {ObjectCount} objects for connection {ConnectionId}, size: {SizeBytes} bytes",
+            objects.Count, connectionId, entry.SizeBytes);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Invalidates cache for a connection
+    /// </summary>
+    public Task InvalidateCacheAsync(
+        string connectionId,
+        string? schemaFilter = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(connectionId))
+            throw new ArgumentNullException(nameof(connectionId));
+
+        var entriesToRemove = _cache.Keys
+            .Where(key => key.StartsWith($"{connectionId}:"))
+            .ToList();
+
+        foreach (var key in entriesToRemove)
         {
             _cache.TryRemove(key, out _);
         }
-        // Log cache statistics after cleanup
-        var stats = GetStats();
-        _logger.LogDebug("Cache stats after cleanup: {TotalEntries} entries, {TotalObjects} objects",
-            stats.TotalEntries, stats.TotalObjects);
+
+        _logger.LogInformation("Invalidated cache for connection {ConnectionId}", connectionId);
+
+        return Task.CompletedTask;
     }
-    private string GetCacheKey(ConnectionInfo connectionInfo, string? schemaFilter)
+
+    /// <summary>
+    /// Checks if cache is valid for a connection
+    /// </summary>
+    public Task<bool> IsCacheValidAsync(
+        string connectionId,
+        string? schemaFilter = null,
+        CancellationToken cancellationToken = default)
     {
-        return $"{connectionInfo.Host}:{connectionInfo.Port}:{connectionInfo.Database}:{schemaFilter ?? "all"}";
+        if (string.IsNullOrEmpty(connectionId))
+            throw new ArgumentNullException(nameof(connectionId));
+
+        var cacheKey = GenerateCacheKey(connectionId, schemaFilter);
+
+        if (_cache.TryGetValue(cacheKey, out var entry))
+        {
+            return Task.FromResult(IsEntryValid(entry));
+        }
+
+        return Task.FromResult(false);
     }
+
+    /// <summary>
+    /// Gets cache statistics
+    /// </summary>
+    public CacheStatistics GetCacheStatistics()
+    {
+        var entries = _cache.Values.ToList();
+
+        return new CacheStatistics
+        {
+            TotalEntries = _cache.Count,
+            TotalSizeBytes = entries.Sum(e => e.SizeBytes),
+            OldestEntry = entries.Any() ? entries.Min(e => e.CachedAt) : DateTime.UtcNow,
+            NewestEntry = entries.Any() ? entries.Max(e => e.CachedAt) : DateTime.UtcNow,
+            HitCount = _hitCount,
+            MissCount = _missCount
+        };
+    }
+
+    /// <summary>
+    /// Clears all caches
+    /// </summary>
+    public Task ClearAllCachesAsync(CancellationToken cancellationToken = default)
+    {
+        var entryCount = _cache.Count;
+        _cache.Clear();
+
+        _hitCount = 0;
+        _missCount = 0;
+
+        _logger.LogInformation("Cleared all caches ({EntryCount} entries)", entryCount);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Generates a cache key for the connection and schema filter
+    /// </summary>
+    private string GenerateCacheKey(string connectionId, string? schemaFilter)
+    {
+        return $"{connectionId}:{schemaFilter ?? "all"}";
+    }
+
+    /// <summary>
+    /// Checks if a cache entry is still valid
+    /// </summary>
+    private bool IsEntryValid(CacheEntry entry)
+    {
+        var age = DateTime.UtcNow - entry.CachedAt;
+        return age.TotalSeconds < _settings.Schema.CacheTimeout;
+    }
+
+    /// <summary>
+    /// Creates a deep clone of objects
+    /// </summary>
+    private List<DatabaseObject> DeepClone(List<DatabaseObject> objects)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(objects);
+            return JsonSerializer.Deserialize<List<DatabaseObject>>(json) ?? [];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to deep clone objects, returning as-is");
+            return objects; // Fallback to shallow copy
+        }
+    }
+
+    /// <summary>
+    /// Estimates the size of objects in bytes
+    /// </summary>
+    private long EstimateSize(List<DatabaseObject> objects)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(objects);
+            return System.Text.Encoding.UTF8.GetByteCount(json);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to estimate object size");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Cleans up expired cache entries
+    /// </summary>
+    private void CleanupExpiredEntries(object? state)
+    {
+        try
+        {
+            var expiredKeys = _cache
+                .Where(kvp => !IsEntryValid(kvp.Value))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in expiredKeys)
+            {
+                _cache.TryRemove(key, out _);
+            }
+
+            if (expiredKeys.Any())
+            {
+                _logger.LogDebug("Cleaned up {ExpiredCount} expired cache entries", expiredKeys.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during cache cleanup");
+        }
+    }
+
+    /// <summary>
+    /// Cleans up old entries to make space
+    /// </summary>
+    private Task CleanupOldEntriesAsync(int targetRemovalCount)
+    {
+        try
+        {
+            var entriesToRemove = _cache
+                .OrderBy(kvp => kvp.Value.LastAccessed)
+                .Take(targetRemovalCount)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in entriesToRemove)
+            {
+                _cache.TryRemove(key, out _);
+            }
+
+            _logger.LogDebug("Cleaned up {RemovalCount} old cache entries", entriesToRemove.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during old entries cleanup");
+        }
+
+        return Task.CompletedTask;
+    }
+
     public void Dispose()
     {
         if (!_disposed)
         {
-            _disposed = true;
-            _refreshTimer?.Dispose();
-            _cacheLock?.Dispose();
+            _cleanupTimer.Dispose();
             _cache.Clear();
-            _logger.LogInformation("Schema cache manager disposed");
+            _disposed = true;
+
+            _logger.LogInformation("SchemaCacheManager disposed");
         }
     }
-}
-public class CacheEntry
-{
-    public List<DatabaseObject> Objects { get; set; } = [];
-    public DateTime CachedAt { get; set; }
-    public DateTime LastAccessedAt { get; set; }
-    public int AccessCount { get; set; }
-    public bool IsExpired => DateTime.UtcNow - CachedAt > TimeSpan.FromSeconds(300); // 5 minutes default
-    public long EstimatedSizeBytes
+    private class CacheEntry
     {
-        get
-        {
-            // Rough estimation: average object size * count
-            const long averageObjectSize = 1024; // 1KB per object estimate
-            return Objects.Count * averageObjectSize;
-        }
+        public string ConnectionId { get; set; } = string.Empty;
+        public string? SchemaFilter { get; set; }
+        public List<DatabaseObject> Objects { get; set; } = [];
+        public DateTime CachedAt { get; set; }
+        public DateTime LastAccessed { get; set; }
+        public long SizeBytes { get; set; }
     }
-}
-public class SchemaCacheStats
-{
-    public int TotalEntries { get; set; }
-    public int TotalObjects { get; set; }
-    public long TotalSizeBytes { get; set; }
-    public DateTime OldestEntry { get; set; }
-    public DateTime NewestEntry { get; set; }
-    public double AverageAccessCount { get; set; }
-    public double CacheHitRatio => TotalObjects > 0 ? (double)TotalObjects / (TotalObjects + AverageAccessCount) : 0;
-    public string SizeFormatted => $"{TotalSizeBytes / 1024.0:F2} KB";
 }

@@ -1,109 +1,137 @@
-namespace PostgreSqlSchemaCompareSync.Infrastructure.Exceptions;
-
-using System.Text.Json;
-using System.Text.Json.Serialization;
-
-public class DatabaseException : Exception
+namespace PostgreSqlSchemaCompareSync.Infrastructure.Exceptions
 {
-    public string? Database { get; init; }
-    public string? Schema { get; init; }
-    public string? ObjectName { get; init; }
-    public DatabaseErrorCode ErrorCode { get; init; }
-
-    public DatabaseException() { }
-    public DatabaseException(string message) : base(message) { }
-    public DatabaseException(string message, Exception innerException) : base(message, innerException) { }
-    public DatabaseException(string message, string? database, string? schema, string? objectName, DatabaseErrorCode errorCode)
-        : base(message)
+    /// <summary>
+    /// Base exception for database-related errors
+    /// </summary>
+    public class DatabaseException : Exception
     {
-        Database = database;
-        Schema = schema;
-        ObjectName = objectName;
-        ErrorCode = errorCode;
+        public string? ConnectionId { get; }
+        public DatabaseErrorCode ErrorCode { get; protected set; }
+
+        public DatabaseException(string message)
+            : base(message)
+        {
+            ErrorCode = DatabaseErrorCode.Unknown;
+        }
+
+        public DatabaseException(string message, Exception innerException)
+            : base(message, innerException)
+        {
+            ErrorCode = DatabaseErrorCode.Unknown;
+        }
+
+        public DatabaseException(string message, string connectionId, DatabaseErrorCode errorCode)
+            : base(message)
+        {
+            ConnectionId = connectionId;
+            ErrorCode = errorCode;
+        }
+
+        public DatabaseException(string message, string connectionId, DatabaseErrorCode errorCode, Exception innerException)
+            : base(message, innerException)
+        {
+            ConnectionId = connectionId;
+            ErrorCode = errorCode;
+        }
     }
-    public DatabaseException(string message, string? database, DatabaseErrorCode errorCode)
-        : base(message)
+
+    /// <summary>
+    /// Exception for connection-related errors
+    /// </summary>
+    public class ConnectionException : DatabaseException
     {
-        Database = database;
-        ErrorCode = errorCode;
+        public ConnectionException(string message)
+            : base(message)
+        {
+            ErrorCode = DatabaseErrorCode.ConnectionFailed;
+        }
+
+        public ConnectionException(string message, string connectionId)
+            : base(message, connectionId, DatabaseErrorCode.ConnectionFailed)
+        {
+        }
+
+        public ConnectionException(string message, string connectionId, Exception innerException)
+            : base(message, connectionId, DatabaseErrorCode.ConnectionFailed, innerException)
+        {
+        }
     }
 
-    public virtual string ToJson() => JsonSerializer.Serialize(this, GetType());
-    public static T FromJson<T>(string json) where T : DatabaseException
-        => JsonSerializer.Deserialize<T>(json)!;
-}
+    /// <summary>
+    /// Exception for schema-related errors
+    /// </summary>
+    public class SchemaException : DatabaseException
+    {
+        public SchemaException(string message)
+            : base(message)
+        {
+            ErrorCode = DatabaseErrorCode.SchemaError;
+        }
 
-public class ConnectionException : DatabaseException
-{
-    public ConnectionException(string message) : base(message) { }
-    public ConnectionException(string message, string database) : base(message, database, DatabaseErrorCode.ConnectionFailed) { }
-    public ConnectionException(string message, Exception innerException) : base(message, innerException) { }
-}
+        public SchemaException(string message, string connectionId)
+            : base(message, connectionId, DatabaseErrorCode.SchemaError)
+        {
+        }
 
-public class SchemaExtractionException : DatabaseException
-{
-    public SchemaExtractionException(string message) : base(message) { }
-    public SchemaExtractionException(string message, string database, string schema)
-        : base(message, database, schema, string.Empty, DatabaseErrorCode.SchemaExtractionFailed) { }
-}
+        public SchemaException(string message, string connectionId, Exception innerException)
+            : base(message, connectionId, DatabaseErrorCode.SchemaError, innerException)
+        {
+        }
+    }
 
-public class ComparisonException : DatabaseException
-{
-    public ComparisonException(string message) : base(message) { }
-    public ComparisonException(string message, string sourceDatabase, string targetDatabase)
-        : base(message, $"{sourceDatabase}->{targetDatabase}", DatabaseErrorCode.ComparisonFailed) { }
-}
+    /// <summary>
+    /// Exception for migration-related errors
+    /// </summary>
+    public class MigrationException : DatabaseException
+    {
+        public string? MigrationId { get; }
 
-public class MigrationException : DatabaseException
-{
-    public Guid MigrationId { get; init; }
-    public MigrationException(string message) : base(message) { }
-    public MigrationException(string message, Guid migrationId)
-        : base(message) => MigrationId = migrationId;
-    public MigrationException(string message, Guid migrationId, Exception innerException)
-        : base(message, innerException) => MigrationId = migrationId;
+        public MigrationException(string message)
+            : base(message)
+        {
+            ErrorCode = DatabaseErrorCode.MigrationError;
+        }
 
-    public override string ToJson() => JsonSerializer.Serialize(this, GetType());
-    public static MigrationException FromJson(string json)
-        => JsonSerializer.Deserialize<MigrationException>(json)!;
-}
+        public MigrationException(string message, string migrationId)
+            : base(message)
+        {
+            ErrorCode = DatabaseErrorCode.MigrationError;
+            MigrationId = migrationId;
+        }
 
-public class ValidationException : DatabaseException
-{
-    public ValidationException(string message) : base(message) { }
-    public ValidationException(string message, string database, string schema, string objectName)
-        : base(message, database, schema, objectName, DatabaseErrorCode.ValidationFailed) { }
-}
+        public MigrationException(string message, string connectionId, string migrationId)
+            : base(message, connectionId, DatabaseErrorCode.MigrationError)
+        {
+            MigrationId = migrationId;
+        }
 
-public enum DatabaseErrorCode
-{
-    // Connection errors (1000-1099)
-    ConnectionFailed = 1000,
-    ConnectionTimeout = 1001,
-    AuthenticationFailed = 1002,
-    ConnectionPoolExhausted = 1003,
-    // Schema errors (1100-1199)
-    SchemaExtractionFailed = 1100,
-    ObjectNotFound = 1101,
-    SchemaAccessDenied = 1102,
-    // Comparison errors (1200-1299)
-    ComparisonFailed = 1200,
-    IncompatibleSchemas = 1201,
-    ComparisonTimeout = 1202,
-    // Migration errors (1300-1399)
-    MigrationFailed = 1300,
-    MigrationRollbackFailed = 1301,
-    TransactionFailed = 1302,
-    // Validation errors (1400-1499)
-    ValidationFailed = 1400,
-    InvalidConfiguration = 1401,
-    UnsupportedOperation = 1402,
-    // Performance errors (1500-1599)
-    OperationTimeout = 1500,
-    MemoryLimitExceeded = 1501,
-    ResourceExhausted = 1502,
-    // System errors (1600-1699)
-    ConfigurationError = 1600,
-    DependencyInjectionError = 1601,
-    LoggingError = 1602
+        public MigrationException(string message, string connectionId, string migrationId, Exception innerException)
+            : base(message, connectionId, DatabaseErrorCode.MigrationError, innerException)
+        {
+            MigrationId = migrationId;
+        }
+    }
+
+    /// <summary>
+    /// Database error codes for categorization
+    /// </summary>
+    public enum DatabaseErrorCode
+    {
+        Unknown = 0,
+        ConnectionFailed = 1000,
+        ConnectionTimeout = 1001,
+        AuthenticationFailed = 1002,
+        AccessDenied = 1003,
+        DatabaseNotFound = 1004,
+        SchemaError = 2000,
+        ObjectNotFound = 2001,
+        ObjectAlreadyExists = 2002,
+        MigrationError = 3000,
+        MigrationExecutionFailed = 3001,
+        RollbackFailed = 3002,
+        TransactionFailed = 4000,
+        ConstraintViolation = 4001,
+        Deadlock = 4002,
+        SerializationFailure = 4003
+    }
 }

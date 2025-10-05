@@ -1,10 +1,5 @@
-using PostgreSqlSchemaCompareSync.Core.Comparison.Schema;
-
 namespace PostgreSqlSchemaCompareSync;
-/// <summary>
-/// Main extension class for PostgreSQL Schema Compare & Sync functionality.
-/// Provides high-level API for database operations.
-/// </summary>
+
 public class PostgreSqlSchemaCompareSync : IDisposable
 {
     private readonly IServiceProvider _serviceProvider;
@@ -93,7 +88,7 @@ public class PostgreSqlSchemaCompareSync : IDisposable
     public async Task<SchemaComparison> CompareSchemasAsync(
         ConnectionInfo sourceConnection,
         ConnectionInfo targetConnection,
-        ComparisonOptions options,
+        SchemaComparisonOptions options,
         CancellationToken cancellationToken = default)
     {
         try

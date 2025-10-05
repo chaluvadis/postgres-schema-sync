@@ -1,6 +1,9 @@
 namespace PostgreSqlSchemaCompareSync.Core.Migration.Generation;
 
-public interface IMigrationScriptGenerator
+public interface IMigrationScriptGenerator : IDisposable
 {
-    Task<MigrationScript> GenerateMigrationScriptAsync(SchemaComparison comparison, MigrationOptions options, CancellationToken cancellationToken = default);
+    Task<MigrationScript> GenerateMigrationScriptAsync(
+        SchemaComparison comparison,
+        MigrationOptions options,
+        CancellationToken cancellationToken = default);
 }

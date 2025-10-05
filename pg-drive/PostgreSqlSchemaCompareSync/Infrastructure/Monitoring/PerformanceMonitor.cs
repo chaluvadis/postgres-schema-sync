@@ -1,200 +1,285 @@
-namespace PostgreSqlSchemaCompareSync.Infrastructure.Monitoring;
-public class PerformanceMonitor : IDisposable
+namespace PostgreSqlSchemaCompareSync.Infrastructure.Monitoring
 {
-    private readonly ILogger<PerformanceMonitor> _logger;
-    private readonly StructuredLogger _structuredLogger;
-    private readonly ConcurrentDictionary<string, PerformanceMetric> _metrics;
-    private readonly ConcurrentDictionary<string, Stopwatch> _activeOperations;
-    private readonly Timer _reportingTimer;
-    private bool _disposed;
-    public PerformanceMonitor(
-        ILogger<PerformanceMonitor> logger,
-        StructuredLogger structuredLogger)
+    /// <summary>
+    /// Performance monitoring for PostgreSQL Schema Compare & Sync
+    /// </summary>
+    public class PerformanceMonitor : IDisposable
     {
-        _logger = logger;
-        _structuredLogger = structuredLogger;
-        _metrics = new ConcurrentDictionary<string, PerformanceMetric>();
-        _activeOperations = new ConcurrentDictionary<string, Stopwatch>();
-        // Report performance metrics every 60 seconds
-        _reportingTimer = new Timer(
-            ReportPerformanceMetrics,
-            null,
-            TimeSpan.FromSeconds(60),
-            TimeSpan.FromSeconds(60));
-        _logger.LogInformation("Performance monitor initialized");
-    }
-    public IDisposable BeginOperation(string operationName, Dictionary<string, object>? context = null)
-    {
-        var operationId = Guid.NewGuid().ToString("N");
-        var stopwatch = Stopwatch.StartNew();
-        _activeOperations[operationId] = stopwatch;
-        _structuredLogger.LogOperationStart(operationName, context);
-        return new OperationScope(this, operationId, operationName, _structuredLogger);
-    }
-    public void EndOperation(string operationId, string operationName, bool success = true, Dictionary<string, object>? additionalMetrics = null)
-    {
-        if (_activeOperations.TryRemove(operationId, out var stopwatch))
+        private readonly ILogger<PerformanceMonitor> _logger;
+        private readonly AppSettings _settings;
+        private readonly ConcurrentDictionary<string, PerformanceMetric> _metrics;
+        private readonly ConcurrentDictionary<string, Stopwatch> _activeOperations;
+        private readonly Timer _reportingTimer;
+        private bool _disposed;
+
+        public PerformanceMonitor(
+            ILogger<PerformanceMonitor> logger,
+            IOptions<AppSettings> settings)
         {
-            stopwatch.Stop();
-            var duration = stopwatch.Elapsed;
-            // Record the metric
-            var dimensions = new Dictionary<string, object>
-            {
-                ["Success"] = success
-            };
-            RecordMetric(operationName, duration.TotalMilliseconds, dimensions);
-            // Log the completion
-            _structuredLogger.LogOperationEnd(operationName, duration, success, additionalMetrics);
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
+
+            _metrics = new ConcurrentDictionary<string, PerformanceMetric>();
+            _activeOperations = new ConcurrentDictionary<string, Stopwatch>();
+
+            // Setup reporting timer (every 60 seconds)
+            _reportingTimer = new Timer(GeneratePerformanceReport, null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
         }
-    }
-    public void RecordMetric(string metricName, double value, Dictionary<string, object>? dimensions = null)
-    {
-        var metric = _metrics.GetOrAdd(metricName, name => new PerformanceMetric
+
+        /// <summary>
+        /// Starts monitoring an operation
+        /// </summary>
+        public void StartOperation(string operationId, string operationName, Dictionary<string, object>? metadata = null)
         {
-            Name = name,
-            FirstRecorded = DateTime.UtcNow,
-            Dimensions = dimensions ?? new Dictionary<string, object>()
-        });
-        metric.Update(value);
-        _structuredLogger.LogPerformanceMetric(metricName, value, dimensions);
-    }
-    public void RecordDatabaseOperation(string operation, string database, string schema, string objectName, TimeSpan duration)
-    {
-        _structuredLogger.LogDatabaseOperation(operation, database, schema, objectName, duration);
-        var dimensions = new Dictionary<string, object>
+            if (string.IsNullOrEmpty(operationId))
+                throw new ArgumentNullException(nameof(operationId));
+
+            var stopwatch = Stopwatch.StartNew();
+            _activeOperations[operationId] = stopwatch;
+
+            _logger.LogDebug("Started monitoring operation {OperationName} with ID {OperationId}", operationName, operationId);
+        }
+
+        /// <summary>
+        /// Stops monitoring an operation and records the metric
+        /// </summary>
+        public void EndOperation(string operationId, string operationName, Dictionary<string, object>? metadata = null)
         {
-            ["Database"] = database,
-            ["Schema"] = schema,
-            ["ObjectName"] = objectName
-        };
-        RecordMetric($"Database.{operation}", duration.TotalMilliseconds, dimensions);
-    }
-    public PerformanceMetricsSnapshot GetSnapshot()
-    {
-        var metrics = _metrics.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.GetSnapshot());
-        var activeOperationCount = _activeOperations.Count;
-        return new PerformanceMetricsSnapshot
-        {
-            Timestamp = DateTime.UtcNow,
-            Metrics = metrics,
-            ActiveOperationCount = activeOperationCount,
-            TotalMetricsRecorded = metrics.Sum(m => m.Value.Count)
-        };
-    }
-    private void ReportPerformanceMetrics(object? state)
-    {
-        var snapshot = GetSnapshot();
-        if (snapshot.TotalMetricsRecorded > 0)
-        {
-            _logger.LogInformation(
-                "Performance Report: {ActiveOperations} active operations, {TotalMetrics} total metrics recorded",
-                snapshot.ActiveOperationCount, snapshot.TotalMetricsRecorded);
-            // Log slow operations
-            var slowOperations = snapshot.Metrics
-                .Where(m => m.Value.AverageValue > 1000) // Operations slower than 1 second
-                .OrderByDescending(m => m.Value.AverageValue);
-            foreach (var slowOp in slowOperations.Take(5))
+            if (string.IsNullOrEmpty(operationId))
+                throw new ArgumentNullException(nameof(operationId));
+
+            if (_activeOperations.TryRemove(operationId, out var stopwatch))
             {
-                _logger.LogWarning(
-                    "Slow operation detected: {OperationName} - Avg: {AverageMs}ms, Max: {MaxMs}ms, Count: {Count}",
-                    slowOp.Key, slowOp.Value.AverageValue, slowOp.Value.MaxValue, slowOp.Value.Count);
+                stopwatch.Stop();
+                var duration = stopwatch.Elapsed;
+
+                var metric = new PerformanceMetric
+                {
+                    OperationName = operationName,
+                    Duration = duration,
+                    Timestamp = DateTime.UtcNow,
+                    Metadata = metadata ?? []
+                };
+
+                var key = $"{operationName}_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid().ToString().Substring(0, 8)}";
+                _metrics[key] = metric;
+
+                _logger.LogDebug("Ended monitoring operation {OperationName} with ID {OperationId}. Duration: {Duration}ms",
+                    operationName, operationId, duration.TotalMilliseconds);
+            }
+            else
+            {
+                _logger.LogWarning("Attempted to end operation {OperationId} that was not being monitored", operationId);
             }
         }
-    }
-    public void Dispose()
-    {
-        if (!_disposed)
+
+        /// <summary>
+        /// Records a custom performance metric
+        /// </summary>
+        public void RecordMetric(string metricName, double value, string unit, Dictionary<string, object>? dimensions = null)
         {
-            _disposed = true;
-            _reportingTimer?.Dispose();
-            // Log final performance report
-            var finalSnapshot = GetSnapshot();
-            _logger.LogInformation(
-                "Performance monitor disposed. Final stats: {ActiveOperations} active operations, {TotalMetrics} total metrics",
-                finalSnapshot.ActiveOperationCount, finalSnapshot.TotalMetricsRecorded);
-            _metrics.Clear();
-            _activeOperations.Clear();
+            var metric = new PerformanceMetric
+            {
+                OperationName = metricName,
+                Duration = TimeSpan.FromMilliseconds(value),
+                Timestamp = DateTime.UtcNow,
+                Metadata = dimensions ?? [],
+                Unit = unit
+            };
+
+            var key = $"{metricName}_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid().ToString().Substring(0, 8)}";
+            _metrics[key] = metric;
+
+            _logger.LogDebug("Recorded custom metric {MetricName}: {Value}{Unit}", metricName, value, unit);
         }
-    }
-    private class OperationScope : IDisposable
-    {
-        private readonly PerformanceMonitor _monitor;
-        private readonly string _operationId;
-        private readonly string _operationName;
-        private readonly StructuredLogger _structuredLogger;
-        private bool _disposed;
-        public OperationScope(
-            PerformanceMonitor monitor,
-            string operationId,
-            string operationName,
-            StructuredLogger structuredLogger)
+
+        /// <summary>
+        /// Gets performance metrics for a specific operation
+        /// </summary>
+        public List<PerformanceMetric> GetMetrics(string operationName, TimeSpan? timeRange = null)
         {
-            _monitor = monitor;
-            _operationId = operationId;
-            _operationName = operationName;
-            _structuredLogger = structuredLogger;
+            var query = _metrics.Values.Where(m => m.OperationName == operationName);
+
+            if (timeRange.HasValue)
+            {
+                var cutoffTime = DateTime.UtcNow - timeRange.Value;
+                query = query.Where(m => m.Timestamp >= cutoffTime);
+            }
+
+            return query.OrderByDescending(m => m.Timestamp).ToList();
         }
+
+        /// <summary>
+        /// Gets performance statistics for an operation
+        /// </summary>
+        public PerformanceStatistics GetStatistics(string operationName, TimeSpan? timeRange = null)
+        {
+            var metrics = GetMetrics(operationName, timeRange);
+
+            if (!metrics.Any())
+            {
+                return new PerformanceStatistics
+                {
+                    OperationName = operationName,
+                    SampleCount = 0,
+                    AverageDuration = TimeSpan.Zero,
+                    MinDuration = TimeSpan.Zero,
+                    MaxDuration = TimeSpan.Zero
+                };
+            }
+
+            var durations = metrics.Select(m => m.Duration.TotalMilliseconds).ToList();
+
+            return new PerformanceStatistics
+            {
+                OperationName = operationName,
+                SampleCount = metrics.Count,
+                AverageDuration = TimeSpan.FromMilliseconds(durations.Average()),
+                MinDuration = TimeSpan.FromMilliseconds(durations.Min()),
+                MaxDuration = TimeSpan.FromMilliseconds(durations.Max()),
+                P95Duration = TimeSpan.FromMilliseconds(Percentile(durations, 0.95)),
+                P99Duration = TimeSpan.FromMilliseconds(Percentile(durations, 0.99)),
+                TotalDuration = TimeSpan.FromMilliseconds(durations.Sum())
+            };
+        }
+
+        /// <summary>
+        /// Gets all active operations
+        /// </summary>
+        public IReadOnlyDictionary<string, TimeSpan> GetActiveOperations()
+        {
+            return _activeOperations.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value.Elapsed);
+        }
+
+        /// <summary>
+        /// Clears old performance metrics
+        /// </summary>
+        public void ClearOldMetrics(TimeSpan retentionPeriod)
+        {
+            var cutoffTime = DateTime.UtcNow - retentionPeriod;
+            var keysToRemove = _metrics.Where(kvp => kvp.Value.Timestamp < cutoffTime).Select(kvp => kvp.Key).ToList();
+
+            foreach (var key in keysToRemove)
+            {
+                _metrics.TryRemove(key, out _);
+            }
+
+            _logger.LogInformation("Cleared {MetricCount} old performance metrics", keysToRemove.Count);
+        }
+
+        /// <summary>
+        /// Generates a performance report
+        /// </summary>
+        private void GeneratePerformanceReport(object? state)
+        {
+            try
+            {
+                var report = GenerateReport();
+                _logger.LogInformation("Performance Report:\n{Report}", report);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating performance report");
+            }
+        }
+
+        /// <summary>
+        /// Generates a detailed performance report
+        /// </summary>
+        public string GenerateReport()
+        {
+            var report = new System.Text.StringBuilder();
+            report.AppendLine("=== PostgreSQL Schema Compare & Sync Performance Report ===");
+            report.AppendLine($"Generated at: {DateTime.UtcNow}");
+            report.AppendLine($"Total metrics collected: {_metrics.Count}");
+            report.AppendLine($"Active operations: {_activeOperations.Count}");
+            report.AppendLine();
+
+            // Group metrics by operation
+            var operationGroups = _metrics.Values.GroupBy(m => m.OperationName);
+
+            foreach (var group in operationGroups)
+            {
+                var stats = GetStatistics(group.Key, TimeSpan.FromHours(1)); // Last hour
+                report.AppendLine($"Operation: {group.Key}");
+                report.AppendLine($"  Samples: {stats.SampleCount}");
+                report.AppendLine($"  Average: {stats.AverageDuration.TotalMilliseconds:F2}ms");
+                report.AppendLine($"  Min: {stats.MinDuration.TotalMilliseconds:F2}ms");
+                report.AppendLine($"  Max: {stats.MaxDuration.TotalMilliseconds:F2}ms");
+                report.AppendLine($"  P95: {stats.P95Duration.TotalMilliseconds:F2}ms");
+                report.AppendLine($"  P99: {stats.P99Duration.TotalMilliseconds:F2}ms");
+                report.AppendLine();
+            }
+
+            return report.ToString();
+        }
+
+        /// <summary>
+        /// Calculates percentile from a list of values
+        /// </summary>
+        private double Percentile(List<double> values, double percentile)
+        {
+            if (!values.Any())
+                return 0;
+
+            var sortedValues = values.OrderBy(v => v).ToList();
+            var index = (percentile / 100) * (sortedValues.Count - 1);
+
+            if (index < 0)
+                return sortedValues.First();
+            if (index >= sortedValues.Count - 1)
+                return sortedValues.Last();
+
+            var lowerIndex = (int)Math.Floor(index);
+            var upperIndex = (int)Math.Ceiling(index);
+
+            if (lowerIndex == upperIndex)
+                return sortedValues[lowerIndex];
+
+            var weight = index - lowerIndex;
+            return sortedValues[lowerIndex] * (1 - weight) + sortedValues[upperIndex] * weight;
+        }
+
         public void Dispose()
         {
             if (!_disposed)
             {
+                _reportingTimer.Dispose();
+                _metrics.Clear();
+                _activeOperations.Clear();
                 _disposed = true;
-                _monitor.EndOperation(_operationId, _operationName);
+
+                _logger.LogInformation("PerformanceMonitor disposed");
             }
         }
     }
-}
-public class PerformanceMetric
-{
-    public string Name { get; set; } = string.Empty;
-    public DateTime FirstRecorded { get; set; }
-    public Dictionary<string, object> Dimensions { get; set; } = new();
-    public long Count { get; private set; }
-    public double TotalValue { get; private set; }
-    public double MinValue { get; private set; } = double.MaxValue;
-    public double MaxValue { get; private set; }
-    public double AverageValue => Count > 0 ? TotalValue / Count : 0;
-    public double LastValue { get; private set; }
-    public void Update(double value)
+
+    /// <summary>
+    /// Performance metric information
+    /// </summary>
+    public class PerformanceMetric
     {
-        Count++;
-        TotalValue += value;
-        MinValue = Math.Min(MinValue, value);
-        MaxValue = Math.Max(MaxValue, value);
-        LastValue = value;
+        public string OperationName { get; set; } = string.Empty;
+        public TimeSpan Duration { get; set; }
+        public DateTime Timestamp { get; set; }
+        public Dictionary<string, object> Metadata { get; set; } = [];
+        public string? Unit { get; set; }
     }
-    public PerformanceMetricSnapshot GetSnapshot()
+
+    /// <summary>
+    /// Performance statistics summary
+    /// </summary>
+    public class PerformanceStatistics
     {
-        return new PerformanceMetricSnapshot
-        {
-            Name = Name,
-            Count = Count,
-            TotalValue = TotalValue,
-            AverageValue = AverageValue,
-            MinValue = MinValue,
-            MaxValue = MaxValue,
-            LastValue = LastValue,
-            FirstRecorded = FirstRecorded,
-            Dimensions = new Dictionary<string, object>(Dimensions)
-        };
+        public string OperationName { get; set; } = string.Empty;
+        public int SampleCount { get; set; }
+        public TimeSpan AverageDuration { get; set; }
+        public TimeSpan MinDuration { get; set; }
+        public TimeSpan MaxDuration { get; set; }
+        public TimeSpan P95Duration { get; set; }
+        public TimeSpan P99Duration { get; set; }
+        public TimeSpan TotalDuration { get; set; }
     }
-}
-public class PerformanceMetricSnapshot
-{
-    public string Name { get; set; } = string.Empty;
-    public long Count { get; set; }
-    public double TotalValue { get; set; }
-    public double AverageValue { get; set; }
-    public double MinValue { get; set; }
-    public double MaxValue { get; set; }
-    public double LastValue { get; set; }
-    public DateTime FirstRecorded { get; set; }
-    public Dictionary<string, object> Dimensions { get; set; } = new();
-}
-public class PerformanceMetricsSnapshot
-{
-    public DateTime Timestamp { get; set; }
-    public Dictionary<string, PerformanceMetricSnapshot> Metrics { get; set; } = new();
-    public int ActiveOperationCount { get; set; }
-    public long TotalMetricsRecorded { get; set; }
 }

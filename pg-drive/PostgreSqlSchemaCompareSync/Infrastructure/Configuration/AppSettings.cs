@@ -1,66 +1,58 @@
-namespace PostgreSqlSchemaCompareSync.Infrastructure.Configuration;
-public class AppSettings
+namespace PostgreSqlSchemaCompareSync.Infrastructure.Configuration
 {
-    public ConnectionSettings Connection { get; set; } = new();
-    public SchemaSettings Schema { get; set; } = new();
-    public ComparisonSettings Comparison { get; set; } = new();
-    public MigrationSettings Migration { get; set; } = new();
-    public LoggingSettings Logging { get; set; } = new();
-    public SecuritySettings Security { get; set; } = new();
-}
-public class ConnectionSettings
-{
-    [Range(30, 3600)]
-    public int DefaultCommandTimeout { get; set; } = 300;
-    [Range(1, 20)]
-    public int ConnectionPoolSize { get; set; } = 5;
-    [Range(10, 300)]
-    public int HealthCheckInterval { get; set; } = 30;
-    public bool EnableAutoRecovery { get; set; } = true;
-    [Range(1, 10)]
-    public int MaxRetryAttempts { get; set; } = 3;
-    [Range(500, 5000)]
-    public int RetryDelay { get; set; } = 1000;
-}
-public class SchemaSettings
-{
-    [Range(60, 3600)]
-    public int CacheTimeout { get; set; } = 300;
-    [Range(60, 1800)]
-    public int BackgroundRefreshInterval { get; set; } = 300;
-    [Range(1000, 100000)]
-    public int MaxObjectsPerSchema { get; set; } = 10000;
-    public bool EnableLazyLoading { get; set; } = true;
-}
-public class ComparisonSettings
-{
-    public string DefaultMode { get; set; } = "strict";
-    public bool EnableParallelProcessing { get; set; } = true;
-    [Range(1, 8)]
-    public int MaxDegreeOfParallelism { get; set; } = 4;
-    [Range(100, 10000)]
-    public int ChunkSize { get; set; } = 1000;
-}
-public class MigrationSettings
-{
-    [Range(10, 200)]
-    public int DefaultBatchSize { get; set; } = 50;
-    public bool EnableDryRun { get; set; } = true;
-    public bool GenerateRollbackScripts { get; set; } = true;
-    public bool LogAllOperations { get; set; } = true;
-}
-public class LoggingSettings
-{
-    public Dictionary<string, string> LogLevel { get; set; } = new()
+    /// <summary>
+    /// Application settings for PostgreSQL Schema Compare & Sync
+    /// </summary>
+    public class AppSettings
     {
-        ["Default"] = "Information",
-        ["Microsoft"] = "Warning",
-        ["PostgreSqlSchemaCompareSync"] = "Debug"
-    };
-}
-public class SecuritySettings
-{
-    public string CredentialStorage { get; set; } = "VSCodeSecretStorage";
-    public bool EncryptionEnabled { get; set; } = true;
-    public bool CertificateValidation { get; set; } = true;
+        public ConnectionSettings Connection { get; set; } = new ConnectionSettings();
+        public SchemaSettings Schema { get; set; } = new SchemaSettings();
+        public MigrationSettings Migration { get; set; } = new MigrationSettings();
+        public LoggingSettings Logging { get; set; } = new LoggingSettings();
+        public SecuritySettings Security { get; set; } = new SecuritySettings();
+    }
+
+    public class ConnectionSettings
+    {
+        public int ConnectionTimeout { get; set; } = 30;
+        public int CommandTimeout { get; set; } = 300;
+        public int MaxPoolSize { get; set; } = 20;
+        public int MinPoolSize { get; set; } = 5;
+        public bool AutoReconnect { get; set; } = true;
+        public int ReconnectAttempts { get; set; } = 3;
+        public int ReconnectDelay { get; set; } = 1000;
+    }
+
+    public class SchemaSettings
+    {
+        public int CacheTimeout { get; set; } = 300; // 5 minutes
+        public int MaxCacheSize { get; set; } = 1000;
+        public bool EnableParallelProcessing { get; set; } = true;
+        public int MaxDegreeOfParallelism { get; set; } = 4;
+        public string[] IgnoredSchemas { get; set; } = { "information_schema", "pg_catalog", "pg_toast" };
+    }
+
+    public class MigrationSettings
+    {
+        public int BatchSize { get; set; } = 50;
+        public bool EnableDryRun { get; set; } = true;
+        public bool GenerateRollbackScript { get; set; } = true;
+        public int TransactionTimeout { get; set; } = 300;
+        public bool ContinueOnError { get; set; } = false;
+    }
+
+    public class LoggingSettings
+    {
+        public string LogLevel { get; set; } = "Information";
+        public bool IncludeScopes { get; set; } = false;
+        public Dictionary<string, string> LogLevelOverrides { get; set; } = [];
+    }
+
+    public class SecuritySettings
+    {
+        public bool EnableSslValidation { get; set; } = true;
+        public bool AllowSelfSignedCertificates { get; set; } = false;
+        public int MinCertificateKeySize { get; set; } = 2048;
+        public int MaxCertificateValidityDays { get; set; } = 825; // ~2.25 years
+    }
 }

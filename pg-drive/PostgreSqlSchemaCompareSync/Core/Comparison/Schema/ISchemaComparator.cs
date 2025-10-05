@@ -5,11 +5,11 @@ public interface ISchemaComparator
     Task<SchemaComparison> CompareSchemasAsync(
         ConnectionInfo sourceConnection,
         ConnectionInfo targetConnection,
-        ComparisonOptions options,
+        SchemaComparisonOptions options,
         CancellationToken cancellationToken = default);
 }
 
-public class ComparisonOptions
+public class SchemaComparisonOptions
 {
     public ComparisonMode Mode { get; set; } = ComparisonMode.Strict;
     public List<string> SourceSchemas { get; set; } = [];

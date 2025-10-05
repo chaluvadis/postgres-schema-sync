@@ -1,19 +1,21 @@
+using PostgreSqlSchemaCompareSync.Core.Models;
+
 namespace PostgreSqlSchemaCompareSync.Core.Comparison.Schema;
 
 public class SchemaComparator(
     ILogger<SchemaComparator> logger,
-    SchemaMetadataExtractor metadataExtractor,
+    ISchemaBrowser schemaBrowser,
     IConnectionManager connectionManager,
     SchemaComparisonEngine comparisonEngine) : ISchemaComparator
 {
     private readonly ILogger<SchemaComparator> _logger = logger;
-    private readonly SchemaMetadataExtractor _metadataExtractor = metadataExtractor;
+    private readonly ISchemaBrowser _schemaBrowser = schemaBrowser;
     private readonly IConnectionManager _connectionManager = connectionManager;
     private readonly SchemaComparisonEngine _comparisonEngine = comparisonEngine;
     public async Task<SchemaComparison> CompareSchemasAsync(
         ConnectionInfo sourceConnection,
         ConnectionInfo targetConnection,
-        ComparisonOptions options,
+        SchemaComparisonOptions options,
         CancellationToken cancellationToken = default)
     {
         try
@@ -24,9 +26,21 @@ public class SchemaComparator(
             // Extract metadata from both databases
             var sourceObjects = await ExtractSchemaObjectsAsync(sourceConnection, options.SourceSchemas, cancellationToken);
             var targetObjects = await ExtractSchemaObjectsAsync(targetConnection, options.TargetSchemas, cancellationToken);
+            // Convert options to the expected type for SchemaComparisonEngine
+            var engineOptions = new MigrationComparisonOptions
+            {
+                Mode = options.Mode,
+                ObjectTypes = options.ObjectTypes,
+                IncludeSystemObjects = false // Default value
+            };
+
             // Perform comparison
             var differences = await _comparisonEngine.CompareObjectsAsync(
-                sourceObjects, targetObjects, options, cancellationToken);
+                sourceConnection,
+                targetConnection,
+                sourceObjects, targetObjects,
+                engineOptions, cancellationToken);
+
             var executionTime = DateTime.UtcNow - startTime;
             var comparison = new SchemaComparison
             {
@@ -57,14 +71,29 @@ public class SchemaComparator(
     {
         try
         {
-            using var connection = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
-            // If specific schemas requested, filter by them
-            string? schemaFilter = schemas.Count != 0 ? schemas.First() : null;
-            var objects = await _metadataExtractor.ExtractAllObjectsAsync(
-                connection, schemaFilter, cancellationToken);
-            _logger.LogDebug("Extracted {ObjectCount} objects from {Database}",
-                objects.Count, connectionInfo.Database);
-            return objects;
+            var allObjects = new List<DatabaseObject>();
+
+            if (schemas.Count == 0)
+            {
+                // Extract from all schemas
+                var objects = await _schemaBrowser.GetDatabaseObjectsAsync(
+                    connectionInfo, null, cancellationToken);
+                allObjects.AddRange(objects);
+            }
+            else
+            {
+                // Extract from each specified schema
+                foreach (var schema in schemas)
+                {
+                    var objects = await _schemaBrowser.GetDatabaseObjectsAsync(
+                        connectionInfo, schema, cancellationToken);
+                    allObjects.AddRange(objects);
+                }
+            }
+
+            _logger.LogDebug("Extracted {ObjectCount} objects from {Database} across {SchemaCount} schemas",
+                allObjects.Count, connectionInfo.Database, schemas.Count == 0 ? "all" : schemas.Count.ToString());
+            return allObjects;
         }
         catch (Exception ex)
         {

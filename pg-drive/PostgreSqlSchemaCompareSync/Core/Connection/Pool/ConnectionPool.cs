@@ -1,327 +1,233 @@
-namespace PostgreSqlSchemaCompareSync.Core.Connection.Pool;
-
-public class ConnectionPool : IDisposable, IAsyncDisposable
+namespace PostgreSqlSchemaCompareSync.Core.Connection.Pool
 {
-    private readonly ConnectionSettings _settings;
-    private readonly ILogger<ConnectionPool> _logger;
-    private readonly SemaphoreSlim _poolSemaphore;
-    private readonly SemaphoreSlim _timerSemaphore;
-    private readonly ConcurrentBag<PooledConnection> _connections;
-    private readonly ConcurrentDictionary<string, ConnectionStats> _connectionStats;
-    private readonly Timer _healthCheckTimer;
-    private readonly Timer _cleanupTimer;
-    private bool _disposed;
-
-    public ConnectionPool(
-        IOptions<AppSettings> settings,
-        ILogger<ConnectionPool> logger)
+    /// <summary>
+    /// Advanced connection pool for PostgreSQL connections
+    /// </summary>
+    public class ConnectionPool : IDisposable
     {
-        _settings = settings.Value.Connection;
-        _logger = logger;
-        _poolSemaphore = new(_settings.ConnectionPoolSize);
-        _timerSemaphore = new(1);
-        _connections = [];
-        _connectionStats = new();
-        _healthCheckTimer = new(
-            HealthCheckCallback,
-            null,
-            TimeSpan.FromSeconds(_settings.HealthCheckInterval),
-            TimeSpan.FromSeconds(_settings.HealthCheckInterval));
-        _cleanupTimer = new(
-            CleanupCallback,
-            null,
-            TimeSpan.FromMinutes(5),
-            TimeSpan.FromMinutes(5));
-        _logger.LogInformation(
-            "Connection pool initialized with max size {MaxPoolSize}, health check interval {HealthCheckInterval}s",
-            _settings.ConnectionPoolSize, _settings.HealthCheckInterval);
-    }
+        private readonly ILogger<ConnectionPool> _logger;
+        private readonly AppSettings _settings;
+        private readonly ConcurrentDictionary<string, ConcurrentBag<NpgsqlConnection>> _pools;
+        private readonly SemaphoreSlim _poolLock;
+        private bool _disposed;
 
-    public static async Task<ConnectionPool> CreateAsync(
-        IOptions<AppSettings> settings,
-        ILogger<ConnectionPool> logger)
-    {
-        var pool = new ConnectionPool(settings, logger);
-        await pool.InitializePoolAsync();
-        return pool;
-    }
-
-    private async Task InitializePoolAsync()
-    {
-        var tasks = Enumerable.Range(0, _settings.ConnectionPoolSize)
-            .Select(_ => CreateNewConnectionAsync().ContinueWith(t =>
-            {
-                if (t.Exception != null)
-                    _logger.LogWarning(t.Exception, "Failed to initialize connection in pool");
-                else
-                    _connections.Add(t.Result);
-            }));
-        await Task.WhenAll(tasks);
-        _logger.LogInformation("Connection pool initialization completed");
-    }
-
-    public async Task<PooledConnection> AcquireConnectionAsync(
-        ConnectionInfo connectionInfo,
-        CancellationToken cancellationToken = default)
-    {
-        var statsKey = GetStatsKey(connectionInfo);
-        _connectionStats.AddOrUpdate(statsKey,
-            _ => new ConnectionStats { AcquiredCount = 1 },
-            (_, stats) =>
-            {
-                stats.AcquiredCount++;
-                stats.LastAcquiredAt = DateTime.UtcNow;
-                return stats;
-            });
-
-        await _poolSemaphore.WaitAsync(cancellationToken);
-        try
+        public ConnectionPool(
+            ILogger<ConnectionPool> logger,
+            IOptions<AppSettings> settings)
         {
-            if (_connections.TryTake(out var pooledConnection))
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
+            _pools = new ConcurrentDictionary<string, ConcurrentBag<NpgsqlConnection>>();
+            _poolLock = new SemaphoreSlim(1, 1);
+        }
+
+        /// <summary>
+        /// Gets a connection from the pool or creates a new one
+        /// </summary>
+        public async Task<NpgsqlConnection> GetConnectionAsync(
+            ConnectionInfo connectionInfo,
+            CancellationToken cancellationToken = default)
+        {
+            if (connectionInfo == null)
+                throw new ArgumentNullException(nameof(connectionInfo));
+
+            var poolKey = GetPoolKey(connectionInfo);
+
+            // Try to get an existing connection from the pool
+            if (_pools.TryGetValue(poolKey, out var pool) &&
+                pool.TryTake(out var connection) &&
+                IsConnectionValid(connection))
             {
-                if (await IsConnectionHealthyAsync(pooledConnection.Connection))
-                {
-                    pooledConnection.LastAcquiredAt = DateTime.UtcNow;
-                    pooledConnection.AcquiredCount++;
-                    _logger.LogDebug("Acquired healthy connection {ConnectionId} from pool", pooledConnection.Id);
-                    return pooledConnection;
-                }
-                await pooledConnection.Connection.DisposeAsync();
-                _logger.LogWarning("Removed unhealthy connection {ConnectionId} from pool", pooledConnection.Id);
+                _logger.LogDebug("Reused connection from pool for {Database}", connectionInfo.Database);
+                return connection;
             }
-            var newConnection = await CreateNewConnectionAsync(connectionInfo);
-            _logger.LogDebug("Created new connection {ConnectionId} for acquisition", newConnection.Id);
+
+            // Create a new connection if pool is empty or all connections are invalid
+            var newConnection = await CreateNewConnectionAsync(connectionInfo, cancellationToken);
+            _logger.LogDebug("Created new connection for {Database}", connectionInfo.Database);
+
             return newConnection;
         }
-        catch (Exception ex)
-        {
-            _poolSemaphore.Release();
-            _logger.LogError(ex, "Failed to acquire connection for {Database}", connectionInfo.Database);
-            throw;
-        }
-    }
 
-    public async Task ReleaseConnectionAsync(PooledConnection connection)
-    {
-        try
+        /// <summary>
+        /// Returns a connection to the pool
+        /// </summary>
+        public void ReturnConnection(ConnectionInfo connectionInfo, NpgsqlConnection connection)
         {
-            if (connection.IsHealthy && !connection.IsExpired)
+            if (connectionInfo == null || connection == null)
+                return;
+
+            try
             {
-                _connections.Add(connection);
-                _poolSemaphore.Release();
-                _logger.LogDebug("Released healthy connection {ConnectionId} back to pool", connection.Id);
-            }
-            else
-            {
-                await connection.Connection.DisposeAsync();
-                _logger.LogWarning("Disposed unhealthy/expired connection {ConnectionId}", connection.Id);
-                _ = Task.Run(async () =>
+                if (IsConnectionValid(connection) && !_disposed)
                 {
-                    try
+                    var poolKey = GetPoolKey(connectionInfo);
+                    var pool = _pools.GetOrAdd(poolKey, _ => []);
+
+                    // Enforce pool size limits
+                    if (pool.Count < _settings.Connection.MaxPoolSize)
                     {
-                        var replacement = await CreateNewConnectionAsync();
-                        _connections.Add(replacement);
-                        _logger.LogDebug("Created replacement connection {ConnectionId}", replacement.Id);
+                        pool.Add(connection);
+                        _logger.LogDebug("Returned connection to pool for {Database}", connectionInfo.Database);
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        _logger.LogWarning(ex, "Failed to create replacement connection");
+                        // Pool is full, close the connection
+                        connection.Dispose();
+                        _logger.LogDebug("Pool full, disposed connection for {Database}", connectionInfo.Database);
                     }
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error releasing connection {ConnectionId}", connection.Id);
-        }
-    }
-
-    private async Task<PooledConnection> CreateNewConnectionAsync(ConnectionInfo? connectionInfo = null)
-    {
-        var connection = new NpgsqlConnection(connectionInfo?.ConnectionString ?? "Host=localhost;Database=postgres");
-        await connection.OpenAsync();
-        var pooledConnection = new PooledConnection
-        {
-            Id = Guid.NewGuid().ToString(),
-            Connection = connection,
-            CreatedAt = DateTime.UtcNow,
-            LastAcquiredAt = DateTime.UtcNow,
-            AcquiredCount = 0,
-            IsHealthy = true
-        };
-        _logger.LogDebug("Created new pooled connection {ConnectionId}", pooledConnection.Id);
-        return pooledConnection;
-    }
-
-    private async Task<bool> IsConnectionHealthyAsync(NpgsqlConnection connection)
-    {
-        try
-        {
-            if (connection.State != System.Data.ConnectionState.Open)
-                return false;
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT 1";
-            cmd.CommandTimeout = 5;
-            await cmd.ExecuteScalarAsync();
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private void HealthCheckCallback(object? state)
-    {
-        if (_disposed) return;
-        Task.Run(async () =>
-        {
-            await _timerSemaphore.WaitAsync();
-            try
-            {
-                await PerformHealthCheckAsync();
-            }
-            finally
-            {
-                _timerSemaphore.Release();
-            }
-        });
-    }
-
-    private async Task PerformHealthCheckAsync()
-    {
-        var unhealthyConnections = new List<PooledConnection>();
-        var healthyConnections = new List<PooledConnection>();
-        while (_connections.TryTake(out var connection))
-        {
-            if (await IsConnectionHealthyAsync(connection.Connection))
-            {
-                connection.IsHealthy = true;
-                healthyConnections.Add(connection);
-            }
-            else
-            {
-                connection.IsHealthy = false;
-                unhealthyConnections.Add(connection);
-            }
-        }
-        foreach (var healthyConnection in healthyConnections)
-            _connections.Add(healthyConnection);
-
-        foreach (var unhealthyConnection in unhealthyConnections)
-        {
-            await unhealthyConnection.Connection.DisposeAsync();
-            try
-            {
-                var replacement = await CreateNewConnectionAsync();
-                _connections.Add(replacement);
-                _logger.LogDebug("Replaced unhealthy connection {ConnectionId} with {ReplacementId}",
-                    unhealthyConnection.Id, replacement.Id);
+                }
+                else
+                {
+                    // Connection is invalid, dispose it
+                    connection.Dispose();
+                    _logger.LogDebug("Disposed invalid connection for {Database}", connectionInfo.Database);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to create replacement for unhealthy connection {ConnectionId}",
-                    unhealthyConnection.Id);
+                _logger.LogWarning(ex, "Error returning connection to pool for {Database}", connectionInfo.Database);
+                connection.Dispose();
             }
         }
-        if (unhealthyConnections.Count > 0)
-        {
-            _logger.LogInformation("Health check completed: {HealthyCount} healthy, {UnhealthyCount} unhealthy connections",
-                healthyConnections.Count, unhealthyConnections.Count);
-        }
-    }
 
-    private void CleanupCallback(object? state)
-    {
-        if (_disposed) return;
-        Task.Run(async () =>
+        /// <summary>
+        /// Clears all connections from the pool
+        /// </summary>
+        public void ClearPool(ConnectionInfo connectionInfo)
         {
-            await _timerSemaphore.WaitAsync();
+            if (connectionInfo == null)
+                return;
+
+            var poolKey = GetPoolKey(connectionInfo);
+
+            if (_pools.TryRemove(poolKey, out var pool))
+            {
+                while (pool.TryTake(out var connection))
+                {
+                    connection.Dispose();
+                }
+
+                _logger.LogInformation("Cleared connection pool for {Database}", connectionInfo.Database);
+            }
+        }
+
+        /// <summary>
+        /// Gets pool statistics
+        /// </summary>
+        public ConnectionStats GetStats(ConnectionInfo connectionInfo)
+        {
+            var poolKey = GetPoolKey(connectionInfo);
+
+            if (_pools.TryGetValue(poolKey, out var pool))
+            {
+                return new ConnectionStats
+                {
+                    PoolKey = poolKey,
+                    ActiveConnections = pool.Count,
+                    MaxPoolSize = _settings.Connection.MaxPoolSize,
+                    CreatedAt = DateTime.UtcNow
+                };
+            }
+
+            return new ConnectionStats
+            {
+                PoolKey = poolKey,
+                ActiveConnections = 0,
+                MaxPoolSize = _settings.Connection.MaxPoolSize,
+                CreatedAt = DateTime.UtcNow
+            };
+        }
+
+        /// <summary>
+        /// Creates a new database connection
+        /// </summary>
+        private async Task<NpgsqlConnection> CreateNewConnectionAsync(
+            ConnectionInfo connectionInfo,
+            CancellationToken cancellationToken)
+        {
+            var connectionString = BuildConnectionString(connectionInfo);
+            var connection = new NpgsqlConnection(connectionString);
+
             try
             {
-                await PerformCleanupAsync();
+                await connection.OpenAsync(cancellationToken);
+                return connection;
             }
-            finally
+            catch (Exception)
             {
-                _timerSemaphore.Release();
+                await connection.DisposeAsync();
+                throw;
             }
-        });
-    }
-
-    private async Task PerformCleanupAsync()
-    {
-        var expiredConnections = new List<PooledConnection>();
-        var now = DateTime.UtcNow;
-        while (_connections.TryTake(out var connection))
-        {
-            if (now - connection.LastAcquiredAt > TimeSpan.FromMinutes(30))
-                expiredConnections.Add(connection);
-            else
-                _connections.Add(connection);
         }
-        foreach (var expiredConnection in expiredConnections)
+
+        /// <summary>
+        /// Checks if a connection is still valid
+        /// </summary>
+        private bool IsConnectionValid(NpgsqlConnection connection)
         {
-            await expiredConnection.Connection.DisposeAsync();
-            _logger.LogDebug("Cleaned up expired connection {ConnectionId}", expiredConnection.Id);
+            try
+            {
+                return connection != null &&
+                       connection.State == System.Data.ConnectionState.Open &&
+                       connection.FullState == System.Data.ConnectionState.Open;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Connection validation failed");
+                return false;
+            }
         }
-        if (expiredConnections.Count > 0)
+
+        /// <summary>
+        /// Builds a connection string from connection info
+        /// </summary>
+        private string BuildConnectionString(ConnectionInfo connectionInfo)
         {
-            _logger.LogInformation("Cleanup completed: removed {ExpiredCount} expired connections",
-                expiredConnections.Count);
+            var builder = new NpgsqlConnectionStringBuilder
+            {
+                Host = connectionInfo.Host,
+                Port = connectionInfo.Port,
+                Database = connectionInfo.Database,
+                Username = connectionInfo.Username,
+                Password = connectionInfo.Password,
+                Pooling = true,
+                MinPoolSize = _settings.Connection.MinPoolSize,
+                MaxPoolSize = _settings.Connection.MaxPoolSize,
+                Timeout = _settings.Connection.ConnectionTimeout,
+                CommandTimeout = _settings.Connection.CommandTimeout
+            };
+
+            return builder.ConnectionString;
         }
-    }
 
-    public ConnectionPoolStats GetStats()
-    {
-        var availableConnections = _connections.Count;
-        var totalAcquired = _connectionStats.Sum(s => s.Value.AcquiredCount);
-        return new ConnectionPoolStats
+        /// <summary>
+        /// Generates a unique pool key for the connection
+        /// </summary>
+        private string GetPoolKey(ConnectionInfo connectionInfo)
         {
-            AvailableConnections = availableConnections,
-            MaxPoolSize = _settings.ConnectionPoolSize,
-            TotalAcquired = totalAcquired,
-            ConnectionStats = _connectionStats.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
-        };
-    }
+            return $"{connectionInfo.Host}:{connectionInfo.Port}:{connectionInfo.Database}:{connectionInfo.Username}";
+        }
 
-    private string GetStatsKey(ConnectionInfo connectionInfo)
-        => $"{connectionInfo.Host}:{connectionInfo.Port}:{connectionInfo.Database}";
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        _healthCheckTimer?.Dispose();
-        _cleanupTimer?.Dispose();
-        _poolSemaphore?.Dispose();
-        _timerSemaphore?.Dispose();
-        _ = DisposeAllConnectionsAsync();
-        _logger.LogInformation("Connection pool disposed");
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        _healthCheckTimer?.Dispose();
-        _cleanupTimer?.Dispose();
-        _poolSemaphore?.Dispose();
-        _timerSemaphore?.Dispose();
-        await DisposeAllConnectionsAsync();
-        _logger.LogInformation("Connection pool disposed");
-    }
-
-    private async Task DisposeAllConnectionsAsync()
-    {
-        var connections = new List<PooledConnection>();
-        while (_connections.TryTake(out var connection))
-            connections.Add(connection);
-
-        if (connections.Count != 0)
+        public void Dispose()
         {
-            var disposeTasks = connections.Select(conn => conn.Connection.DisposeAsync().AsTask());
-            await Task.WhenAll(disposeTasks);
-            _logger.LogInformation("Disposed {ConnectionCount} connections", connections.Count);
+            if (!_disposed)
+            {
+                _poolLock.Dispose();
+
+                foreach (var pool in _pools.Values)
+                {
+                    while (pool.TryTake(out var connection))
+                    {
+                        connection.Dispose();
+                    }
+                }
+
+                _pools.Clear();
+                _disposed = true;
+
+                _logger.LogInformation("ConnectionPool disposed");
+            }
         }
     }
 }

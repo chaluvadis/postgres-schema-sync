@@ -1,140 +1,184 @@
 import * as vscode from 'vscode';
 
-export class Logger {
-    private static outputChannel: vscode.OutputChannel | undefined;
+export interface LogEntry {
+    level: LogLevel;
+    message: string;
+    timestamp: Date;
+    source?: string | undefined;
+    metadata?: Record<string, any> | undefined;
+}
 
-    private static getOutputChannel(): vscode.OutputChannel {
+export enum LogLevel {
+    Trace = 0,
+    Debug = 1,
+    Info = 2,
+    Warn = 3,
+    Error = 4,
+    Critical = 5
+}
+
+export class Logger {
+    private static outputChannel: vscode.OutputChannel;
+    private static logLevel: LogLevel = LogLevel.Info;
+    private static logs: LogEntry[] = [];
+    private static maxLogs: number = 10000;
+
+    private constructor() {}
+
+    static initialize(): void {
         if (!this.outputChannel) {
             this.outputChannel = vscode.window.createOutputChannel('PostgreSQL Schema Sync');
         }
-        return this.outputChannel;
     }
 
-    /**
-     * Intelligently formats different data types for logging
-     */
-    private static formatLogData(data: any): string {
-        if (data === null || data === undefined) {
-            return String(data);
+    static setLogLevel(level: LogLevel): void {
+        this.logLevel = level;
+    }
+
+    static trace(message: string, source?: string, metadata?: Record<string, any>): void {
+        this.log(LogLevel.Trace, message, source, metadata);
+    }
+
+    static debug(message: string, source?: string, metadata?: Record<string, any>): void {
+        this.log(LogLevel.Debug, message, source, metadata);
+    }
+
+    static info(message: string, source?: string, metadata?: Record<string, any>): void {
+        this.log(LogLevel.Info, message, source, metadata);
+    }
+
+    static warn(message: string, source?: string, metadata?: Record<string, any>): void {
+        this.log(LogLevel.Warn, message, source, metadata);
+    }
+
+    static error(message: string, source?: string, metadata?: Record<string, any>): void;
+    static error(message: string, error: Error, source?: string, metadata?: Record<string, any>): void;
+    static error(message: string, errorOrSource?: string | Error, sourceOrMetadata?: string | Record<string, any>, metadata?: Record<string, any>): void {
+        let error: Error | undefined;
+        let source: string | undefined;
+        let meta: Record<string, any> | undefined;
+
+        if (errorOrSource instanceof Error) {
+            error = errorOrSource;
+            source = typeof sourceOrMetadata === 'string' ? sourceOrMetadata : undefined;
+            meta = metadata;
+        } else {
+            source = errorOrSource;
+            meta = sourceOrMetadata as Record<string, any>;
         }
 
-        if (typeof data === 'string') {
-            return data;
+        this.log(LogLevel.Error, message, source, meta, error);
+    }
+
+    static critical(message: string, source?: string, metadata?: Record<string, any>): void;
+    static critical(message: string, error: Error, source?: string, metadata?: Record<string, any>): void;
+    static critical(message: string, errorOrSource?: string | Error, sourceOrMetadata?: string | Record<string, any>, metadata?: Record<string, any>): void {
+        let error: Error | undefined;
+        let source: string | undefined;
+        let meta: Record<string, any> | undefined;
+
+        if (errorOrSource instanceof Error) {
+            error = errorOrSource;
+            source = typeof sourceOrMetadata === 'string' ? sourceOrMetadata : undefined;
+            meta = metadata;
+        } else {
+            source = errorOrSource;
+            meta = sourceOrMetadata as Record<string, any>;
         }
 
-        if (typeof data === 'number' || typeof data === 'boolean') {
-            return String(data);
+        this.log(LogLevel.Critical, message, source, meta, error);
+    }
+
+    private static log(
+        level: LogLevel,
+        message: string,
+        source?: string,
+        metadata?: Record<string, any>,
+        error?: Error
+    ): void {
+        if (level < this.logLevel) {
+            return;
         }
 
-        if (data instanceof Error) {
-            let errorMessage = `Error: ${data.message}`;
-            if (data.stack) {
-                errorMessage += `\nStack trace: ${data.stack}`;
-            }
-            return errorMessage;
+        const entry: LogEntry = {
+            level,
+            message,
+            timestamp: new Date(),
+            source,
+            metadata
+        };
+
+        // Add to logs array
+        this.logs.push(entry);
+
+        // Keep only the most recent logs
+        if (this.logs.length > this.maxLogs) {
+            this.logs = this.logs.slice(-this.maxLogs);
         }
 
-        if (Array.isArray(data)) {
-            return JSON.stringify(data, null, 2);
+        // Format message for output
+        const levelName = LogLevel[level].toUpperCase();
+        const timestamp = entry.timestamp.toISOString();
+        const sourceInfo = source ? `[${source}] ` : '';
+        const metadataInfo = metadata ? ` | ${JSON.stringify(metadata)}` : '';
+        const errorInfo = error ? `\nError: ${error.message}\nStack: ${error.stack}` : '';
+
+        const formattedMessage = `${timestamp} [${levelName}] ${sourceInfo}${message}${metadataInfo}${errorInfo}`;
+
+        // Write to output channel
+        if (this.outputChannel) {
+            this.outputChannel.appendLine(formattedMessage);
         }
 
-        if (typeof data === 'object') {
-            return JSON.stringify(data, null, 2);
+        // Also write to VSCode's developer console for debugging
+        if (level >= LogLevel.Error) {
+            console.error(formattedMessage);
+        } else if (level >= LogLevel.Warn) {
+            console.warn(formattedMessage);
+        } else {
+            console.log(formattedMessage);
         }
-
-        return String(data);
     }
 
     static showOutputChannel(): void {
-        this.getOutputChannel().show();
+        if (this.outputChannel) {
+            this.outputChannel.show();
+        }
     }
 
-    static info(message: string, ...args: any[]): void {
-        const timestamp = new Date().toISOString();
-        let formattedMessage = `[${timestamp}] INFO: ${message}`;
-
-        // Handle structured data logging
-        if (args.length > 0) {
-            const structuredData = args[0];
-            if (structuredData && (typeof structuredData === 'object' || structuredData instanceof Error)) {
-                const formattedData = this.formatLogData(structuredData);
-                formattedMessage += ` | ${formattedData}`;
-            } else if (structuredData !== undefined) {
-                // Handle primitive values or other types
-                formattedMessage += ` | ${String(structuredData)}`;
-            }
+    static getLogs(level?: LogLevel): LogEntry[] {
+        if (level !== undefined) {
+            return this.logs.filter(log => log.level >= level);
         }
-
-        this.getOutputChannel().appendLine(formattedMessage);
+        return [...this.logs];
     }
 
-    static warn(message: string, ...args: any[]): void {
-        const timestamp = new Date().toISOString();
-        let formattedMessage = `[${timestamp}] WARN: ${message}`;
-
-        // Handle structured data logging
-        if (args.length > 0) {
-            const structuredData = args[0];
-            if (structuredData && (typeof structuredData === 'object' || structuredData instanceof Error)) {
-                const formattedData = this.formatLogData(structuredData);
-                formattedMessage += ` | ${formattedData}`;
-            } else if (structuredData !== undefined) {
-                // Handle primitive values or other types
-                formattedMessage += ` | ${String(structuredData)}`;
-            }
+    static clearLogs(): void {
+        this.logs = [];
+        if (this.outputChannel) {
+            this.outputChannel.clear();
         }
-
-        this.getOutputChannel().appendLine(formattedMessage);
     }
 
-    static error(message: string, errorOrData?: Error | any, ...args: any[]): void {
-        const timestamp = new Date().toISOString();
-        let formattedMessage = `[${timestamp}] ERROR: ${message}`;
+    static exportLogs(): string {
+        const logsToExport = this.logs.map(log => {
+            const levelName = LogLevel[log.level];
+            const timestamp = log.timestamp.toISOString();
+            const source = log.source || 'Unknown';
+            const message = log.message;
+            const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : '';
 
-        // Handle Error object (existing behavior)
-        if (errorOrData instanceof Error) {
-            const formattedError = this.formatLogData(errorOrData);
-            formattedMessage += ` | ${formattedError}`;
-        }
-        // Handle structured data (new functionality)
-        else if (errorOrData && (typeof errorOrData === 'object' || Array.isArray(errorOrData))) {
-            const formattedData = this.formatLogData(errorOrData);
-            formattedMessage += ` | ${formattedData}`;
-        }
-        // Handle primitive values
-        else if (errorOrData !== undefined) {
-            formattedMessage += ` | ${String(errorOrData)}`;
-        }
+            return `${timestamp} [${levelName}] [${source}] ${message}${metadata}`;
+        });
 
-        this.getOutputChannel().appendLine(formattedMessage);
-    }
-
-    static debug(message: string, ...args: any[]): void {
-        const isDebugEnabled = vscode.workspace.getConfiguration('postgresql-schema-sync').get('debug.enabled', false);
-        if (isDebugEnabled) {
-            const timestamp = new Date().toISOString();
-            let formattedMessage = `[${timestamp}] DEBUG: ${message}`;
-
-            // Handle structured data logging
-            if (args.length > 0) {
-                const structuredData = args[0];
-                if (structuredData && (typeof structuredData === 'object' || structuredData instanceof Error)) {
-                    const formattedData = this.formatLogData(structuredData);
-                    formattedMessage += ` | ${formattedData}`;
-                } else if (structuredData !== undefined) {
-                    // Handle primitive values or other types
-                    formattedMessage += ` | ${String(structuredData)}`;
-                }
-            }
-
-            this.getOutputChannel().appendLine(formattedMessage);
-        }
+        return logsToExport.join('\n');
     }
 
     static dispose(): void {
         if (this.outputChannel) {
             this.outputChannel.dispose();
-            this.outputChannel = undefined;
+            this.outputChannel = null as any;
         }
+        this.logs = [];
     }
 }

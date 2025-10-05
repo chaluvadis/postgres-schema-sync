@@ -1,135 +1,105 @@
-namespace PostgreSqlSchemaCompareSync.Infrastructure.Logging;
-public class StructuredLogger
+namespace PostgreSqlSchemaCompareSync.Infrastructure.Logging
 {
-    private readonly ILogger _logger;
-    private readonly string _correlationId;
-    public StructuredLogger(ILogger logger)
+    /// <summary>
+    /// Structured logger for PostgreSQL Schema Compare & Sync
+    /// </summary>
+    public class StructuredLogger
     {
-        _logger = logger;
-        _correlationId = Guid.NewGuid().ToString("N")[..8];
-    }
-    public StructuredLogger(ILogger logger, string correlationId)
-    {
-        _logger = logger;
-        _correlationId = correlationId;
-    }
-    public IDisposable BeginScope(string operation, Dictionary<string, object>? context = null)
-    {
-        var scopeContext = new Dictionary<string, object>
-        {
-            ["CorrelationId"] = _correlationId,
-            ["Operation"] = operation,
-            ["Timestamp"] = DateTime.UtcNow
-        };
-        if (context != null)
-        {
-            foreach (var item in context)
-            {
-                scopeContext[item.Key] = item.Value;
-            }
-        }
-        return _logger.BeginScope(scopeContext) ?? new NoOpDisposable();
-    }
-    public void LogOperationStart(string operation, Dictionary<string, object>? parameters = null)
-    {
-        var context = new Dictionary<string, object>
-        {
-            ["EventType"] = "OperationStart",
-            ["Operation"] = operation
-        };
-        if (parameters != null)
-        {
-            foreach (var param in parameters)
-            {
-                context[param.Key] = param.Value;
-            }
-        }
-        using var scope = BeginScope(operation, context);
-        _logger.LogInformation("Starting operation: {Operation}", operation);
-    }
-    public void LogOperationEnd(string operation, TimeSpan duration, bool success, Dictionary<string, object>? metrics = null)
-    {
-        var context = new Dictionary<string, object>
-        {
-            ["EventType"] = "OperationEnd",
-            ["Operation"] = operation,
-            ["DurationMs"] = duration.TotalMilliseconds,
-            ["Success"] = success
-        };
-        if (metrics != null)
-        {
-            foreach (var metric in metrics)
-            {
-                context[metric.Key] = metric.Value;
-            }
-        }
-        using var scope = BeginScope(operation, context);
-        if (success)
-        {
-            _logger.LogInformation("Operation completed successfully: {Operation} in {DurationMs}ms", operation, duration.TotalMilliseconds);
-        }
-        else
-        {
-            _logger.LogWarning("Operation completed with issues: {Operation} in {DurationMs}ms", operation, duration.TotalMilliseconds);
-        }
-    }
-    public void LogErrorWithContext(Exception exception, string operation, Dictionary<string, object>? context = null)
-    {
-        var errorContext = new Dictionary<string, object>
-        {
-            ["EventType"] = "Error",
-            ["Operation"] = operation,
-            ["ExceptionType"] = exception.GetType().Name,
-            ["StackTrace"] = exception.StackTrace ?? "No stack trace"
-        };
-        if (context != null)
-        {
-            foreach (var item in context)
-            {
-                errorContext[item.Key] = item.Value;
-            }
-        }
-        using var scope = BeginScope(operation, errorContext);
-        _logger.LogError(exception, "Error in operation {Operation}: {ErrorMessage}", operation, exception.Message);
-    }
-    public void LogPerformanceMetric(string metricName, double value, Dictionary<string, object>? dimensions = null)
-    {
-        var context = new Dictionary<string, object>
-        {
-            ["EventType"] = "PerformanceMetric",
-            ["MetricName"] = metricName,
-            ["MetricValue"] = value
-        };
-        if (dimensions != null)
-        {
-            foreach (var dimension in dimensions)
-            {
-                context[dimension.Key] = dimension.Value;
-            }
-        }
-        using var scope = BeginScope(metricName, context);
-        _logger.LogInformation("Performance metric {MetricName}: {MetricValue}", metricName, value);
-    }
-    public void LogDatabaseOperation(string operation, string database, string schema, string objectName, TimeSpan duration)
-    {
-        var context = new Dictionary<string, object>
-        {
-            ["EventType"] = "DatabaseOperation",
-            ["DatabaseOperation"] = operation,
-            ["Database"] = database,
-            ["Schema"] = schema,
-            ["ObjectName"] = objectName,
-            ["DurationMs"] = duration.TotalMilliseconds
-        };
-        using var scope = BeginScope(operation, context);
-        _logger.LogInformation("Database operation {Operation} on {Database}.{Schema}.{ObjectName} completed in {DurationMs}ms",
-            operation, database, schema, objectName, duration.TotalMilliseconds);
-    }
-    public string GetCorrelationId() => _correlationId;
+        private readonly ILogger _logger;
 
-    private class NoOpDisposable : IDisposable
-    {
-        public static NoOpDisposable Instance { get; } = new();
-        public void Dispose() { }
+        public StructuredLogger(ILogger logger)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
+        /// <summary>
+        /// Logs database operation with structured data
+        /// </summary>
+        public void LogDatabaseOperation(
+            string operation,
+            string connectionId,
+            string database,
+            TimeSpan duration,
+            bool success,
+            string? errorMessage = null)
+        {
+            var logLevel = success ? LogLevel.Information : LogLevel.Error;
+
+            _logger.Log(logLevel, "Database operation {Operation} completed for {Database} in {Duration}ms. Success: {Success}. ConnectionId: {ConnectionId}",
+                operation, database, duration.TotalMilliseconds, success, connectionId);
+
+            if (!success && !string.IsNullOrEmpty(errorMessage))
+            {
+                _logger.LogError("Database operation {Operation} failed: {ErrorMessage}", operation, errorMessage);
+            }
+        }
+
+        /// <summary>
+        /// Logs schema comparison operation
+        /// </summary>
+        public void LogSchemaComparison(
+            string sourceDatabase,
+            string targetDatabase,
+            int differenceCount,
+            TimeSpan duration)
+        {
+            _logger.LogInformation(
+                "Schema comparison completed between {SourceDatabase} and {TargetDatabase}. " +
+                "Found {DifferenceCount} differences in {Duration}ms",
+                sourceDatabase, targetDatabase, differenceCount, duration.TotalMilliseconds);
+        }
+
+        /// <summary>
+        /// Logs migration operation
+        /// </summary>
+        public void LogMigrationOperation(
+            string migrationId,
+            string operation,
+            string targetDatabase,
+            int operationCount,
+            TimeSpan duration,
+            bool success,
+            string? errorMessage = null)
+        {
+            var logLevel = success ? LogLevel.Information : LogLevel.Error;
+
+            _logger.Log(logLevel,
+                "Migration {Operation} completed for {TargetDatabase}. " +
+                "MigrationId: {MigrationId}, Operations: {OperationCount}, Duration: {Duration}ms, Success: {Success}",
+                operation, targetDatabase, migrationId, operationCount, duration.TotalMilliseconds, success);
+
+            if (!success && !string.IsNullOrEmpty(errorMessage))
+            {
+                _logger.LogError("Migration {Operation} failed: {ErrorMessage}", operation, errorMessage);
+            }
+        }
+
+        /// <summary>
+        /// Logs performance metrics
+        /// </summary>
+        public void LogPerformanceMetric(
+            string metricName,
+            double value,
+            string unit,
+            Dictionary<string, object>? dimensions = null)
+        {
+            _logger.LogInformation(
+                "Performance metric {MetricName}: {Value}{Unit} {Dimensions}",
+                metricName, value, unit, dimensions != null ? $"({string.Join(", ", dimensions.Select(d => $"{d.Key}={d.Value}"))})" : "");
+        }
+
+        /// <summary>
+        /// Logs security events
+        /// </summary>
+        public void LogSecurityEvent(
+            string eventType,
+            string description,
+            Dictionary<string, object>? context = null)
+        {
+            _logger.LogWarning(
+                "Security event {EventType}: {Description} {Context}",
+                eventType, description,
+                context != null ? $"({string.Join(", ", context.Select(c => $"{c.Key}={c.Value}"))})" : "");
+        }
     }
 }
