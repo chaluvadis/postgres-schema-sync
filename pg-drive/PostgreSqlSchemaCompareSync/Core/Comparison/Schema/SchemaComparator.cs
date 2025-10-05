@@ -1,7 +1,4 @@
-using PostgreSqlSchemaCompareSync.Core.Models;
-
 namespace PostgreSqlSchemaCompareSync.Core.Comparison.Schema;
-
 public class SchemaComparator(
     ILogger<SchemaComparator> logger,
     ISchemaBrowser schemaBrowser,
@@ -33,14 +30,12 @@ public class SchemaComparator(
                 ObjectTypes = options.ObjectTypes,
                 IncludeSystemObjects = false // Default value
             };
-
             // Perform comparison
             var differences = await _comparisonEngine.CompareObjectsAsync(
                 sourceConnection,
                 targetConnection,
                 sourceObjects, targetObjects,
                 engineOptions, cancellationToken);
-
             var executionTime = DateTime.UtcNow - startTime;
             var comparison = new SchemaComparison
             {
@@ -72,7 +67,6 @@ public class SchemaComparator(
         try
         {
             var allObjects = new List<DatabaseObject>();
-
             if (schemas.Count == 0)
             {
                 // Extract from all schemas
@@ -90,7 +84,6 @@ public class SchemaComparator(
                     allObjects.AddRange(objects);
                 }
             }
-
             _logger.LogDebug("Extracted {ObjectCount} objects from {Database} across {SchemaCount} schemas",
                 allObjects.Count, connectionInfo.Database, schemas.Count == 0 ? "all" : schemas.Count.ToString());
             return allObjects;

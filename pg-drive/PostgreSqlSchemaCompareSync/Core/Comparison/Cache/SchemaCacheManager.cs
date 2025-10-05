@@ -20,7 +20,8 @@ public class SchemaCacheManager : ISchemaCacheManager
         _cache = new ConcurrentDictionary<string, CacheEntry>();
 
         // Setup cleanup timer (every 5 minutes)
-        _cleanupTimer = new Timer(CleanupExpiredEntries, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+        _cleanupTimer = new Timer(300000);
+        _cleanupTimer.Elapsed += (sender, args) => CleanupExpiredEntries(null);
     }
 
     /// <summary>
@@ -69,10 +70,8 @@ public class SchemaCacheManager : ISchemaCacheManager
         string? schemaFilter = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(connectionId))
-            throw new ArgumentNullException(nameof(connectionId));
-        if (objects == null)
-            throw new ArgumentNullException(nameof(objects));
+        ArgumentException.ThrowIfNullOrEmpty(connectionId);
+        ArgumentNullException.ThrowIfNull(objects);
 
         var cacheKey = GenerateCacheKey(connectionId, schemaFilter);
         var entry = new CacheEntry
@@ -89,7 +88,7 @@ public class SchemaCacheManager : ISchemaCacheManager
         if (_cache.Count >= _settings.Schema.MaxCacheSize)
         {
             // Remove oldest entries to make space
-            CleanupOldEntriesAsync(10).Wait();
+            CleanupOldEntriesAsync(10).Wait(cancellationToken);
         }
 
         _cache[cacheKey] = entry;
@@ -157,8 +156,8 @@ public class SchemaCacheManager : ISchemaCacheManager
         {
             TotalEntries = _cache.Count,
             TotalSizeBytes = entries.Sum(e => e.SizeBytes),
-            OldestEntry = entries.Any() ? entries.Min(e => e.CachedAt) : DateTime.UtcNow,
-            NewestEntry = entries.Any() ? entries.Max(e => e.CachedAt) : DateTime.UtcNow,
+            OldestEntry = entries.Count != 0 ? entries.Min(e => e.CachedAt) : DateTime.UtcNow,
+            NewestEntry = entries.Count != 0 ? entries.Max(e => e.CachedAt) : DateTime.UtcNow,
             HitCount = _hitCount,
             MissCount = _missCount
         };
@@ -183,10 +182,8 @@ public class SchemaCacheManager : ISchemaCacheManager
     /// <summary>
     /// Generates a cache key for the connection and schema filter
     /// </summary>
-    private string GenerateCacheKey(string connectionId, string? schemaFilter)
-    {
-        return $"{connectionId}:{schemaFilter ?? "all"}";
-    }
+    private static string GenerateCacheKey(string connectionId, string? schemaFilter)
+        => $"{connectionId}:{schemaFilter ?? "all"}";
 
     /// <summary>
     /// Checks if a cache entry is still valid
@@ -222,7 +219,7 @@ public class SchemaCacheManager : ISchemaCacheManager
         try
         {
             var json = JsonSerializer.Serialize(objects);
-            return System.Text.Encoding.UTF8.GetByteCount(json);
+            return Encoding.UTF8.GetByteCount(json);
         }
         catch (Exception ex)
         {
@@ -234,7 +231,7 @@ public class SchemaCacheManager : ISchemaCacheManager
     /// <summary>
     /// Cleans up expired cache entries
     /// </summary>
-    private void CleanupExpiredEntries(object? state)
+    private void CleanupExpiredEntries(object? _)
     {
         try
         {
@@ -245,10 +242,10 @@ public class SchemaCacheManager : ISchemaCacheManager
 
             foreach (var key in expiredKeys)
             {
-                _cache.TryRemove(key, out _);
+                _cache.TryRemove(key, out var _);
             }
 
-            if (expiredKeys.Any())
+            if (expiredKeys.Count != 0)
             {
                 _logger.LogDebug("Cleaned up {ExpiredCount} expired cache entries", expiredKeys.Count);
             }

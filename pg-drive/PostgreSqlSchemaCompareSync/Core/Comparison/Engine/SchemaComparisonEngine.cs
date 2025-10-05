@@ -358,7 +358,7 @@ public class SchemaComparisonEngine(
             var triggerDifferences = CompareTableTriggers(sourceDetails.Triggers, targetDetails.Triggers);
             differences.AddRange(triggerDifferences);
 
-            if (!differences.Any())
+            if (differences.Count == 0)
             {
                 differences.Add("Tables have identical structure");
             }
@@ -409,7 +409,7 @@ public class SchemaComparisonEngine(
                 cancellationToken);
 
             // Compare view columns if available
-            if (sourceDetails.Columns.Any() || targetDetails.Columns.Any())
+            if (sourceDetails.Columns.Count != 0 || targetDetails.Columns.Count != 0)
             {
                 var columnDifferences = CompareViewColumns(sourceDetails.Columns, targetDetails.Columns);
                 differences.AddRange(columnDifferences);
@@ -430,7 +430,7 @@ public class SchemaComparisonEngine(
                 differences.Add($"Additional properties count differs: {sourceDetails.AdditionalInfo.Count} vs {targetDetails.AdditionalInfo.Count}");
             }
 
-            if (!differences.Any())
+            if (differences.Count == 0)
             {
                 differences.Add("Views have identical structure and dependencies");
             }

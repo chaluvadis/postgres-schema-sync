@@ -81,7 +81,7 @@ public class SchemaMetadataExtractor(
             }
 
             // Wait for all extractions to complete
-            if (extractionTasks.Any())
+            if (extractionTasks.Count != 0)
             {
                 var results = await Task.WhenAll(extractionTasks);
 
@@ -202,7 +202,7 @@ public class SchemaMetadataExtractor(
                 var objectKey = $"{obj.Type}:{obj.Schema}.{obj.Name}";
                 var objectDependencies = await ExtractObjectDependenciesAsync(connection, obj, cancellationToken);
 
-                if (objectDependencies.Any())
+                if (objectDependencies.Count != 0)
                 {
                     dependencies[objectKey] = objectDependencies;
                 }
@@ -806,7 +806,7 @@ public class SchemaMetadataExtractor(
         CancellationToken cancellationToken)
     {
         // Get view columns if not already populated
-        if (!details.Columns.Any())
+        if (details.Columns.Count == 0)
         {
             var columnQuery = @"
                 SELECT

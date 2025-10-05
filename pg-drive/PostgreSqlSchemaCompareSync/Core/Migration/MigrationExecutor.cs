@@ -1,6 +1,3 @@
-using System.Data;
-using PostgreSqlSchemaCompareSync.Infrastructure.Exceptions;
-
 namespace PostgreSqlSchemaCompareSync.Core.Migration
 {
     /// <summary>
@@ -13,7 +10,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
         private readonly IConnectionManager _connectionManager;
         private readonly Dictionary<string, CancellationTokenSource> _runningMigrations;
         private bool _disposed;
-
         public MigrationExecutor(
             ILogger<MigrationExecutor> logger,
             IOptions<AppSettings> settings,
@@ -22,10 +18,8 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
             _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
-
             _runningMigrations = [];
         }
-
         /// <summary>
         /// Executes a migration script on a target database
         /// </summary>
@@ -36,7 +30,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
         {
             return await ExecuteMigrationWithProgressAsync(migration, targetConnection, null, cancellationToken);
         }
-
         /// <summary>
         /// Executes a migration script with detailed progress reporting
         /// </summary>
@@ -50,35 +43,28 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                 throw new ArgumentNullException(nameof(migration));
             if (targetConnection == null)
                 throw new ArgumentNullException(nameof(targetConnection));
-
             var startTime = DateTime.UtcNow;
             var operationsExecuted = 0;
             var errors = new List<string>();
             var warnings = new List<string>();
-
             try
             {
                 _logger.LogInformation("Starting migration execution: {MigrationId}", migration.Id);
-
                 // Register as running migration
                 var cts = new CancellationTokenSource();
                 var combinedToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token).Token;
                 _runningMigrations[migration.Id] = cts;
-
                 try
                 {
                     // Parse SQL script into individual statements
                     var statements = ParseSqlStatements(migration.SqlScript);
-
                     if (migration.IsDryRun)
                     {
                         _logger.LogInformation("Executing migration in dry-run mode: {MigrationId}", migration.Id);
-
                         // In dry-run mode, just validate and count operations
                         foreach (var statement in statements)
                         {
                             combinedToken.ThrowIfCancellationRequested();
-
                             if (!string.IsNullOrWhiteSpace(statement))
                             {
                                 operationsExecuted++;
@@ -90,32 +76,24 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                     else
                     {
                         _logger.LogInformation("Executing migration for real: {MigrationId}", migration.Id);
-
                         using var connection = await _connectionManager.CreateConnectionAsync(targetConnection, combinedToken);
-
                         // Execute statements in a transaction
                         using var transaction = await connection.BeginTransactionAsync(combinedToken);
-
                         try
                         {
                             for (int i = 0; i < statements.Length; i++)
                             {
                                 combinedToken.ThrowIfCancellationRequested();
-
                                 var statement = statements[i];
-
                                 if (!string.IsNullOrWhiteSpace(statement))
                                 {
                                     try
                                     {
                                         using var command = new NpgsqlCommand(statement, connection, transaction);
                                         command.CommandTimeout = _settings.Migration.TransactionTimeout;
-
                                         await command.ExecuteNonQueryAsync(combinedToken);
-
                                         operationsExecuted++;
                                         progress?.Report(CreateProgressReport(i + 1, statements.Length, statement, MigrationStatus.Running, DateTime.UtcNow - startTime));
-
                                         _logger.LogDebug("Executed statement {StatementNumber}: {Statement}", i + 1, statement.Substring(0, Math.Min(100, statement.Length)));
                                     }
                                     catch (NpgsqlException ex)
@@ -123,7 +101,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                                         var errorMessage = $"Statement {i + 1} failed: {ex.Message}";
                                         errors.Add(errorMessage);
                                         _logger.LogError(ex, "Statement execution failed: {Statement}", statement.Substring(0, Math.Min(100, statement.Length)));
-
                                         if (!_settings.Migration.ContinueOnError)
                                         {
                                             throw new MigrationException($"Migration execution failed at statement {i + 1}: {ex.Message}", targetConnection.Id, migration.Id, ex);
@@ -131,7 +108,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                                     }
                                 }
                             }
-
                             // Commit transaction if all statements succeeded
                             await transaction.CommitAsync(combinedToken);
                             _logger.LogInformation("Migration transaction committed: {MigrationId}", migration.Id);
@@ -151,21 +127,17 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                             throw;
                         }
                     }
-
                     var executionTime = DateTime.UtcNow - startTime;
-
                     var result = new MigrationResult
                     {
-                        Status = errors.Any() ? "Failed" : "Completed",
+                        Status = errors.Count != 0 ? "Failed" : "Completed",
                         ExecutionTime = executionTime,
                         OperationsExecuted = operationsExecuted,
                         Errors = errors,
                         Warnings = warnings
                     };
-
                     _logger.LogInformation("Migration execution completed: {MigrationId}, Status: {Status}, Operations: {Operations}, Time: {ExecutionTime}",
                         migration.Id, result.Status, operationsExecuted, executionTime);
-
                     return result;
                 }
                 finally
@@ -178,7 +150,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
             catch (OperationCanceledException)
             {
                 _logger.LogWarning("Migration execution cancelled: {MigrationId}", migration.Id);
-
                 var executionTime = DateTime.UtcNow - startTime;
                 return new MigrationResult
                 {
@@ -192,7 +163,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Migration execution failed: {MigrationId}", migration.Id);
-
                 var executionTime = DateTime.UtcNow - startTime;
                 return new MigrationResult
                 {
@@ -204,7 +174,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                 };
             }
         }
-
         /// <summary>
         /// Tests a migration script in dry-run mode
         /// </summary>
@@ -217,9 +186,7 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                 throw new ArgumentNullException(nameof(migration));
             if (targetConnection == null)
                 throw new ArgumentNullException(nameof(targetConnection));
-
             _logger.LogInformation("Testing migration: {MigrationId}", migration.Id);
-
             // Create a test version of the migration
             var testMigration = new MigrationScript
             {
@@ -233,10 +200,8 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                 Status = MigrationStatus.Pending,
                 CreatedAt = migration.CreatedAt
             };
-
             return await ExecuteMigrationAsync(testMigration, targetConnection, cancellationToken);
         }
-
         /// <summary>
         /// Cancels a running migration
         /// </summary>
@@ -244,7 +209,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
         {
             if (string.IsNullOrEmpty(migrationId))
                 return Task.FromResult(false);
-
             if (_runningMigrations.TryGetValue(migrationId, out var cts))
             {
                 try
@@ -259,11 +223,9 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                     return Task.FromResult(false);
                 }
             }
-
             _logger.LogWarning("Migration not found for cancellation: {MigrationId}", migrationId);
             return Task.FromResult(false);
         }
-
         /// <summary>
         /// Parses SQL script into individual statements
         /// </summary>
@@ -271,17 +233,14 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
         {
             if (string.IsNullOrEmpty(sqlScript))
                 return Array.Empty<string>();
-
             // Basic SQL statement parsing - split by semicolon
             // This is a simplified parser and may need enhancement for complex scripts
             var statements = Regex.Split(sqlScript, @";\s*$", RegexOptions.Multiline)
                 .Select(stmt => stmt.Trim())
                 .Where(stmt => !string.IsNullOrEmpty(stmt) && !stmt.StartsWith("--"))
                 .ToArray();
-
             return statements;
         }
-
         /// <summary>
         /// Creates a progress report
         /// </summary>
@@ -304,10 +263,8 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                     (long)(elapsedTime.Ticks * ((double)(totalOperations - currentOperation) / currentOperation)) :
                     0)
             };
-
             return progress;
         }
-
         public void Dispose()
         {
             if (!_disposed)
@@ -325,10 +282,8 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
                         _logger.LogWarning(ex, "Error cancelling migration during disposal");
                     }
                 }
-
                 _runningMigrations.Clear();
                 _disposed = true;
-
                 _logger.LogInformation("MigrationExecutor disposed");
             }
         }

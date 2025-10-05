@@ -1,5 +1,3 @@
-using PostgreSqlSchemaCompareSync.Infrastructure.Exceptions;
-
 namespace PostgreSqlSchemaCompareSync.Core.Connection
 {
     /// <summary>
@@ -11,7 +9,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         private readonly AppSettings _settings;
         private readonly ConnectionPool _connectionPool;
         private bool _disposed;
-
         public ConnectionManager(
             ILogger<ConnectionManager> logger,
             IOptions<AppSettings> settings,
@@ -21,7 +18,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
             _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
             _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
         }
-
         /// <summary>
         /// Creates a new database connection
         /// </summary>
@@ -31,19 +27,13 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         {
             if (connectionInfo == null)
                 throw new ArgumentNullException(nameof(connectionInfo));
-
             try
             {
                 _logger.LogDebug("Creating connection to {Database}", connectionInfo.Database);
-
                 var connectionString = BuildConnectionString(connectionInfo);
-
                 var connection = new NpgsqlConnection(connectionString);
-
                 await connection.OpenAsync(cancellationToken);
-
                 _logger.LogInformation("Connection established to {Database}", connectionInfo.Database);
-
                 return connection;
             }
             catch (NpgsqlException ex)
@@ -62,7 +52,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
                 throw new ConnectionException($"Unexpected error connecting to database: {ex.Message}", connectionInfo.Id, ex);
             }
         }
-
         /// <summary>
         /// Tests if a connection can be established
         /// </summary>
@@ -72,26 +61,19 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         {
             if (connectionInfo == null)
                 throw new ArgumentNullException(nameof(connectionInfo));
-
             var stopwatch = Stopwatch.StartNew();
-
             try
             {
                 _logger.LogDebug("Testing connection to {Database}", connectionInfo.Database);
-
                 using var connection = await CreateConnectionAsync(connectionInfo, cancellationToken);
-
                 // Test a simple query to ensure the database is responsive
                 using var command = connection.CreateCommand();
                 command.CommandText = "SELECT 1";
                 command.CommandTimeout = Math.Min(_settings.Connection.CommandTimeout, 10);
-
                 await command.ExecuteScalarAsync(cancellationToken);
-
                 stopwatch.Stop();
                 _logger.LogInformation("Connection test successful for {Database} in {Elapsed}ms",
                     connectionInfo.Database, stopwatch.ElapsedMilliseconds);
-
                 return true;
             }
             catch (Exception ex)
@@ -99,11 +81,9 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
                 stopwatch.Stop();
                 _logger.LogError(ex, "Connection test failed for {Database} in {Elapsed}ms",
                     connectionInfo.Database, stopwatch.ElapsedMilliseconds);
-
                 return false;
             }
         }
-
         /// <summary>
         /// Closes and disposes a connection
         /// </summary>
@@ -113,14 +93,12 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         {
             if (connection == null)
                 throw new ArgumentNullException(nameof(connection));
-
             try
             {
                 if (connection.State != System.Data.ConnectionState.Closed)
                 {
                     await connection.CloseAsync();
                 }
-
                 await connection.DisposeAsync();
                 _logger.LogDebug("Connection closed and disposed");
             }
@@ -130,7 +108,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
                 // Don't throw - closing errors shouldn't prevent disposal
             }
         }
-
         /// <summary>
         /// Gets connection health status
         /// </summary>
@@ -140,15 +117,11 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         {
             if (connectionInfo == null)
                 throw new ArgumentNullException(nameof(connectionInfo));
-
             var stopwatch = Stopwatch.StartNew();
-
             try
             {
                 var isHealthy = await TestConnectionAsync(connectionInfo, cancellationToken);
-
                 stopwatch.Stop();
-
                 return new ConnectionHealthStatus
                 {
                     IsHealthy = isHealthy,
@@ -160,7 +133,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
             catch (Exception ex)
             {
                 stopwatch.Stop();
-
                 return new ConnectionHealthStatus
                 {
                     IsHealthy = false,
@@ -170,7 +142,6 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
                 };
             }
         }
-
         /// <summary>
         /// Builds a connection string from connection info
         /// </summary>
@@ -189,10 +160,8 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
                 MinPoolSize = _settings.Connection.MinPoolSize,
                 MaxPoolSize = _settings.Connection.MaxPoolSize
             };
-
             return builder.ConnectionString;
         }
-
         public void Dispose()
         {
             if (!_disposed)
