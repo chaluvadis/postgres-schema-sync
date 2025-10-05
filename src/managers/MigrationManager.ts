@@ -13,6 +13,33 @@ export interface MigrationScript {
     rollbackScript: string;
     status: 'pending' | 'running' | 'completed' | 'failed' | 'rolled_back';
     createdAt: Date;
+    executionTime?: number;
+    executionLog?: string;
+    operationCount: number;
+    riskLevel: 'Low' | 'Medium' | 'High';
+    warnings: string[];
+    canExecute: boolean;
+    canRollback: boolean;
+}
+
+export interface MigrationExecutionOptions {
+    dryRun?: boolean;
+    batchSize?: number;
+    continueOnError?: boolean;
+    generateRollback?: boolean;
+    parallelExecution?: boolean;
+}
+
+export interface MigrationExecutionResult {
+    migrationId: string;
+    success: boolean;
+    executionTime: number;
+    operationsExecuted: number;
+    operationsSkipped: number;
+    errors: string[];
+    warnings: string[];
+    rollbackExecuted?: boolean;
+    rollbackReason?: string;
 }
 
 export class MigrationManager {
@@ -99,6 +126,10 @@ export class MigrationManager {
                 throw new Error('Migration generation returned null');
             }
 
+            const operationCount = dotNetMigration.sqlScript.split('\n').length;
+            const riskLevel = this.assessMigrationRisk(dotNetMigration.sqlScript);
+            const warnings = this.analyzeMigrationWarnings(dotNetMigration.sqlScript);
+
             const migrationScript: MigrationScript = {
                 id: dotNetMigration.id,
                 name: `Migration_${dotNetMigration.id}`,
@@ -107,7 +138,12 @@ export class MigrationManager {
                 sqlScript: dotNetMigration.sqlScript,
                 rollbackScript: dotNetMigration.rollbackScript,
                 status: dotNetMigration.status as any,
-                createdAt: new Date(dotNetMigration.createdAt)
+                createdAt: new Date(dotNetMigration.createdAt),
+                operationCount,
+                riskLevel,
+                warnings,
+                canExecute: true,
+                canRollback: Boolean(dotNetMigration.rollbackScript && dotNetMigration.rollbackScript.trim().length > 0)
             };
 
             // Store migration
@@ -121,7 +157,7 @@ export class MigrationManager {
         }
     }
 
-    async executeMigration(migrationId: string, useAdvancedFeatures: boolean = false): Promise<boolean> {
+    async executeMigration(migrationId: string): Promise<boolean> {
         let migrationSuccess = false;
 
         try {
@@ -231,7 +267,257 @@ export class MigrationManager {
         return this.migrations.get(id);
     }
 
+    async executeMigrationWithOptions(
+        migrationId: string,
+        options: MigrationExecutionOptions = {}
+    ): Promise<MigrationExecutionResult> {
+        const startTime = Date.now();
+        let operationsExecuted = 0;
+        let operationsSkipped = 0;
+        const errors: string[] = [];
+        const warnings: string[] = [];
+        let rollbackExecuted = false;
+        let rollbackReason = '';
 
+        try {
+            Logger.info('Executing migration with options', { migrationId, options });
 
+            const migration = this.migrations.get(migrationId);
+            if (!migration) {
+                throw new Error(`Migration ${migrationId} not found`);
+            }
 
+            if (!migration.canExecute) {
+                throw new Error(`Migration ${migrationId} cannot be executed`);
+            }
+
+            // Update status to running
+            migration.status = 'running';
+            this.migrations.set(migrationId, migration);
+
+            // Get target connection
+            const targetConnection = this.connectionManager.getConnection(migration.targetConnection);
+            if (!targetConnection) {
+                throw new Error('Target connection not found');
+            }
+
+            const targetPassword = await this.connectionManager.getConnectionPassword(migration.targetConnection);
+            if (!targetPassword) {
+                throw new Error('Target connection password not found');
+            }
+
+            // Convert to .NET format
+            const dotNetTargetConnection: DotNetConnectionInfo = {
+                id: targetConnection.id,
+                name: targetConnection.name,
+                host: targetConnection.host,
+                port: targetConnection.port,
+                database: targetConnection.database,
+                username: targetConnection.username,
+                password: targetPassword
+            };
+
+            const dotNetMigration: DotNetMigrationScript = {
+                id: migration.id,
+                comparison: {} as DotNetSchemaComparison,
+                selectedDifferences: [],
+                sqlScript: migration.sqlScript,
+                rollbackScript: migration.rollbackScript,
+                type: 'Schema',
+                isDryRun: options.dryRun || false,
+                status: migration.status,
+                createdAt: migration.createdAt.toISOString()
+            };
+
+            // Execute via .NET service
+            const result = await this.dotNetService.executeMigration(dotNetMigration, dotNetTargetConnection);
+
+            if (!result) {
+                throw new Error('Migration execution returned null');
+            }
+
+            operationsExecuted = result.operationsExecuted;
+            errors.push(...result.errors);
+            warnings.push(...result.warnings);
+
+            // Update migration status
+            migration.status = result.status === 'Completed' ? 'completed' : 'failed';
+            migration.executionTime = parseInt(result.executionTime) || 0;
+            migration.executionLog = `Operations: ${operationsExecuted}, Errors: ${errors.length}, Warnings: ${warnings.length}`;
+            this.migrations.set(migrationId, migration);
+
+            const success = result.status === 'Completed';
+
+            if (!success && migration.canRollback && !options.dryRun) {
+                Logger.info('Migration failed, attempting rollback', { migrationId });
+                rollbackReason = 'Migration execution failed';
+
+                try {
+                    await this.rollbackMigration(migrationId);
+                    rollbackExecuted = true;
+                } catch (rollbackError) {
+                    Logger.error('Rollback also failed', rollbackError as Error);
+                    errors.push(`Rollback failed: ${(rollbackError as Error).message}`);
+                }
+            }
+
+            const executionTime = Date.now() - startTime;
+
+            Logger.info('Migration execution completed', {
+                migrationId,
+                success,
+                executionTime,
+                operationsExecuted,
+                rollbackExecuted
+            });
+
+            return {
+                migrationId,
+                success,
+                executionTime,
+                operationsExecuted,
+                operationsSkipped,
+                errors,
+                warnings,
+                rollbackExecuted,
+                rollbackReason
+            };
+
+        } catch (error) {
+            const executionTime = Date.now() - startTime;
+            const errorMessage = (error as Error).message;
+            errors.push(errorMessage);
+
+            Logger.error('Migration execution failed', error as Error);
+
+            return {
+                migrationId,
+                success: false,
+                executionTime,
+                operationsExecuted,
+                operationsSkipped,
+                errors,
+                warnings,
+                rollbackExecuted,
+                rollbackReason: errorMessage
+            };
+        }
+    }
+
+    async rollbackMigration(migrationId: string): Promise<boolean> {
+        try {
+            Logger.info('Rolling back migration', { migrationId });
+
+            const migration = this.migrations.get(migrationId);
+            if (!migration) {
+                throw new Error(`Migration ${migrationId} not found`);
+            }
+
+            if (!migration.canRollback) {
+                throw new Error(`Migration ${migrationId} cannot be rolled back`);
+            }
+
+            // Update status to rolling back
+            migration.status = 'rolled_back';
+            this.migrations.set(migrationId, migration);
+
+            // Get target connection
+            const targetConnection = this.connectionManager.getConnection(migration.targetConnection);
+            if (!targetConnection) {
+                throw new Error('Target connection not found');
+            }
+
+            const targetPassword = await this.connectionManager.getConnectionPassword(migration.targetConnection);
+            if (!targetPassword) {
+                throw new Error('Target connection password not found');
+            }
+
+            // Convert to .NET format
+            const dotNetTargetConnection: DotNetConnectionInfo = {
+                id: targetConnection.id,
+                name: targetConnection.name,
+                host: targetConnection.host,
+                port: targetConnection.port,
+                database: targetConnection.database,
+                username: targetConnection.username,
+                password: targetPassword
+            };
+
+            const dotNetMigration: DotNetMigrationScript = {
+                id: migration.id,
+                comparison: {} as DotNetSchemaComparison,
+                selectedDifferences: [],
+                sqlScript: migration.rollbackScript,
+                rollbackScript: '',
+                type: 'Schema',
+                isDryRun: false,
+                status: 'rolling_back',
+                createdAt: migration.createdAt.toISOString()
+            };
+
+            // Execute rollback via .NET service
+            const result = await this.dotNetService.executeMigration(dotNetMigration, dotNetTargetConnection);
+
+            if (!result) {
+                throw new Error('Rollback execution returned null');
+            }
+
+            const success = result.status === 'Completed';
+
+            Logger.info('Rollback completed', { migrationId, success });
+
+            return success;
+        } catch (error) {
+            Logger.error('Rollback failed', error as Error);
+            throw error;
+        }
+    }
+
+    private assessMigrationRisk(sqlScript: string): 'Low' | 'Medium' | 'High' {
+        const script = sqlScript.toUpperCase();
+        const highRiskOps = ['DROP TABLE', 'DROP SCHEMA', 'TRUNCATE', 'DELETE FROM'];
+        const mediumRiskOps = ['DROP', 'ALTER TABLE'];
+
+        if (highRiskOps.some(op => script.includes(op))) {
+            return 'High';
+        }
+        if (mediumRiskOps.some(op => script.includes(op))) {
+            return 'Medium';
+        }
+        return 'Low';
+    }
+
+    private analyzeMigrationWarnings(sqlScript: string): string[] {
+        const warnings: string[] = [];
+        const script = sqlScript.toUpperCase();
+
+        if (script.includes('DROP TABLE')) {
+            warnings.push('Migration contains DROP TABLE operations - data will be lost');
+        }
+        if (script.includes('TRUNCATE')) {
+            warnings.push('Migration contains TRUNCATE operations - all data will be lost');
+        }
+        if (script.includes('DROP SCHEMA')) {
+            warnings.push('Migration contains DROP SCHEMA operations - multiple objects will be affected');
+        }
+        if (script.includes('ALTER TABLE')) {
+            warnings.push('Migration contains ALTER TABLE operations - schema changes may affect applications');
+        }
+
+        const statementCount = sqlScript.split('\n').length;
+        if (statementCount > 100) {
+            warnings.push(`Large migration with ${statementCount} statements - consider breaking into smaller batches`);
+        }
+
+        return warnings;
+    }
+
+    private generateId(): string {
+        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    }
+
+    async dispose(): Promise<void> {
+        Logger.info('Disposing MigrationManager');
+        this.migrations.clear();
+    }
 }
