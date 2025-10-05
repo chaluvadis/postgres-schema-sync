@@ -176,9 +176,9 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
             try
             {
                 // Group differences by type for proper ordering
-                var addedObjects = differences.Where(d => d.Type == Core.Models.DifferenceType.Added).ToList();
-                var modifiedObjects = differences.Where(d => d.Type == Core.Models.DifferenceType.Modified).ToList();
-                var removedObjects = differences.Where(d => d.Type == Core.Models.DifferenceType.Removed).ToList();
+                var addedObjects = differences.Where(d => d.Type == DifferenceType.Added).ToList();
+                var modifiedObjects = differences.Where(d => d.Type == DifferenceType.Modified).ToList();
+                var removedObjects = differences.Where(d => d.Type == DifferenceType.Removed).ToList();
                 // Process in safe order: removes first, then modifies, then adds
                 foreach (var difference in removedObjects.Concat(modifiedObjects).Concat(addedObjects))
                 {
@@ -210,11 +210,11 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
             {
                 switch (difference.Type)
                 {
-                    case Core.Models.DifferenceType.Added:
+                    case DifferenceType.Added:
                         return await GenerateCreateSqlAsync(difference, options, cancellationToken);
-                    case Core.Models.DifferenceType.Removed:
+                    case DifferenceType.Removed:
                         return await GenerateDropSqlAsync(difference, options, cancellationToken);
-                    case Core.Models.DifferenceType.Modified:
+                    case DifferenceType.Modified:
                         return await GenerateAlterSqlAsync(difference, options, cancellationToken);
                     default:
                         _logger.LogWarning("Unknown difference type: {DifferenceType}", difference.Type);
@@ -291,15 +291,15 @@ namespace PostgreSqlSchemaCompareSync.Core.Migration
             {
                 switch (difference.Type)
                 {
-                    case Core.Models.DifferenceType.Added:
+                    case DifferenceType.Added:
                         // Rollback of ADD is DROP
                         var dropResult = await GenerateDropSqlAsync(difference, new MigrationOptions(), cancellationToken);
                         return dropResult;
-                    case Core.Models.DifferenceType.Removed:
+                    case DifferenceType.Removed:
                         // Rollback of DROP is CREATE
                         var createResult = await GenerateCreateSqlAsync(difference, new MigrationOptions(), cancellationToken);
                         return createResult;
-                    case Core.Models.DifferenceType.Modified:
+                    case DifferenceType.Modified:
                         // Rollback of ALTER would need to restore original state
                         return $"-- Rollback ALTER {difference.ObjectType} {difference.Schema}.{difference.ObjectName} requires manual review";
                     default:

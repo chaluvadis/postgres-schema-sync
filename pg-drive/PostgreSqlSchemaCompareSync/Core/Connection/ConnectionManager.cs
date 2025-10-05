@@ -95,7 +95,7 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
                 throw new ArgumentNullException(nameof(connection));
             try
             {
-                if (connection.State != System.Data.ConnectionState.Closed)
+                if (connection.State != ConnectionState.Closed)
                 {
                     await connection.CloseAsync();
                 }

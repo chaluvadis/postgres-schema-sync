@@ -25,8 +25,6 @@ public class PostgreSqlSchemaCompareSync : IDisposable
         services.Configure<AppSettings>(_configuration.GetSection("PostgreSqlSchemaCompareSync"));
         // Register core services - Advanced connection management
         services.AddSingleton<ConnectionPool>();
-        services.AddSingleton<ConnectionHealthMonitor>();
-        services.AddSingleton<ConnectionRecoveryManager>();
         services.AddSingleton<IConnectionManager, ConnectionManager>();
         // Register schema management services
         services.AddSingleton<ISchemaMetadataExtractor, SchemaMetadataExtractor>();
@@ -35,22 +33,19 @@ public class PostgreSqlSchemaCompareSync : IDisposable
         services.AddSingleton<ISchemaBrowser, SchemaBrowser>();
         services.AddSingleton<ISchemaComparator, SchemaComparator>();
         // Register migration services
-        services.AddSingleton<MigrationScriptGenerator>();
+        services.AddSingleton<IMigrationScriptGenerator, MigrationScriptGenerator>();
         services.AddSingleton<IMigrationGenerator, MigrationGenerator>();
         services.AddSingleton<IMigrationExecutor, MigrationExecutor>();
         _serviceProvider = services.BuildServiceProvider();
         _logger = _serviceProvider.GetRequiredService<ILogger<PostgreSqlSchemaCompareSync>>();
         _logger.LogInformation("PostgreSQL Schema Compare & Sync extension initialized");
     }
-    /// <summary>
-    /// Tests a database connection with the provided connection information.
-    /// </summary>
-    public async Task<bool> TestConnectionAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default)
+    public async Task<bool> TestConnectionAsync(ConnectionInfo connectionInfo, CancellationToken ct = default)
     {
         try
         {
             var connectionManager = _serviceProvider.GetRequiredService<IConnectionManager>();
-            using var connection = await connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
+            using var connection = await connectionManager.CreateConnectionAsync(connectionInfo, ct);
             _logger.LogInformation("Connection test successful for {ConnectionName}", connectionInfo.Name);
             return true;
         }
@@ -60,18 +55,15 @@ public class PostgreSqlSchemaCompareSync : IDisposable
             return false;
         }
     }
-    /// <summary>
-    /// Browses and retrieves schema information from a database.
-    /// </summary>
     public async Task<List<DatabaseObject>> BrowseSchemaAsync(
         ConnectionInfo connectionInfo,
         string? schemaFilter = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         try
         {
             var schemaBrowser = _serviceProvider.GetRequiredService<ISchemaBrowser>();
-            var objects = await schemaBrowser.GetDatabaseObjectsAsync(connectionInfo, schemaFilter, cancellationToken);
+            var objects = await schemaBrowser.GetDatabaseObjectsAsync(connectionInfo, schemaFilter, ct);
             _logger.LogInformation("Retrieved {ObjectCount} objects from {Database}",
                 objects.Count, connectionInfo.Database);
             return objects;
@@ -82,14 +74,12 @@ public class PostgreSqlSchemaCompareSync : IDisposable
             throw;
         }
     }
-    /// <summary>
-    /// Compares schemas between two databases and returns differences.
-    /// </summary>
+
     public async Task<SchemaComparison> CompareSchemasAsync(
         ConnectionInfo sourceConnection,
         ConnectionInfo targetConnection,
         SchemaComparisonOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         try
         {
@@ -98,7 +88,7 @@ public class PostgreSqlSchemaCompareSync : IDisposable
                 sourceConnection,
                 targetConnection,
                 options,
-                cancellationToken);
+                ct);
             _logger.LogInformation("Schema comparison completed: {DifferenceCount} differences found",
                 comparison.Differences.Count);
             return comparison;
@@ -110,18 +100,16 @@ public class PostgreSqlSchemaCompareSync : IDisposable
             throw;
         }
     }
-    /// <summary>
-    /// Generates a migration script from schema differences.
-    /// </summary>
+
     public async Task<MigrationScript> GenerateMigrationAsync(
         SchemaComparison comparison,
         MigrationOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         try
         {
             var generator = _serviceProvider.GetRequiredService<IMigrationGenerator>();
-            var migration = await generator.GenerateMigrationAsync(comparison, options, cancellationToken);
+            var migration = await generator.GenerateMigrationAsync(comparison, options, ct);
             _logger.LogInformation("Migration script generated with {OperationCount} operations",
                 migration.SqlScript.Split('\n').Length);
             return migration;
@@ -133,18 +121,16 @@ public class PostgreSqlSchemaCompareSync : IDisposable
             throw;
         }
     }
-    /// <summary>
-    /// Executes a migration script on a target database.
-    /// </summary>
+
     public async Task<MigrationResult> ExecuteMigrationAsync(
         MigrationScript migration,
         ConnectionInfo targetConnection,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         try
         {
             var executor = _serviceProvider.GetRequiredService<IMigrationExecutor>();
-            var result = await executor.ExecuteMigrationAsync(migration, targetConnection, cancellationToken);
+            var result = await executor.ExecuteMigrationAsync(migration, targetConnection, ct);
             _logger.LogInformation("Migration execution {Status} for {MigrationId}",
                 result.Status, migration.Id);
             return result;
@@ -155,21 +141,19 @@ public class PostgreSqlSchemaCompareSync : IDisposable
             throw;
         }
     }
-    /// <summary>
-    /// Gets comprehensive information about a database object.
-    /// </summary>
+
     public async Task<DatabaseObjectDetails> GetObjectDetailsAsync(
         ConnectionInfo connectionInfo,
         ObjectType objectType,
         string schema,
         string objectName,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         try
         {
             var schemaBrowser = _serviceProvider.GetRequiredService<ISchemaBrowser>();
             var details = await schemaBrowser.GetObjectDetailsAsync(
-                connectionInfo, objectType, schema, objectName, cancellationToken);
+                connectionInfo, objectType, schema, objectName, ct);
             _logger.LogDebug("Retrieved details for {ObjectType} {ObjectName}",
                 objectType, objectName);
             return details;

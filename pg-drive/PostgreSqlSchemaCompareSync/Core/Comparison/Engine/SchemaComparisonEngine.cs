@@ -122,7 +122,7 @@ public class SchemaComparisonEngine(
                     // Objects are different
                     differences.Add(new SchemaDifference
                     {
-                        Type = Core.Models.DifferenceType.Modified,
+                        Type = DifferenceType.Modified,
                         ObjectType = sourceObj.Type,
                         ObjectName = sourceObj.Name,
                         Schema = sourceObj.Schema,
@@ -136,7 +136,7 @@ public class SchemaComparisonEngine(
                     // Object exists only in source - removed from target
                     differences.Add(new SchemaDifference
                     {
-                        Type = Core.Models.DifferenceType.Removed,
+                        Type = DifferenceType.Removed,
                         ObjectType = sourceObj.Type,
                         ObjectName = sourceObj.Name,
                         Schema = sourceObj.Schema,
@@ -155,7 +155,7 @@ public class SchemaComparisonEngine(
                 {
                     differences.Add(new SchemaDifference
                     {
-                        Type = Core.Models.DifferenceType.Added,
+                        Type = DifferenceType.Added,
                         ObjectType = targetObj.Type,
                         ObjectName = targetObj.Name,
                         Schema = targetObj.Schema,
@@ -200,7 +200,7 @@ public class SchemaComparisonEngine(
             }
 
             // Definition comparison based on mode
-            if (options.Mode == Core.Models.ComparisonMode.Strict)
+            if (options.Mode == ComparisonMode.Strict)
             {
                 return Task.FromResult(string.Equals(sourceObject.Definition, targetObject.Definition, StringComparison.Ordinal));
             }

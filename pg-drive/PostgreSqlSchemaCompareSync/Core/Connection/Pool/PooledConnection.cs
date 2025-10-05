@@ -3,23 +3,16 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection.Pool
     /// <summary>
     /// Wrapper for pooled database connections with lifecycle management
     /// </summary>
-    public class PooledConnection : IDisposable, IAsyncDisposable
+    public class PooledConnection(
+        ConnectionInfo connectionInfo,
+        ConnectionPool pool,
+        ILogger<PooledConnection> logger) : IDisposable, IAsyncDisposable
     {
-        private readonly ConnectionInfo _connectionInfo;
-        private readonly ConnectionPool _pool;
-        private readonly ILogger<PooledConnection> _logger;
+        private readonly ConnectionInfo _connectionInfo = connectionInfo ?? throw new ArgumentNullException(nameof(connectionInfo));
+        private readonly ConnectionPool _pool = pool ?? throw new ArgumentNullException(nameof(pool));
+        private readonly ILogger<PooledConnection> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         private NpgsqlConnection? _connection;
         private bool _disposed;
-
-        public PooledConnection(
-            ConnectionInfo connectionInfo,
-            ConnectionPool pool,
-            ILogger<PooledConnection> logger)
-        {
-            _connectionInfo = connectionInfo ?? throw new ArgumentNullException(nameof(connectionInfo));
-            _pool = pool ?? throw new ArgumentNullException(nameof(pool));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
 
         /// <summary>
         /// Gets the underlying database connection
