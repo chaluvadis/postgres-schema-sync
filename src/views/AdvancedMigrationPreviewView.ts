@@ -62,7 +62,7 @@ export class AdvancedMigrationPreviewView {
 
     async showAdvancedMigrationPreview(migrationData: AdvancedMigrationPreviewData): Promise<void> {
         try {
-            Logger.info('Opening advanced migration preview', {
+            Logger.info('Opening advanced migration preview', 'showAdvancedMigrationPreview', {
                 migrationId: migrationData.migrationId,
                 conflictCount: migrationData.conflicts?.length || 0
             });
@@ -336,7 +336,7 @@ export class AdvancedMigrationPreviewView {
                     break;
 
                 default:
-                    Logger.warn('Unknown webview message command', { command: message.command });
+                    Logger.warn('Unknown webview message command', 'handleWebviewMessage', { command: message.command });
                     break;
             }
         } catch (error) {
@@ -346,7 +346,7 @@ export class AdvancedMigrationPreviewView {
 
     private async handleSelectConflict(conflictId: string): Promise<void> {
         this.selectedConflicts.add(conflictId);
-        Logger.info('Conflict selected', { conflictId });
+        Logger.info('Conflict selected', 'handleSelectConflict', { conflictId });
     }
 
     private async handleValidateMigration(): Promise<void> {
@@ -378,7 +378,7 @@ export class AdvancedMigrationPreviewView {
 
         if (confirmed === 'Execute') {
             vscode.window.showInformationMessage('Migration execution started');
-            Logger.info('Migration execution initiated', { migrationId: this.migrationData.migrationId });
+            Logger.info('Migration execution initiated', 'handleExecuteMigration', { migrationId: this.migrationData.migrationId });
         }
     }
 

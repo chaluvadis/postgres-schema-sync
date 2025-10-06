@@ -10,6 +10,7 @@ import { MigrationPreviewView, MigrationPreviewData } from './views/MigrationPre
 import { SettingsView } from './views/SettingsView';
 import { Logger } from './utils/Logger';
 import { ErrorHandler, ErrorSeverity } from './utils/ErrorHandler';
+import { ExtensionInitializer } from './utils/ExtensionInitializer';
 
 export class PostgreSqlExtension {
     private context: vscode.ExtensionContext;
@@ -36,8 +37,8 @@ export class PostgreSqlExtension {
         this.migrationManager = migrationManager;
         this.connectionView = new ConnectionManagementView(connectionManager);
         this.schemaBrowserView = new SchemaBrowserView(schemaManager, connectionManager);
-        this.schemaComparisonView = new SchemaComparisonView();
-        this.migrationPreviewView = new MigrationPreviewView();
+        this.schemaComparisonView = new SchemaComparisonView(ExtensionInitializer.getDotNetService());
+        this.migrationPreviewView = new MigrationPreviewView(ExtensionInitializer.getDotNetService());
         this.settingsView = new SettingsView();
         this.treeProvider = treeProvider;
     }
@@ -260,7 +261,7 @@ export class PostgreSqlExtension {
         );
 
         try {
-            Logger.info('Comparing schemas', 'browseSchema', { source, target });
+            Logger.info('Comparing schemas', 'compareSchemas', { source, target });
 
             if (!source?.id || !target?.id) {
                 const error = new Error('Source and target connections are required for schema comparison');
@@ -357,7 +358,7 @@ export class PostgreSqlExtension {
                             progress.report({ increment: 50, message: 'Comparing schemas...' });
 
                             try {
-                                comparison = await this.migrationManager.getDotNetService().compareSchemas(
+                                comparison = await ExtensionInitializer.getDotNetService().compareSchemas(
                                     dotNetSourceConnection,
                                     dotNetTargetConnection,
                                     { mode: 'strict' }
@@ -373,10 +374,29 @@ export class PostgreSqlExtension {
                             progress.report({ increment: 100, message: 'Schema comparison completed' });
 
                             const comparisonData: SchemaComparisonData = {
-                                comparisonId: comparison.id,
-                                sourceConnection: sourceConnection.name,
-                                targetConnection: targetConnection.name,
+                                id: comparison.id,
+                                sourceConnection: {
+                                    id: sourceConnection.id,
+                                    name: sourceConnection.name,
+                                    host: sourceConnection.host,
+                                    port: sourceConnection.port,
+                                    database: sourceConnection.database,
+                                    username: sourceConnection.username,
+                                    password: sourcePassword,
+                                    createdDate: new Date().toISOString()
+                                },
+                                targetConnection: {
+                                    id: targetConnection.id,
+                                    name: targetConnection.name,
+                                    host: targetConnection.host,
+                                    port: targetConnection.port,
+                                    database: targetConnection.database,
+                                    username: targetConnection.username,
+                                    password: targetPassword,
+                                    createdDate: new Date().toISOString()
+                                },
                                 differences: comparison.differences.map(diff => ({
+                                    id: `${diff.type}-${diff.objectType}-${diff.objectName}-${diff.schema}`,
                                     type: diff.type,
                                     objectType: diff.objectType,
                                     objectName: diff.objectName,
@@ -386,10 +406,14 @@ export class PostgreSqlExtension {
                                     differenceDetails: diff.differenceDetails,
                                     severity: 'medium' // Default severity
                                 })),
-                                totalDifferences: comparison.differences.length,
-                                comparisonMode: 'Strict',
-                                executionTime: comparison.executionTime,
-                                createdAt: comparison.createdAt
+                                comparisonOptions: {
+                                    mode: 'strict',
+                                    ignoreSchemas: ['information_schema', 'pg_catalog'],
+                                    includeSystemObjects: false,
+                                    caseSensitive: true
+                                },
+                                createdAt: comparison.createdAt,
+                                executionTime: comparison.executionTime
                             };
 
                             try {
@@ -669,21 +693,33 @@ export class PostgreSqlExtension {
             }
 
             const previewData: MigrationPreviewData = {
-                migrationId: migration.id,
-                migrationName: migration.name,
-                sourceConnection: migration.sourceConnection,
+                id: `preview-${Date.now()}`,
+                migrationScript: migration,
                 targetConnection: migration.targetConnection,
-                sqlScript: migration.sqlScript,
-                rollbackScript: migration.rollbackScript,
-                totalStatements: migration.sqlScript.split('\n').length,
-                estimatedExecutionTime: `${Math.max(1, Math.ceil(migration.sqlScript.split('\n').length / 10))}s`,
-                riskLevel: this.assessMigrationRisk(migration.sqlScript),
-                warnings: this.analyzeMigrationWarnings(migration.sqlScript),
-                canExecute: true,
-                canRollback: migration.rollbackScript && migration.rollbackScript.trim().length > 0
+                previewOptions: {
+                    dryRun: true,
+                    stopOnError: true,
+                    transactionMode: 'all_or_nothing',
+                    backupBeforeExecution: true,
+                    parallelExecution: false,
+                    maxExecutionTime: 300
+                },
+                riskAssessment: {
+                    overallRisk: this.assessMigrationRisk(migration.sqlScript).toLowerCase() as 'low' | 'medium' | 'high' | 'critical',
+                    riskFactors: this.analyzeMigrationWarnings(migration.sqlScript).map(w => ({
+                        type: 'data_loss',
+                        severity: 'medium',
+                        description: w
+                    })),
+                    estimatedDowntime: `${Math.max(1, Math.ceil(migration.sqlScript.split('\n').length / 10))}s`,
+                    rollbackComplexity: 'simple',
+                    dataLossPotential: 'minimal'
+                },
+                executionPlan: [],
+                createdAt: new Date().toISOString()
             };
 
-            await this.migrationPreviewView.showMigrationPreview(previewData);
+            await this.migrationPreviewView.showPreview();
         } catch (error) {
             ErrorHandler.handleError(error, ErrorHandler.createContext('PreviewMigration'));
         }
