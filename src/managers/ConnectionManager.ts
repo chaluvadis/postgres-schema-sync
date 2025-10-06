@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { Logger } from '../utils/Logger';
 import { DotNetIntegrationService, DotNetConnectionInfo } from '../services/DotNetIntegrationService';
 import { SecurityManager } from '../services/SecurityManager';
+import { ActivityBarProvider } from '../providers/ActivityBarProvider';
 
 export interface DatabaseConnection {
     id: string;
@@ -19,12 +20,18 @@ export class ConnectionManager {
     private connections: Map<string, DatabaseConnection> = new Map();
     private secrets: vscode.SecretStorage | undefined;
     private dotNetService: DotNetIntegrationService;
+    private activityBarProvider?: ActivityBarProvider | undefined;
 
-    constructor(context: vscode.ExtensionContext) {
+    constructor(context: vscode.ExtensionContext, activityBarProvider?: ActivityBarProvider) {
         this.context = context;
         this.dotNetService = DotNetIntegrationService.getInstance();
+        this.activityBarProvider = activityBarProvider;
         this.loadConnections();
         this.secrets = context.secrets;
+    }
+
+    setActivityBarProvider(provider: ActivityBarProvider): void {
+        this.activityBarProvider = provider;
     }
 
     async addConnection(connectionInfo: Omit<DatabaseConnection, 'id'>): Promise<void> {
@@ -48,6 +55,12 @@ export class ConnectionManager {
             });
 
             await this.saveConnections();
+
+            // Update activity bar with new connection count
+            if (this.activityBarProvider) {
+                this.activityBarProvider.updateActivityBar();
+            }
+
             Logger.info(`Connection added: ${connection.id}`);
         } catch (error) {
             Logger.error(`Failed to add connection: ${(error as Error).message}`, error as Error, 'addConnection');
@@ -84,6 +97,12 @@ export class ConnectionManager {
             });
 
             await this.saveConnections();
+
+            // Update activity bar with updated connection count
+            if (this.activityBarProvider) {
+                this.activityBarProvider.updateActivityBar();
+            }
+
             Logger.info(`Connection updated: ${id}`);
         } catch (error) {
             Logger.error(`Failed to update connection: ${(error as Error).message}`, error as Error, 'updateConnection');
@@ -106,7 +125,7 @@ export class ConnectionManager {
 
             this.connections.delete(id);
             await this.saveConnections();
-
+            this.activityBarProvider?.updateActivityBar();
             Logger.info(`Connection removed: ${id}`);
         } catch (error) {
             Logger.error(`Failed to remove connection: ${(error as Error).message}`);

@@ -42,10 +42,8 @@ export interface MigrationExecutionResult {
 
 export class MigrationManager {
     private connectionManager: ConnectionManager;
-    // SchemaManager integration reserved for future use
     private dotNetService: DotNetIntegrationService;
     private migrations: Map<string, MigrationScript> = new Map();
-
     constructor(connectionManager: ConnectionManager) {
         this.connectionManager = connectionManager;
         this.dotNetService = DotNetIntegrationService.getInstance();
@@ -253,17 +251,6 @@ export class MigrationManager {
         }
     }
 
-    getMigrations(): MigrationScript[] {
-        return Array.from(this.migrations.values());
-    }
-
-    getDotNetService(): DotNetIntegrationService {
-        return this.dotNetService;
-    }
-
-    getMigration(id: string): MigrationScript | undefined {
-        return this.migrations.get(id);
-    }
 
     async executeMigrationWithOptions(
         migrationId: string,
@@ -508,9 +495,5 @@ export class MigrationManager {
         }
 
         return warnings;
-    }
-    async dispose(): Promise<void> {
-        Logger.info('Disposing MigrationManager');
-        this.migrations.clear();
     }
 }

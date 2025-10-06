@@ -164,10 +164,10 @@
         "icon": "$(focus-view)"
       },
       {
-        "command": "postgresql.showPerformanceReport",
-        "title": "Show Performance Report",
+        "command": "postgresql.manageConnections",
+        "title": "Manage Connections",
         "category": "PostgreSQL",
-        "icon": "$(graph)"
+        "icon": "$(settings-gear)"
       },
       {
         "command": "postgresql.compareObjects",

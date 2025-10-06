@@ -354,12 +354,9 @@ function registerCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('postgresql.compareSelectedSchemas', async () => {
             // Compare schemas from tree selection
-            const selectedItems = await vscode.commands.executeCommand('postgresql.getSelectedTreeItems');
-            if (selectedItems && Array.isArray(selectedItems) && selectedItems.length === 2) {
-                vscode.commands.executeCommand('postgresql.compareSchemas', selectedItems[0], selectedItems[1]);
-            } else {
-                vscode.window.showErrorMessage('Please select exactly 2 schemas to compare');
-            }
+            // Note: This would require getting selected items from the tree view
+            // For now, show information message
+            vscode.window.showInformationMessage('Select 2 schemas in the tree view and use the context menu to compare them');
         })
     );
 
@@ -372,6 +369,39 @@ function registerCommands(
 
             if (confirm === 'Yes') {
                 vscode.commands.executeCommand('postgresql.executeMigration');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.manageConnections', async () => {
+            // Show connection management options
+            const action = await vscode.window.showQuickPick([
+                'Add Connection',
+                'View Connections',
+                'Test All Connections',
+                'Export Connections',
+                'Import Connections'
+            ], {
+                placeHolder: 'Select connection management action'
+            });
+
+            switch (action) {
+                case 'Add Connection':
+                    vscode.commands.executeCommand('postgresql.addConnection');
+                    break;
+                case 'View Connections':
+                    vscode.window.showInformationMessage('Connection management UI not yet implemented');
+                    break;
+                case 'Test All Connections':
+                    vscode.window.showInformationMessage('Test all connections feature not yet implemented');
+                    break;
+                case 'Export Connections':
+                    vscode.window.showInformationMessage('Export connections feature not yet implemented');
+                    break;
+                case 'Import Connections':
+                    vscode.window.showInformationMessage('Import connections feature not yet implemented');
+                    break;
             }
         })
     );

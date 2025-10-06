@@ -194,19 +194,6 @@ export class SchemaManager {
         return age > this.CACHE_DURATION;
     }
 
-    async refreshSchemaCache(connectionId: string): Promise<void> {
-        Logger.info('Refreshing schema cache', 'refreshSchemaCache', { connectionId });
-
-        // Clear all cache entries for this connection
-        for (const [key, cache] of Array.from(this.schemaCache.entries())) {
-            if (cache.connectionId === connectionId) {
-                this.schemaCache.delete(key);
-            }
-        }
-
-        // Force refresh by calling getDatabaseObjects
-        await this.getDatabaseObjects(connectionId);
-    }
 
     async compareSchemas(
         sourceConnectionId: string,
@@ -384,80 +371,7 @@ export class SchemaManager {
         return details;
     }
 
-    async getObjectDependencies(connectionId: string, objectType: string, schema: string, objectName: string): Promise<string[]> {
-        try {
-            const objects = await this.getDatabaseObjectsWithCache(connectionId);
-            const targetObject = objects.find(obj =>
-                obj.type === objectType &&
-                obj.schema === schema &&
-                obj.name === objectName
-            );
 
-            if (!targetObject) {
-                return [];
-            }
-
-            // Simple dependency analysis based on object relationships
-            const dependencies: string[] = [];
-
-            switch (objectType) {
-                case 'table':
-                    // Find foreign key constraints and views that depend on this table
-                    const dependentViews = objects.filter(obj =>
-                        obj.type === 'view' &&
-                        obj.definition &&
-                        obj.definition.toLowerCase().includes(objectName.toLowerCase())
-                    );
-                    dependencies.push(...dependentViews.map(v => `${v.type}:${v.schema}.${v.name}`));
-                    break;
-
-                case 'function':
-                case 'procedure':
-                    // Find objects that reference this function
-                    const dependentObjects = objects.filter(obj =>
-                        obj.definition &&
-                        obj.definition.toLowerCase().includes(objectName.toLowerCase())
-                    );
-                    dependencies.push(...dependentObjects.map(o => `${o.type}:${o.schema}.${o.name}`));
-                    break;
-            }
-
-            return dependencies;
-        } catch (error) {
-            Logger.error('Failed to get object dependencies', error as Error);
-            return [];
-        }
-    }
-
-    async searchObjects(connectionId: string, searchTerm: string, objectTypes?: string[]): Promise<DatabaseObject[]> {
-        try {
-            const objects = await this.getDatabaseObjectsWithCache(connectionId);
-
-            const filtered = objects.filter(obj => {
-                // Filter by object types if specified
-                if (objectTypes && objectTypes.length > 0 && !objectTypes.includes(obj.type)) {
-                    return false;
-                }
-
-                // Search in name, schema, or definition
-                const searchLower = searchTerm.toLowerCase();
-                return obj.name.toLowerCase().includes(searchLower) ||
-                    obj.schema.toLowerCase().includes(searchLower) ||
-                    (obj.definition && obj.definition.toLowerCase().includes(searchLower));
-            });
-
-            Logger.info('Object search completed', 'searchObjects', {
-                connectionId,
-                searchTerm,
-                resultCount: filtered.length
-            });
-
-            return filtered;
-        } catch (error) {
-            Logger.error('Object search failed', error as Error);
-            throw error;
-        }
-    }
 
     private generateId(): string {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
