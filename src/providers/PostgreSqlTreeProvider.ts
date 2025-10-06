@@ -79,7 +79,6 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
 
         return this.connections.map(connection => {
             const isConnected = connection.status === 'Connected';
-            const statusIcon = isConnected ? 'check' : 'warning';
             const statusColor = isConnected ?
                 new vscode.ThemeColor('debugIcon.startForeground') :
                 new vscode.ThemeColor('debugIcon.stopForeground');

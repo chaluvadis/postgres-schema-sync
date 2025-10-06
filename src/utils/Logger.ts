@@ -25,19 +25,6 @@ export class Logger {
 
     private constructor() {}
 
-    static initialize(): void {
-        if (!this.outputChannel) {
-            this.outputChannel = vscode.window.createOutputChannel('PostgreSQL Schema Sync');
-        }
-    }
-
-    static setLogLevel(level: LogLevel): void {
-        this.logLevel = level;
-    }
-
-    static trace(message: string, source?: string, metadata?: Record<string, any>): void {
-        this.log(LogLevel.Trace, message, source, metadata);
-    }
 
     static debug(message: string, source?: string, metadata?: Record<string, any>): void {
         this.log(LogLevel.Debug, message, source, metadata);
@@ -146,33 +133,6 @@ export class Logger {
         }
     }
 
-    static getLogs(level?: LogLevel): LogEntry[] {
-        if (level !== undefined) {
-            return this.logs.filter(log => log.level >= level);
-        }
-        return [...this.logs];
-    }
-
-    static clearLogs(): void {
-        this.logs = [];
-        if (this.outputChannel) {
-            this.outputChannel.clear();
-        }
-    }
-
-    static exportLogs(): string {
-        const logsToExport = this.logs.map(log => {
-            const levelName = LogLevel[log.level];
-            const timestamp = log.timestamp.toISOString();
-            const source = log.source || 'Unknown';
-            const message = log.message;
-            const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : '';
-
-            return `${timestamp} [${levelName}] [${source}] ${message}${metadata}`;
-        });
-
-        return logsToExport.join('\n');
-    }
 
     static dispose(): void {
         if (this.outputChannel) {

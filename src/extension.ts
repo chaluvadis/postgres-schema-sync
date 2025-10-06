@@ -47,7 +47,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const coreComponents = ExtensionInitializer.initializeCoreComponents(context);
 
         // Initialize optional UI components
-        components = ExtensionInitializer.initializeOptionalComponents(context, coreComponents);
+        components = ExtensionInitializer.initializeOptionalComponents(coreComponents);
 
         // Register tree view
         const treeView = ExtensionInitializer.registerTreeView(components.treeProvider, context);

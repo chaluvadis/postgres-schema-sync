@@ -84,7 +84,6 @@ export class ExtensionInitializer {
     }
 
     static initializeOptionalComponents(
-        context: vscode.ExtensionContext, // Reserved for future use by optional components
         coreComponents: ExtensionComponents
     ): ExtensionComponents {
         try {
@@ -174,83 +173,5 @@ export class ExtensionInitializer {
             throw new Error('.NET integration service not initialized');
         }
         return this.dotNetService;
-    }
-
-    static validateComponents(components: ExtensionComponents): void {
-        try {
-            Logger.info('Validating extension components');
-
-            if (!components.connectionManager) {
-                throw new Error('ConnectionManager is required but not initialized');
-            }
-
-            if (!components.schemaManager) {
-                throw new Error('SchemaManager is required but not initialized');
-            }
-
-            if (!components.migrationManager) {
-                throw new Error('MigrationManager is required but not initialized');
-            }
-
-            if (!components.treeProvider) {
-                throw new Error('PostgreSqlTreeProvider is required but not initialized');
-            }
-
-            Logger.info('All required extension components validated successfully');
-        } catch (error) {
-            Logger.error('Component validation failed', error as Error);
-            throw error;
-        }
-    }
-
-    static async disposeComponentsAsync(components: ExtensionComponents): Promise<void> {
-        try {
-            Logger.info('Disposing extension components');
-
-            const disposePromises: Promise<void>[] = [];
-
-            // Dispose managers
-            if (components.connectionManager) {
-                disposePromises.push(Promise.resolve(components.connectionManager.dispose()));
-            }
-
-            if (components.schemaManager) {
-                disposePromises.push(Promise.resolve(components.schemaManager.dispose()));
-            }
-
-            if (components.migrationManager) {
-                disposePromises.push(Promise.resolve(components.migrationManager.dispose()));
-            }
-
-            // Dispose providers
-            if (components.activityBarProvider) {
-                components.activityBarProvider.dispose();
-            }
-
-            if (components.enhancedStatusBarProvider) {
-                components.enhancedStatusBarProvider.dispose();
-            }
-
-            // Dispose views (if they have dispose methods)
-            if (components.dashboardView && typeof components.dashboardView.dispose === 'function') {
-                disposePromises.push(Promise.resolve(components.dashboardView.dispose()));
-            }
-
-            if (components.notificationManager) {
-                components.notificationManager.dispose();
-            }
-
-            // Dispose .NET service
-            if (this.dotNetService) {
-                disposePromises.push(this.dotNetService.dispose());
-            }
-
-            await Promise.all(disposePromises);
-
-            Logger.info('All extension components disposed successfully');
-        } catch (error) {
-            Logger.error('Error disposing extension components', error as Error);
-            throw error;
-        }
     }
 }
