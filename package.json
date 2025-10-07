@@ -659,7 +659,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "pnpm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
@@ -667,7 +667,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "build:dotnet": "npx ts-node build-dotnet.ts",
-    "build:all": "npm run build:dotnet && npm run compile",
+    "build:all": "pnpm run build:dotnet && pnpm run compile",
     "verify:dotnet": "npx ts-node verify-dotnet-dll.ts",
     "clean": "rimraf bin out"
   },
