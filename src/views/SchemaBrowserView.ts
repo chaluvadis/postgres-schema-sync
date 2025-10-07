@@ -18,7 +18,7 @@ export class SchemaBrowserView {
                 throw new Error('Connection ID is required');
             }
 
-            Logger.info('Opening schema browser', { connectionId, schemaName });
+            Logger.info('Opening schema browser', 'showSchemaBrowser', { connectionId, schemaName });
 
             const panel = vscode.window.createWebviewPanel(
                 'schemaBrowser',
@@ -42,7 +42,7 @@ export class SchemaBrowserView {
                         await this.handleRefreshSchema(panel, connectionId, schemaName);
                         break;
                     default:
-                        Logger.warn('Unknown schema browser command', { command: message.command });
+                        Logger.warn('Unknown schema browser command', 'handleWebviewMessage', { command: message.command });
                         break;
                 }
             });
@@ -343,7 +343,7 @@ export class SchemaBrowserView {
 
     private async handleViewObjectDetails(object: DatabaseObject): Promise<void> {
         if (!object || !object.name) {
-            Logger.warn('Invalid object provided for details view', { object });
+            Logger.warn('Invalid object provided for details view', 'handleViewObjectDetails', { object });
             return;
         }
 
@@ -353,9 +353,9 @@ export class SchemaBrowserView {
             const objectInfo = `${object.type}: ${object.name}${object.schema ? ` (Schema: ${object.schema})` : ''}`;
             vscode.window.showInformationMessage(`Object Details: ${objectInfo}`);
 
-            Logger.info('Viewing object details', { object: object.name, type: object.type });
+            Logger.info('Viewing object details', 'handleViewObjectDetails', { object: object.name, type: object.type });
         } catch (error) {
-            Logger.error('Failed to view object details', error as Error, { object });
+            Logger.error('Failed to view object details', error as Error, 'handleViewObjectDetails', { object });
             vscode.window.showErrorMessage(`Failed to view object details: ${(error as Error).message}`);
         }
     }

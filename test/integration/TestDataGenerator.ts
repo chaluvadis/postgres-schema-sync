@@ -1,5 +1,3 @@
-import { randomBytes } from 'crypto';
-
 /**
  * Test data generator utilities for integration testing
  * Provides methods to generate realistic test data for various scenarios
@@ -34,8 +32,8 @@ export interface TestOrder {
   unitPrice: number;
   totalAmount: number;
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-  orderDate?: string;
-  shippedDate?: string;
+  orderDate?: string | undefined;
+  shippedDate?: string | undefined;
 }
 
 export interface TestSchema {
@@ -454,11 +452,11 @@ export class TestDataGenerator {
     const tableSqls = schema.tables.map(table => `
       CREATE TABLE ${schema.name}.${table.name} (
         ${table.columns.map(col => {
-          let sql = `  ${col.name} ${col.type}`;
-          if (!col.nullable) sql += ' NOT NULL';
-          if (col.defaultValue) sql += ` DEFAULT ${col.defaultValue}`;
-          return sql;
-        }).join(',\n        ')}
+      let sql = `  ${col.name} ${col.type}`;
+      if (!col.nullable) sql += ' NOT NULL';
+      if (col.defaultValue) sql += ` DEFAULT ${col.defaultValue}`;
+      return sql;
+    }).join(',\n        ')}
       );
 
       ${table.primaryKey ? `ALTER TABLE ${schema.name}.${table.name} ADD PRIMARY KEY (${table.primaryKey.join(', ')});` : ''}

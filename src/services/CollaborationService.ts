@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { Logger } from '../utils/Logger';
-import { ErrorHandler } from '../utils/ErrorHandler';
 
 export interface TeamMember {
     id: string;
@@ -134,7 +133,7 @@ export class CollaborationService {
     /**
      * Joins an existing workspace
      */
-    async joinWorkspace(workspaceId: string, inviteCode?: string): Promise<CollaborationWorkspace> {
+    async joinWorkspace(workspaceId: string, _inviteCode?: string): Promise<CollaborationWorkspace> {
         try {
             Logger.info('Joining collaboration workspace', 'joinWorkspace', { workspaceId });
 

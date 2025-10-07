@@ -101,7 +101,7 @@ export class EnhancedStatusBarProvider {
     }
 
     private createStatusBarItems(): void {
-        if (!this.config.enabled) return;
+        if (!this.config.enabled) { return; }
 
         // Main connection status item
         if (this.config.showConnectionStatus) {
@@ -219,7 +219,7 @@ export class EnhancedStatusBarProvider {
     }
 
     private updateAllStatusItems(): void {
-        if (!this.config.enabled) return;
+        if (!this.config.enabled) { return; }
 
         this.updateConnectionStatus();
         this.updateOperationIndicators();
@@ -229,10 +229,10 @@ export class EnhancedStatusBarProvider {
     }
 
     private updateConnectionStatus(): void {
-        if (!this.config.showConnectionStatus) return;
+        if (!this.config.showConnectionStatus) { return; }
 
         const item = this.statusBarItems.get('connection');
-        if (!item) return;
+        if (!item) { return; }
 
         const connections = this.connectionManager.getConnections();
         const connectedCount = connections.filter(c => c.status === 'Connected').length;
@@ -268,10 +268,10 @@ export class EnhancedStatusBarProvider {
 
 
     private updateOperationIndicators(): void {
-        if (!this.config.showOperationIndicators) return;
+        if (!this.config.showOperationIndicators) { return; }
 
         const item = this.statusBarItems.get('operations');
-        if (!item) return;
+        if (!item) { return; }
 
         const activeOperations = Array.from(this.operationIndicators.values())
             .filter(op => op.status === 'running' || op.status === 'pending');
@@ -347,10 +347,10 @@ export class EnhancedStatusBarProvider {
     }
 
     private updateNotificationStatus(): void {
-        if (!this.config.showNotifications) return;
+        if (!this.config.showNotifications) { return; }
 
         const item = this.statusBarItems.get('notifications');
-        if (!item) return;
+        if (!item) { return; }
 
         const stats = this.notificationManager.getStatistics();
         const unreadCount = stats.unread;
@@ -386,10 +386,10 @@ export class EnhancedStatusBarProvider {
     }
 
     private updateMemoryUsage(): void {
-        if (!this.config.showMemoryUsage) return;
+        if (!this.config.showMemoryUsage) { return; }
 
         const item = this.statusBarItems.get('memory');
-        if (!item) return;
+        if (!item) { return; }
 
         const memUsage = process.memoryUsage();
         const memMB = Math.round(memUsage.heapUsed / 1024 / 1024);
@@ -413,7 +413,7 @@ export class EnhancedStatusBarProvider {
 
     private updateSystemStatus(): void {
         const item = this.statusBarItems.get('system');
-        if (!item) return;
+        if (!item) { return; }
 
         const uptime = this.getSystemUptime();
 
@@ -499,7 +499,7 @@ export class EnhancedStatusBarProvider {
         }
     ): void {
         const indicator = this.operationIndicators.get(id);
-        if (!indicator || !indicator.steps) return;
+        if (!indicator || !indicator.steps) { return; }
 
         if (indicator.steps[stepIndex]) {
             const step = indicator.steps[stepIndex];
@@ -879,7 +879,7 @@ export class EnhancedStatusBarProvider {
         }
 
         // Cancel all cancellable operations
-        this.operationIndicators.forEach((indicator, id) => {
+        this.operationIndicators.forEach((indicator) => {
             if (indicator.cancellable && indicator.cancellationToken) {
                 indicator.cancellationToken.cancel();
             }

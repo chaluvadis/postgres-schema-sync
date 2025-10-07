@@ -6,7 +6,7 @@ import { MigrationManager } from './managers/MigrationManager';
 import { ConnectionManagementView } from './views/ConnectionManagementView';
 import { SchemaBrowserView } from './views/SchemaBrowserView';
 import { SchemaComparisonView, SchemaComparisonData } from './views/SchemaComparisonView';
-import { MigrationPreviewView, MigrationPreviewData } from './views/MigrationPreviewView';
+import { MigrationPreviewView } from './views/MigrationPreviewView';
 import { SettingsView } from './views/SettingsView';
 import { Logger } from './utils/Logger';
 import { ErrorHandler, ErrorSeverity } from './utils/ErrorHandler';
@@ -38,7 +38,7 @@ export class PostgreSqlExtension {
         this.connectionView = new ConnectionManagementView(connectionManager);
         this.schemaBrowserView = new SchemaBrowserView(schemaManager, connectionManager);
         this.schemaComparisonView = new SchemaComparisonView(ExtensionInitializer.getDotNetService());
-        this.migrationPreviewView = new MigrationPreviewView(ExtensionInitializer.getDotNetService());
+        this.migrationPreviewView = new MigrationPreviewView();
         this.settingsView = new SettingsView();
         this.treeProvider = treeProvider;
     }
@@ -285,7 +285,7 @@ export class PostgreSqlExtension {
                     location: vscode.ProgressLocation.Notification,
                     cancellable: true
                 },
-                async (progress, token) => {
+                async (progress) => {
                     progress.report({ increment: 0, message: 'Analyzing source schema...' });
 
                     try {
@@ -474,7 +474,7 @@ export class PostgreSqlExtension {
                 location: vscode.ProgressLocation.Notification,
                 title: 'Generating Migration',
                 cancellable: true
-            }, async (progress, token) => {
+            }, async (progress) => {
                 progress.report({ increment: 0, message: 'Analyzing schema differences...' });
 
                 try {
@@ -558,7 +558,7 @@ export class PostgreSqlExtension {
                 location: vscode.ProgressLocation.Notification,
                 title: 'Executing Migration',
                 cancellable: true
-            }, async (progress, token) => {
+            }, async (progress): Promise<void> => {
                 progress.report({ increment: 0, message: 'Preparing migration execution...' });
 
                 let migrationSuccess = false;
@@ -616,11 +616,11 @@ export class PostgreSqlExtension {
                                         });
                                     }
 
-                                    return false; // Don't return success for failed migration
+                                    return; // Don't return success for failed migration
                                 } catch (rollbackError) {
                                     Logger.error('Automatic rollback failed', rollbackError as Error);
                                     ErrorHandler.handleError(rollbackError, rollbackContext);
-                                    return false;
+                                    return;
                                 }
                             } catch (rollbackError) {
                                 Logger.error('Automatic rollback failed', rollbackError as Error);
@@ -692,33 +692,6 @@ export class PostgreSqlExtension {
                 return;
             }
 
-            const previewData: MigrationPreviewData = {
-                id: `preview-${Date.now()}`,
-                migrationScript: migration,
-                targetConnection: migration.targetConnection,
-                previewOptions: {
-                    dryRun: true,
-                    stopOnError: true,
-                    transactionMode: 'all_or_nothing',
-                    backupBeforeExecution: true,
-                    parallelExecution: false,
-                    maxExecutionTime: 300
-                },
-                riskAssessment: {
-                    overallRisk: this.assessMigrationRisk(migration.sqlScript).toLowerCase() as 'low' | 'medium' | 'high' | 'critical',
-                    riskFactors: this.analyzeMigrationWarnings(migration.sqlScript).map(w => ({
-                        type: 'data_loss',
-                        severity: 'medium',
-                        description: w
-                    })),
-                    estimatedDowntime: `${Math.max(1, Math.ceil(migration.sqlScript.split('\n').length / 10))}s`,
-                    rollbackComplexity: 'simple',
-                    dataLossPotential: 'minimal'
-                },
-                executionPlan: [],
-                createdAt: new Date().toISOString()
-            };
-
             await this.migrationPreviewView.showPreview();
         } catch (error) {
             ErrorHandler.handleError(error, ErrorHandler.createContext('PreviewMigration'));
@@ -746,7 +719,7 @@ export class PostgreSqlExtension {
                 location: vscode.ProgressLocation.Notification,
                 title: 'Rolling Back Migration',
                 cancellable: true
-            }, async (progress, token) => {
+            }, async (progress) => {
                 progress.report({ increment: 0, message: 'Preparing rollback...' });
 
                 try {
@@ -784,7 +757,7 @@ export class PostgreSqlExtension {
                 location: vscode.ProgressLocation.Notification,
                 title: 'Loading Object Details',
                 cancellable: true
-            }, async (progress, token) => {
+            }, async (progress) => {
                 progress.report({ increment: 0, message: 'Fetching object metadata...' });
 
                 try {
@@ -865,326 +838,9 @@ export class PostgreSqlExtension {
         }
     }
 
-    private async showConnectionDialog(existingConnection?: any): Promise<any | undefined> {
-        const name = await vscode.window.showInputBox({
-            prompt: 'Enter connection name',
-            placeHolder: 'My Database Connection',
-            value: existingConnection?.name || '',
-            validateInput: (value) => {
-                if (!value || value.trim().length === 0) {
-                    return 'Connection name is required';
-                }
-                return null;
-            }
-        });
 
-        if (!name) {
-            return undefined;
-        }
 
-        const host = await vscode.window.showInputBox({
-            prompt: 'Enter database host',
-            placeHolder: 'localhost',
-            value: existingConnection?.host || 'localhost',
-            validateInput: (value) => {
-                if (!value || value.trim().length === 0) {
-                    return 'Host is required';
-                }
-                return null;
-            }
-        });
 
-        if (!host) {
-            return undefined;
-        }
-
-        const portInput = await vscode.window.showInputBox({
-            prompt: 'Enter database port',
-            placeHolder: '5432',
-            value: existingConnection?.port?.toString() || '5432',
-            validateInput: (value) => {
-                const port = parseInt(value);
-                if (isNaN(port) || port < 1 || port > 65535) {
-                    return 'Valid port number (1-65535) is required';
-                }
-                return null;
-            }
-        });
-
-        if (!portInput) {
-            return undefined;
-        }
-
-        const database = await vscode.window.showInputBox({
-            prompt: 'Enter database name',
-            placeHolder: 'mydb',
-            value: existingConnection?.database || '',
-            validateInput: (value) => {
-                if (!value || value.trim().length === 0) {
-                    return 'Database name is required';
-                }
-                return null;
-            }
-        });
-
-        if (!database) {
-            return undefined;
-        }
-
-        const username = await vscode.window.showInputBox({
-            prompt: 'Enter username',
-            placeHolder: 'postgres',
-            value: existingConnection?.username || '',
-            validateInput: (value) => {
-                if (!value || value.trim().length === 0) {
-                    return 'Username is required';
-                }
-                return null;
-            }
-        });
-
-        if (!username) {
-            return undefined;
-        }
-
-        const password = await vscode.window.showInputBox({
-            prompt: 'Enter password',
-            placeHolder: 'Enter password',
-            password: true,
-            value: existingConnection?.password || '',
-            validateInput: (value) => {
-                if (!value || value.trim().length === 0) {
-                    return 'Password is required';
-                }
-                return null;
-            }
-        });
-
-        if (!password) {
-            return undefined;
-        }
-
-        return {
-            id: existingConnection?.id || this.generateId(),
-            name: name.trim(),
-            host: host.trim(),
-            port: parseInt(portInput),
-            database: database.trim(),
-            username: username.trim(),
-            password: password.trim()
-        };
-    }
-    private generateId(): string {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
-    }
-
-    private assessMigrationRisk(sqlScript: string): 'Low' | 'Medium' | 'High' {
-        const script = sqlScript.toUpperCase();
-        const highRiskOps = ['DROP TABLE', 'DROP SCHEMA', 'TRUNCATE'];
-        const mediumRiskOps = ['DROP', 'ALTER TABLE', 'DELETE'];
-
-        if (highRiskOps.some(op => script.includes(op))) {
-            return 'High';
-        }
-        if (mediumRiskOps.some(op => script.includes(op))) {
-            return 'Medium';
-        }
-        return 'Low';
-    }
-
-    private analyzeMigrationWarnings(sqlScript: string): string[] {
-        const warnings: string[] = [];
-        const script = sqlScript.toUpperCase();
-
-        if (script.includes('DROP TABLE')) {
-            warnings.push('Migration contains DROP TABLE operations - data will be lost');
-        }
-        if (script.includes('TRUNCATE')) {
-            warnings.push('Migration contains TRUNCATE operations - all data will be lost');
-        }
-        if (script.includes('DROP SCHEMA')) {
-            warnings.push('Migration contains DROP SCHEMA operations - multiple objects will be affected');
-        }
-        if (script.includes('ALTER TABLE')) {
-            warnings.push('Migration contains ALTER TABLE operations - schema changes may affect applications');
-        }
-
-        const statementCount = sqlScript.split('\n').length;
-        if (statementCount > 100) {
-            warnings.push(`Large migration with ${statementCount} statements - consider breaking into smaller batches`);
-        }
-
-        return warnings;
-    }
-
-    private async generateMigrationPreviewHtml(migration: any): Promise<string> {
-        const lines = migration.sqlScript.split('\n');
-        const operationCount = lines.length;
-        const estimatedTime = Math.max(1, Math.ceil(operationCount / 10)); // Rough estimate
-
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Migration Preview</title>
-                <style>
-                    body {
-                        font-family: var(--vscode-font-family);
-                        padding: 20px;
-                        line-height: 1.6;
-                        background: var(--vscode-editor-background);
-                        color: var(--vscode-editor-foreground);
-                    }
-                    .header {
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        margin-bottom: 20px;
-                        padding-bottom: 10px;
-                        border-bottom: 1px solid var(--vscode-panel-border);
-                    }
-                    .stats {
-                        display: grid;
-                        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-                        gap: 15px;
-                        margin-bottom: 20px;
-                    }
-                    .stat-card {
-                        background: var(--vscode-textBlockQuote-background);
-                        padding: 15px;
-                        border-radius: 6px;
-                        border: 1px solid var(--vscode-textBlockQuote-border);
-                    }
-                    .stat-value {
-                        font-size: 24px;
-                        font-weight: bold;
-                        color: var(--vscode-textLink-foreground);
-                    }
-                    .stat-label {
-                        font-size: 12px;
-                        color: var(--vscode-descriptionForeground);
-                        margin-top: 5px;
-                    }
-                    .sql-preview {
-                        background: var(--vscode-textCodeBlock-background);
-                        border: 1px solid var(--vscode-textBlockQuote-border);
-                        border-radius: 6px;
-                        padding: 15px;
-                        max-height: 400px;
-                        overflow-y: auto;
-                        font-family: 'Courier New', monospace;
-                        font-size: 13px;
-                        line-height: 1.4;
-                    }
-                    .sql-line {
-                        padding: 2px 0;
-                        border-left: 3px solid transparent;
-                    }
-                    .sql-line:nth-child(odd) {
-                        background: var(--vscode-list-inactiveSelectionBackground);
-                    }
-                    .sql-comment { color: var(--vscode-textPreformat-foreground); }
-                    .sql-keyword { color: var(--vscode-symbolIcon-keywordForeground); font-weight: bold; }
-                    .sql-string { color: var(--vscode-symbolIcon-stringForeground); }
-                    .sql-number { color: var(--vscode-symbolIcon-numberForeground); }
-                    .actions {
-                        margin-top: 20px;
-                        display: flex;
-                        gap: 10px;
-                    }
-                    .btn {
-                        background: var(--vscode-button-background);
-                        color: var(--vscode-button-foreground);
-                        border: none;
-                        padding: 8px 16px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        font-size: 13px;
-                    }
-                    .btn:hover {
-                        background: var(--vscode-button-hoverBackground);
-                    }
-                    .btn-danger {
-                        background: var(--vscode-statusBarItem-errorBackground);
-                    }
-                    .btn-secondary {
-                        background: var(--vscode-button-secondaryBackground);
-                        color: var(--vscode-button-secondaryForeground);
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h2>Migration Preview: ${migration.name}</h2>
-                    <div>Migration ID: ${migration.id}</div>
-                </div>
-
-                <div class="stats">
-                    <div class="stat-card">
-                        <div class="stat-value">${operationCount}</div>
-                        <div class="stat-label">Operations</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">${estimatedTime}s</div>
-                        <div class="stat-label">Est. Duration</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">${migration.status}</div>
-                        <div class="stat-label">Status</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">${new Date(migration.createdAt).toLocaleString()}</div>
-                        <div class="stat-label">Created</div>
-                    </div>
-                </div>
-
-                <h3>SQL Preview</h3>
-                <div class="sql-preview">
-                    ${this.formatSqlPreview(migration.sqlScript)}
-                </div>
-
-                <div class="actions">
-                    <button class="btn" onclick="executeMigration()">Execute Migration</button>
-                    <button class="btn btn-secondary" onclick="editMigration()">Edit Migration</button>
-                    <button class="btn btn-secondary" onclick="saveMigration()">Save to File</button>
-                </div>
-
-                <script>
-                    const vscode = acquireVsCodeApi();
-
-                    function executeMigration() {
-                        vscode.postMessage({ command: 'executeMigration' });
-                    }
-
-                    function editMigration() {
-                        vscode.postMessage({ command: 'editMigration' });
-                    }
-
-                    function saveMigration() {
-                        vscode.postMessage({ command: 'saveMigration' });
-                    }
-                </script>
-            </body>
-            </html>
-        `;
-    }
-    private formatSqlPreview(sql: string): string {
-        const lines = sql.split('\n');
-        return lines.map((line, index) => {
-            let formattedLine = line;
-
-            // Basic SQL syntax highlighting
-            formattedLine = formattedLine.replace(/\b(CREATE|ALTER|DROP|SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|INNER|LEFT|RIGHT|ON|GROUP BY|ORDER BY|HAVING|LIMIT)\b/gi,
-                '<span class="sql-keyword">$1</span>');
-            formattedLine = formattedLine.replace(/(['"`])(.*?)\1/g, '<span class="sql-string">$1$2$1</span>');
-            formattedLine = formattedLine.replace(/\b(\d+)\b/g, '<span class="sql-number">$1</span>');
-            formattedLine = formattedLine.replace(/--(.*)/g, '<span class="sql-comment">--$1</span>');
-
-            return `<div class="sql-line">${index + 1}: ${formattedLine}</div>`;
-        }).join('');
-    }
     private async generateObjectDetailsHtml(databaseObject: any, details: any): Promise<string> {
         return `
             <!DOCTYPE html>

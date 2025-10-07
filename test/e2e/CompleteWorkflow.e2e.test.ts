@@ -1,12 +1,12 @@
 // End-to-End tests for complete PostgreSQL Schema Sync workflows
 // Tests full user journeys with all security services integrated
 
-interface TestResult {
+interface E2ETestResult {
   passed: boolean;
   message: string;
 }
 
-function runTest(testName: string, testFn: () => boolean | TestResult): void {
+function runTest(testName: string, testFn: () => boolean | E2ETestResult): void {
   try {
     const result = testFn();
     const passed = typeof result === 'boolean' ? result : result.passed;
@@ -31,7 +31,7 @@ function testDatabaseConnectionWorkflow(): boolean {
       developer: { role: 'DEVELOPER', permissions: ['CREATE_CONNECTION', 'READ_CONNECTION', 'TEST_CONNECTION'] }
     } as Record<string, { role: string; permissions: string[]; }>,
     connections: {} as Record<string, any>,
-    auditLog: [] as Array<{ userId: string; action: string; connectionId?: string; timestamp: string; }>
+    auditLog: [] as Array<{ userId: string; action: string; connectionId?: string; timestamp?: string; }>
   };
 
   // Mock secure connection creation
@@ -137,16 +137,16 @@ function testSchemaComparisonWorkflow(): boolean {
   let systemState = {
     users: {
       analyst: { role: 'ANALYST', permissions: ['READ_CONNECTION', 'BROWSE_SCHEMA', 'COMPARE_SCHEMAS'] }
-    },
+    } as Record<string, { role: string; permissions: string[]; }>,
     connections: {
       source_db: { id: 'source_db', name: 'Source Database', status: 'Connected' },
       target_db: { id: 'target_db', name: 'Target Database', status: 'Connected' }
-    },
+    } as Record<string, { id: string; name: string; status: string; }>,
     schemas: {
       source_db: ['public', 'schema1'],
       target_db: ['public', 'schema2']
     },
-    auditLog: [] as Array<{ userId: string; action: string; details: any; }>
+    auditLog: [] as Array<{ userId: string; action: string; details: any; timestamp?: string; }>
   };
 
   // Mock schema browsing
@@ -180,8 +180,8 @@ function testSchemaComparisonWorkflow(): boolean {
     }
 
     // Browse schemas for both connections
-    const sourceSchemas = browseSchema(userId, sourceConnectionId);
-    const targetSchemas = browseSchema(userId, targetConnectionId);
+    browseSchema(userId, sourceConnectionId);
+    browseSchema(userId, targetConnectionId);
 
     // Mock comparison result
     const comparison = {
@@ -228,7 +228,7 @@ function testMigrationWorkflow(): boolean {
   const systemState = {
     users: {
       developer: { role: 'DEVELOPER', permissions: ['CREATE_CONNECTION', 'GENERATE_MIGRATION', 'EXECUTE_MIGRATION'] }
-    },
+    } as Record<string, { role: string; permissions: string[]; }>,
     migrations: {} as Record<string, any>,
     auditLog: [] as Array<{ userId: string; action: string; migrationId?: string; timestamp: string; }>
   };

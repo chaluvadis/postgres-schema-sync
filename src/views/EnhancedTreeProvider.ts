@@ -166,11 +166,9 @@ export class EnhancedTreeProvider implements vscode.TreeDataProvider<IEnhancedTr
 
     private async getDatabaseItems(connectionId: string): Promise<EnhancedTreeItem[]> {
         const connection = this.connections.find(c => c.id === connectionId);
-        if (!connection) return [];
+        if (!connection) { return []; }
 
         const metadata = await this.getDatabaseMetadata(connection);
-        const itemId = `database:${connectionId}:${connection.database}`;
-
         return [new EnhancedTreeItem(
             connection.database,
             vscode.TreeItemCollapsibleState.Expanded,
@@ -203,7 +201,7 @@ export class EnhancedTreeProvider implements vscode.TreeDataProvider<IEnhancedTr
             }
 
             return Array.from(schemaGroups.entries()).map(([schemaName, schemaObjects]) => {
-                const metadata = this.getSchemaMetadata(schemaName, schemaObjects);
+                const metadata = this.getSchemaMetadata(schemaObjects);
 
                 return new EnhancedTreeItem(
                     schemaName,
@@ -631,10 +629,10 @@ export class EnhancedTreeProvider implements vscode.TreeDataProvider<IEnhancedTr
         }
     }
 
-    private getSchemaMetadata(schemaName: string, objects: DatabaseObject[]): ObjectMetadata {
+    private getSchemaMetadata(objects: DatabaseObject[]): ObjectMetadata {
         return {
             size: `${objects.length} objects`,
-            status: 'active'
+            status: 'active',
         };
     }
 
@@ -784,7 +782,7 @@ class EnhancedTreeItem extends vscode.TreeItem {
     }
 
     private buildTooltip(): string {
-        if (!this.metadata) return typeof this.label === 'string' ? this.label : this.label?.label || '';
+        if (!this.metadata) { return typeof this.label === 'string' ? this.label : this.label?.label || ''; }
 
         let tooltip = typeof this.label === 'string' ? this.label : this.label?.label || '';
 
@@ -812,7 +810,7 @@ class EnhancedTreeItem extends vscode.TreeItem {
     }
 
     private buildDescription(): string {
-        if (!this.metadata) return '';
+        if (!this.metadata) { return ''; }
 
         switch (this.objectType) {
             case 'schema':

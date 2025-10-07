@@ -20,7 +20,7 @@ export interface TestDatabaseConfig {
 export interface MockClient {
   connect(): Promise<void>;
   end(): Promise<void>;
-  query(sql: string, params?: any[]): Promise<{ rows: any[] }>;
+  query(sql: string, params?: any[]): Promise<{ rows: any[]; }>;
   isConnected: boolean;
 }
 
@@ -88,7 +88,7 @@ export class DatabaseTestHelper {
   /**
    * Create a mock client for testing
    */
-  private static createMockClient(config: TestDatabaseConfig): MockClient {
+  private static createMockClient(_config: TestDatabaseConfig): MockClient {
     return {
       isConnected: false,
       async connect(): Promise<void> {
@@ -97,25 +97,25 @@ export class DatabaseTestHelper {
       async end(): Promise<void> {
         this.isConnected = false;
       },
-      async query(sql: string, params?: any[]): Promise<{ rows: any[] }> {
+      async query(_sql: string, _params?: any[]): Promise<{ rows: any[]; }> {
         if (!this.isConnected) {
           throw new Error('Client not connected');
         }
 
         // Mock responses for common queries
-        if (sql.includes('CREATE DATABASE')) {
+        if (_sql.includes('CREATE DATABASE')) {
           return { rows: [] };
         }
 
-        if (sql.includes('DROP DATABASE')) {
+        if (_sql.includes('DROP DATABASE')) {
           return { rows: [] };
         }
 
-        if (sql.includes('pg_database')) {
+        if (_sql.includes('pg_database')) {
           return { rows: [] };
         }
 
-        if (sql.includes('SELECT 1')) {
+        if (_sql.includes('SELECT 1')) {
           return { rows: [{ '1': 1 }] };
         }
 
@@ -222,7 +222,7 @@ export class DatabaseTestHelper {
   /**
    * Get database object count for validation (mock implementation)
    */
-  static async getObjectCount(testDb: TestDatabase, schemaName?: string): Promise<{
+  static async getObjectCount(_testDb: TestDatabase, _schemaName?: string): Promise<{
     tables: number;
     views: number;
     functions: number;
@@ -240,7 +240,7 @@ export class DatabaseTestHelper {
   /**
    * Wait for database to be ready (mock implementation)
    */
-  static async waitForDatabaseReady(testDb: TestDatabase, timeoutMs: number = 5000): Promise<void> {
+  static async waitForDatabaseReady(_testDb: TestDatabase, _timeoutMs: number = 5000): Promise<void> {
     // Mock implementation - always succeeds immediately
     await new Promise(resolve => setTimeout(resolve, 10));
   }

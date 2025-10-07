@@ -32,7 +32,7 @@ export interface ActionableGuidance {
 export class ErrorDisplayView {
     async showError(data: ErrorDisplayData): Promise<void> {
         try {
-            Logger.info('Displaying error', { title: data.title, operation: data.operation });
+            Logger.info('Displaying error', 'showError', { title: data.title, operation: data.operation });
 
             const panel = vscode.window.createWebviewPanel(
                 'errorDisplay',
@@ -439,7 +439,7 @@ export class ErrorDisplayView {
 
     private async handleRetryOperation(data: ErrorDisplayData): Promise<void> {
         // This would trigger the original operation that failed
-        Logger.info('Retrying operation', { operation: data.operation });
+        Logger.info('Retrying operation', 'handleRetryOperation', { operation: data.operation });
 
         // For now, just show a message
         vscode.window.showInformationMessage(`Retry functionality for "${data.operation}" not yet implemented`);
@@ -521,7 +521,7 @@ ${data.suggestions ? data.suggestions.map(s => `- ${s}`).join('\n') : 'None prov
 
     private async handleExecuteGuidance(guidanceId: string, data: ErrorDisplayData): Promise<void> {
         try {
-            Logger.info('Executing guidance action', { guidanceId, operation: data.operation });
+            Logger.info('Executing guidance action', 'handleExecuteGuidance', { guidanceId, operation: data.operation });
 
             // Handle different guidance actions based on ID
             switch (guidanceId) {
@@ -561,80 +561,4 @@ ${data.suggestions ? data.suggestions.map(s => `- ${s}`).join('\n') : 'None prov
         });
     }
 
-    /**
-     * Generate actionable guidance based on error context
-     */
-    private generateActionableGuidance(errorMessage: string, operation: string): ActionableGuidance[] {
-        const guidance: ActionableGuidance[] = [];
-
-        // Connection-related guidance
-        if (operation.includes('connection') || operation.includes('Connection')) {
-            guidance.push({
-                id: 'check-connection',
-                title: 'Test Database Connection',
-                description: 'Verify that the database connection settings are correct and the server is accessible.',
-                action: 'Test Connection',
-                category: 'diagnostic',
-                priority: 'high'
-            });
-
-            if (errorMessage.toLowerCase().includes('authentication') || errorMessage.toLowerCase().includes('password')) {
-                guidance.push({
-                    id: 'validate-configuration',
-                    title: 'Review Connection Settings',
-                    description: 'Check your username, password, and database credentials in the connection configuration.',
-                    action: 'Open Settings',
-                    category: 'configuration',
-                    priority: 'high'
-                });
-            }
-        }
-
-        // Schema-related guidance
-        if (operation.includes('schema') || operation.includes('Schema')) {
-            guidance.push({
-                id: 'check-connection',
-                title: 'Verify Database Access',
-                description: 'Ensure you have read permissions on the database and schema objects.',
-                action: 'Test Connection',
-                category: 'diagnostic',
-                priority: 'high'
-            });
-        }
-
-        // Migration-related guidance
-        if (operation.includes('migration') || operation.includes('Migration')) {
-            guidance.push({
-                id: 'validate-configuration',
-                title: 'Review Migration Script',
-                description: 'Check the migration script for syntax errors and ensure all referenced objects exist.',
-                action: 'Validate Script',
-                category: 'diagnostic',
-                priority: 'high'
-            });
-        }
-
-        // Generic guidance
-        guidance.push({
-            id: 'view-logs',
-            title: 'Check Extension Logs',
-            description: 'View detailed logs for additional error information and troubleshooting steps.',
-            action: 'Show Logs',
-            category: 'diagnostic',
-            priority: 'medium'
-        });
-
-        if (errorMessage.toLowerCase().includes('circuit') || errorMessage.toLowerCase().includes('service unavailable')) {
-            guidance.push({
-                id: 'reset-circuit-breakers',
-                title: 'Reset Service Circuit Breakers',
-                description: 'Reset circuit breakers if services are in an open state due to repeated failures.',
-                action: 'Reset Services',
-                category: 'immediate',
-                priority: 'high'
-            });
-        }
-
-        return guidance;
-    }
 }

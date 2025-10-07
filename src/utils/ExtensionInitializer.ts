@@ -32,7 +32,6 @@ export interface ExtensionComponents {
     settingsView?: SettingsView;
     errorDisplayView?: ErrorDisplayView;
     notificationManager?: NotificationManager;
-    interactiveComparisonView?: any;
     advancedMigrationPreviewView?: any;
     enhancedTreeProvider?: any;
 }
@@ -97,7 +96,7 @@ export class ExtensionInitializer {
             const connectionView = new ConnectionManagementView(coreComponents.connectionManager);
             const schemaBrowserView = new SchemaBrowserView(coreComponents.schemaManager, coreComponents.connectionManager);
             const schemaComparisonView = new SchemaComparisonView(this.getDotNetService());
-            const migrationPreviewView = new MigrationPreviewView(this.getDotNetService());
+            const migrationPreviewView = new MigrationPreviewView();
             const settingsView = new SettingsView();
             const errorDisplayView = new ErrorDisplayView();
 

@@ -414,15 +414,6 @@ function registerCommands(
     );
 
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.compareObjects', (comparisonData) => {
-            if (components.interactiveComparisonView) {
-                components.interactiveComparisonView.showComparison(comparisonData);
-            } else {
-                vscode.window.showErrorMessage('Interactive comparison view not available');
-            }
-        })
-    );
 
     context.subscriptions.push(
         vscode.commands.registerCommand('postgresql.previewAdvancedMigration', (migrationData) => {
@@ -519,7 +510,7 @@ function registerCommands(
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.refreshConnection', (connection) => {
+        vscode.commands.registerCommand('postgresql.refreshConnection', (_connection) => {
             if (components.treeProvider) {
                 components.treeProvider.refresh();
             }

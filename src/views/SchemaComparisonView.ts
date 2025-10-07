@@ -37,7 +37,7 @@ export class SchemaComparisonView {
 
     constructor(
         private dotNetService: DotNetIntegrationService
-    ) {}
+    ) { }
 
     async showComparison(comparisonData?: SchemaComparisonData): Promise<void> {
         try {
@@ -186,7 +186,6 @@ export class SchemaComparisonView {
         }
 
         const differencesByType = this.groupDifferencesByType(data.differences);
-        const differencesBySeverity = this.groupDifferencesBySeverity(data.differences);
 
         return `
             <!DOCTYPE html>
@@ -680,14 +679,6 @@ export class SchemaComparisonView {
             return acc;
         }, {} as Record<string, number>);
     }
-
-    private groupDifferencesBySeverity(differences: SchemaDifference[]): Record<string, number> {
-        return differences.reduce((acc, diff) => {
-            acc[diff.severity] = (acc[diff.severity] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
-    }
-
     private async handleWebviewMessage(message: any): Promise<void> {
         switch (message.command) {
             case 'exportComparison':

@@ -216,7 +216,7 @@ describe('Cross-Platform Compatibility Testing', () => {
         await testVersionSpecificSyntax(db, pgVersion.version);
 
         // Test deprecated feature handling
-        await testDeprecatedFeatureHandling(db, pgVersion.version);
+        await testDeprecatedFeatureHandling(db);
 
         await DatabaseTestHelper.dropTestDatabase(db.databaseName);
 
@@ -315,20 +315,12 @@ async function testVersionSpecificSyntax(db: TestDatabase, version: string): Pro
   }
 }
 
-async function testDeprecatedFeatureHandling(db: TestDatabase, version: string): Promise<void> {
-  const majorVersion = parseInt(version.split('.')[0]);
-
-  // Test handling of deprecated features
+async function testDeprecatedFeatureHandling(db: TestDatabase): Promise<void> {
   try {
-    // Some older syntax that might be deprecated
     await db.client.query(`
       SELECT oid FROM pg_class WHERE relname = 'test_table'
     `);
-
-    // If it works, that's fine
-    // If it fails with deprecation warning, should handle gracefully
   } catch (error) {
-    // Should handle deprecation warnings appropriately
     expect(error).toBeDefined();
   }
 }

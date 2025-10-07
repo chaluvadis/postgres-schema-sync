@@ -495,7 +495,7 @@ export class AccessibilityTestHelper {
         ];
 
         let totalScore = 0;
-        for (const element of testElements) {
+        for (const _element of testElements) {
             // In real implementation, would get actual colors
             const contrastRatio = 5.0; // Mock value
             const score = Math.min(contrastRatio / 7, 1); // Normalize to 0-1
@@ -582,7 +582,7 @@ export class AccessibilityTestHelper {
             const elements = document.querySelectorAll('*');
             let hasOverflow = false;
 
-            for (const element of elements) {
+            for (const element of Array.from(elements)) {
                 const rect = element.getBoundingClientRect();
                 if (rect.right > viewportWidth || rect.bottom > viewportHeight) {
                     hasOverflow = true;

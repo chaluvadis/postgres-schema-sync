@@ -121,7 +121,7 @@ export class ErrorHandler {
             errorMessage.toLowerCase().includes(keyword)
         );
     }
-    private static showUserErrorNotification(errorMessage: string, context: ErrorContext): void {
+    private static showUserErrorNotification(errorMessage: string, _context: ErrorContext): void {
         const actions: string[] = [];
 
         // Add relevant actions based on error type

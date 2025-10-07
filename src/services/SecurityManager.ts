@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as tls from 'tls';
 import { Logger } from '../utils/Logger';
-import { ErrorHandler } from '../utils/ErrorHandler';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 
 export interface SecurityConfiguration {
     enabled: boolean;
@@ -549,7 +549,7 @@ ${event.details ? `- Additional Info: ${JSON.stringify(event.details, null, 2)}`
     /**
      * Validates connection security settings
      */
-    validateConnectionSecurity(hostname: string, port: number, useSSL: boolean): {
+    validateConnectionSecurity(hostname: string, _port: number, useSSL: boolean): {
         allowed: boolean;
         reason?: string;
         requiresSSL?: boolean;

@@ -35,20 +35,11 @@ export interface NotificationAction {
     primary?: boolean;
 }
 
-export interface NotificationGroup {
-    id: string;
-    title: string;
-    count: number;
-    latestTimestamp: number;
-    notifications: NotificationItem[];
-    collapsed: boolean;
-}
 
 export class NotificationManager {
     private static instance: NotificationManager;
     private config: NotificationConfig;
     private notifications: Map<string, NotificationItem> = new Map();
-    private groups: Map<string, NotificationGroup> = new Map();
     private outputChannel: vscode.OutputChannel;
     private statusBarItem: vscode.StatusBarItem;
     private webviewPanel: vscode.WebviewPanel | undefined;
@@ -103,21 +94,17 @@ export class NotificationManager {
 
         let statusText = '$(bell)';
         let tooltip = 'PostgreSQL Notifications';
-        let priority = 0;
 
         if (errorCount > 0) {
             statusText = `$(error) ${errorCount} error${errorCount > 1 ? 's' : ''}`;
             tooltip = `${errorCount} error notification${errorCount > 1 ? 's' : ''}`;
             this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-            priority = 3;
         } else if (unreadCount > 0) {
             statusText = `$(bell-dot) ${unreadCount} unread`;
             tooltip = `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`;
-            priority = 2;
         } else {
             statusText = '$(bell)';
             tooltip = 'No unread notifications';
-            priority = 1;
         }
 
         this.statusBarItem.text = statusText;
@@ -227,8 +214,6 @@ export class NotificationManager {
             ...options
         });
     }
-
-
     private showNotification(options: {
         type: 'info' | 'success' | 'warning' | 'error';
         title: string;
@@ -264,32 +249,8 @@ export class NotificationManager {
             metadata: {}
         };
 
-        // Check for similar notifications to group
-        if (this.config.groupSimilar && options.groupId) {
-            const existingGroup = this.groups.get(options.groupId);
-            if (existingGroup) {
-                existingGroup.notifications.push(notification);
-                existingGroup.count++;
-                existingGroup.latestTimestamp = notification.timestamp;
-                this.updateStatusBar();
-                return id;
-            }
-        }
-
         this.notifications.set(id, notification);
         this.addToHistory(notification);
-
-        // Create group if needed
-        if (options.groupId) {
-            this.groups.set(options.groupId, {
-                id: options.groupId,
-                title: options.title,
-                count: 1,
-                latestTimestamp: notification.timestamp,
-                notifications: [notification],
-                collapsed: true
-            });
-        }
 
         // Show VSCode notification for high priority items
         if (options.priority === 'urgent' || options.priority === 'high') {
@@ -392,7 +353,6 @@ export class NotificationManager {
      */
     private clearAll(): void {
         this.notifications.clear();
-        this.groups.clear();
         this.updateStatusBar();
     }
 
@@ -425,12 +385,6 @@ export class NotificationManager {
         return notifications.sort((a, b) => b.timestamp - a.timestamp);
     }
 
-    /**
-     * Get notification groups
-     */
-    private getGroups(): NotificationGroup[] {
-        return Array.from(this.groups.values());
-    }
 
     private playNotificationSound(type: string): void {
         if (!this.config.soundEnabled) {
@@ -462,54 +416,6 @@ export class NotificationManager {
             Logger.debug(`Notification sound requested for type: ${type} (sound playback not available)`, 'playNotificationSound');
         }
     }
-
-    private updateProgress(id: string, progress: number, message?: string): void {
-        const notification = this.notifications.get(id);
-        if (notification && notification.metadata) {
-            notification.metadata.progress = Math.max(0, Math.min(100, progress));
-            if (message) {
-                notification.message = message;
-            }
-
-            // Update VSCode notification if it's a progress notification
-            if (notification.category === 'progress') {
-                this.showVSCodeNotification(notification);
-            }
-        }
-    }
-
-    private completeProgress(id: string, message?: string): void {
-        const notification = this.notifications.get(id);
-        if (notification) {
-            notification.type = 'success';
-            if (message) {
-                notification.message = message;
-            }
-            notification.read = true;
-
-            // Remove from active notifications after a short delay
-            setTimeout(() => {
-                this.notifications.delete(id);
-                this.updateStatusBar();
-            }, 2000);
-        }
-    }
-
-    private errorProgress(id: string, message: string): void {
-        const notification = this.notifications.get(id);
-        if (notification) {
-            notification.type = 'error';
-            notification.message = message;
-            notification.read = true;
-
-            this.showVSCodeNotification(notification);
-        }
-    }
-
-
-    /**
-     * Show notification center webview
-     */
     async showNotificationCenter(): Promise<void> {
         if (this.webviewPanel) {
             this.webviewPanel.reveal();
@@ -537,7 +443,7 @@ export class NotificationManager {
 
     private async generateNotificationCenterHtml(): Promise<string> {
         const notifications = this.getNotifications();
-        const groups = this.getGroups();
+        // const groups = this.getGroups(); // Used in HTML generation below
         const unreadCount = notifications.filter(n => !n.read).length;
 
         return `
@@ -1083,7 +989,6 @@ export class NotificationManager {
      */
     dispose(): void {
         this.notifications.clear();
-        this.groups.clear();
         this.notificationHistory.length = 0;
         this.outputChannel.dispose();
         this.statusBarItem.dispose();

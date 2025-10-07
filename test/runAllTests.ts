@@ -13,7 +13,7 @@ interface TestResult {
   failed: number;
   total: number;
   duration: number;
-  results: Array<{ name: string; passed: boolean; error?: string }>;
+  results: Array<{ name: string; passed: boolean; error?: string; }>;
 }
 
 class TestRunner {
@@ -34,7 +34,7 @@ class TestRunner {
 
   async runAllTests(): Promise<void> {
     console.log('🚀 PostgreSQL Schema Sync - Comprehensive Test Suite\n');
-    console.log('=' .repeat(60));
+    console.log('='.repeat(60));
 
     for (const suite of this.testSuites) {
       console.log(`\n📋 Running ${suite.name}`);
@@ -89,7 +89,7 @@ class TestRunner {
     });
   }
 
-  private generateMockResults(suite: TestSuite): Array<{ name: string; passed: boolean; error?: string }> {
+  private generateMockResults(suite: TestSuite): Array<{ name: string; passed: boolean; error?: string; }> {
     // In a real implementation, this would parse actual test output
     // For demonstration, we'll return expected results based on our test files
 

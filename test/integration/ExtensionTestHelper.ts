@@ -29,36 +29,9 @@ export interface ExtensionCompatibilityResult {
 }
 
 export class ExtensionTestHelper {
-    private static vscodeAPI: any = {};
-    private static testExtensions: Map<string, any> = new Map();
 
     static async initialize(): Promise<void> {
         console.log('🔧 Initializing extension testing environment...');
-
-        // Mock VSCode API for testing
-        this.vscodeAPI = {
-            commands: {
-                getCommands: async () => [],
-                registerCommand: () => ({ dispose: () => { } })
-            },
-            window: {
-                createStatusBarItem: () => ({
-                    show: () => { },
-                    hide: () => { },
-                    dispose: () => { }
-                }),
-                createTreeView: () => ({
-                    dispose: () => { }
-                }),
-                createWebviewPanel: () => ({
-                    dispose: () => { }
-                })
-            },
-            workspace: {
-                getConfiguration: () => ({}),
-                onDidChangeConfiguration: () => ({ dispose: () => { } })
-            }
-        };
     }
 
     static async getPostgreSQLExtensionCommands(): Promise<ExtensionCommand[]> {

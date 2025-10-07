@@ -350,7 +350,7 @@ export class AdvancedMigrationPreviewView {
     }
 
     private async handleValidateMigration(): Promise<void> {
-        if (!this.migrationData) return;
+        if (!this.migrationData) {return;}
 
         try {
             if (!this.migrationData.sqlScript.trim()) {
@@ -367,7 +367,7 @@ export class AdvancedMigrationPreviewView {
     }
 
     private async handleExecuteMigration(): Promise<void> {
-        if (!this.migrationData) return;
+        if (!this.migrationData) {return;}
 
         const confirmed = await vscode.window.showWarningMessage(
             `Execute migration: ${this.migrationData.migrationName}?`,
@@ -383,7 +383,7 @@ export class AdvancedMigrationPreviewView {
     }
 
     private async handleExportReport(): Promise<void> {
-        if (!this.migrationData) return;
+        if (!this.migrationData) {return;}
 
         try {
             const uri = await vscode.window.showSaveDialog({
@@ -437,7 +437,7 @@ export class AdvancedMigrationPreviewView {
     }
 
     private formatSqlPreview(sql: string): string {
-        if (!sql) return '';
+        if (!sql) {return '';}
 
         const lines = sql.split('\n');
         return lines.map((line, index) => {

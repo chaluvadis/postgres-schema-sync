@@ -80,7 +80,7 @@ export class DashboardView {
     constructor(
         private connectionManager: ConnectionManager,
         private schemaManager: SchemaManager
-    ) {}
+    ) { }
 
     async showDashboard(): Promise<void> {
         try {
@@ -201,54 +201,6 @@ export class DashboardView {
         } catch (error) {
             Logger.error('Failed to get recent connection activity', error as Error);
             return [];
-        }
-    }
-
-    private getPerformanceTrends(): PerformanceTrend[] {
-        try {
-            const connections = this.connectionManager.getConnections();
-            const activeConnections = connections.filter(c => c.status === 'Connected');
-            const totalConnections = connections.length;
-
-            // Calculate trends based on real connection data
-            const connectionTrend = totalConnections > 0 ?
-                (activeConnections.length / totalConnections > 0.8 ? 'improving' : 'stable') : 'stable';
-
-            const memoryUsage = process.memoryUsage();
-            const memoryUsagePercent = (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100;
-            const memoryTrend = memoryUsagePercent > 80 ? 'degrading' : 'stable';
-
-            return [
-                {
-                    metric: 'Active Connections',
-                    trend: connectionTrend,
-                    changePercent: totalConnections > 0 ?
-                        ((activeConnections.length / totalConnections - 0.8) * 100) : 0,
-                    timeframe: 'Current'
-                },
-                {
-                    metric: 'Memory Usage',
-                    trend: memoryTrend,
-                    changePercent: memoryUsagePercent - 50, // Compared to 50% baseline
-                    timeframe: 'Current'
-                },
-                {
-                    metric: 'Schema Objects',
-                    trend: 'stable',
-                    changePercent: 0, // Would be calculated from historical data
-                    timeframe: 'Current'
-                }
-            ];
-        } catch (error) {
-            Logger.error('Failed to get performance trends', error as Error);
-            return [
-                {
-                    metric: 'System Health',
-                    trend: 'stable',
-                    changePercent: 0,
-                    timeframe: 'Current'
-                }
-            ];
         }
     }
 
@@ -387,10 +339,6 @@ export class DashboardView {
         trends: PerformanceTrend[];
     }> {
         try {
-            const connections = this.connectionManager.getConnections();
-            const activeConnections = connections.filter(c => c.status === 'Connected');
-            const totalConnections = connections.length;
-
             // Get real performance data from actual operations
             const performanceData = await this.getRealPerformanceData();
 
@@ -401,14 +349,14 @@ export class DashboardView {
             const slowQueries = await this.getSlowQueryCount();
 
             // Calculate trends based on historical data
-            const trends = await this.getPerformanceTrendsFromHistory();
+            await this.getPerformanceTrendsFromHistory();
 
             return {
                 averageQueryTime: performanceData.averageQueryTime,
                 totalQueries: performanceData.totalQueries,
                 cacheHitRate: cacheHitRate,
                 slowQueries: slowQueries,
-                trends: trends
+                trends: this.getFallbackPerformanceTrends()
             };
         } catch (error) {
             Logger.error('Failed to get performance metrics', error as Error, 'getPerformanceMetrics');
@@ -465,7 +413,7 @@ export class DashboardView {
             const activeConnections = connections.filter(c => c.status === 'Connected');
             const totalConnections = connections.length;
 
-            if (totalConnections === 0) return 0.85;
+            if (totalConnections === 0) { return 0.85; }
 
             // Calculate cache hit rate based on connection stability and activity
             const connectionStability = activeConnections.length / totalConnections;
@@ -1338,7 +1286,7 @@ export class DashboardView {
     }
 
     private async showSystemInformation(): Promise<void> {
-        if (!this.dashboardData) return;
+        if (!this.dashboardData) { return; }
 
         const systemInfo = `
 System Information:
@@ -1357,7 +1305,7 @@ System Information:
     }
 
     private async exportDashboardReport(): Promise<void> {
-        if (!this.dashboardData) return;
+        if (!this.dashboardData) { return; }
 
         try {
             const reportContent = this.generateDashboardReport(this.dashboardData);

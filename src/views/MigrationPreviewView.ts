@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '../utils/Logger';
-import { DotNetIntegrationService, DotNetMigrationScript, DotNetConnectionInfo } from '../services/DotNetIntegrationService';
+import { DotNetMigrationScript, DotNetConnectionInfo } from '../services/DotNetIntegrationService';
 
 export interface MigrationPreviewData {
     id: string;
@@ -51,9 +51,7 @@ export class MigrationPreviewView {
     private panel: vscode.WebviewPanel | undefined;
     private previewData: MigrationPreviewData | undefined;
 
-    constructor(
-        private dotNetService: DotNetIntegrationService
-    ) {}
+    constructor() { }
 
     async showPreview(migrationScript?: DotNetMigrationScript, targetConnection?: DotNetConnectionInfo): Promise<void> {
         try {
@@ -289,7 +287,7 @@ export class MigrationPreviewView {
                 description: 'Migration modifies existing data',
                 mitigation: 'Review all UPDATE and DELETE statements carefully'
             });
-            if (overallRisk !== 'critical') overallRisk = 'high';
+            if (overallRisk !== 'critical') { overallRisk = 'high'; }
         }
 
         // Check for schema changes that might cause downtime
@@ -300,7 +298,7 @@ export class MigrationPreviewView {
                 description: 'Schema changes may require brief downtime',
                 mitigation: 'Execute during maintenance window if possible'
             });
-            if (overallRisk === 'low') overallRisk = 'medium';
+            if (overallRisk === 'low') { overallRisk = 'medium'; }
         }
 
         // Check for dependency risks
@@ -311,7 +309,7 @@ export class MigrationPreviewView {
                 description: 'Complex migration with many steps increases failure risk',
                 mitigation: 'Test migration thoroughly in staging environment first'
             });
-            if (overallRisk === 'low') overallRisk = 'medium';
+            if (overallRisk === 'low') { overallRisk = 'medium'; }
         }
 
         // Estimate downtime
@@ -331,8 +329,8 @@ export class MigrationPreviewView {
 
     private estimateDowntime(executionPlan: ExecutionStep[]): string {
         const totalSteps = executionPlan.filter(s => s.type === 'migration').length;
-        if (totalSteps <= 3) return '< 1 minute';
-        if (totalSteps <= 10) return '1-5 minutes';
+        if (totalSteps <= 3) { return '< 1 minute'; }
+        if (totalSteps <= 10) { return '1-5 minutes'; }
         return '5-15 minutes';
     }
 
@@ -342,8 +340,8 @@ export class MigrationPreviewView {
         }
 
         const rollbackStatements = migrationScript.rollbackScript.split(';').length;
-        if (rollbackStatements <= 3) return 'simple';
-        if (rollbackStatements <= 10) return 'moderate';
+        if (rollbackStatements <= 3) { return 'simple'; }
+        if (rollbackStatements <= 10) { return 'moderate'; }
         return 'complex';
     }
 

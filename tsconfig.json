@@ -28,7 +28,8 @@
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false,
     "types": [
-      "node"
+      "node",
+      "jest"
     ]
   },
   "include": [

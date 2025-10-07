@@ -148,10 +148,10 @@ describe('Extension Conflict Testing', () => {
 
     describe('Resource Conflicts', () => {
         it('should not conflict on file system resources', async () => {
-            console.log('📁 Testing file system resource conflicts...`);
+            console.log('📁 Testing file system resource conflicts...');
 
-      // Test temporary file creation
-      const tempFiles = await ExtensionTestHelper.testTemporaryFileHandling();
+            // Test temporary file creation
+            const tempFiles = await ExtensionTestHelper.testTemporaryFileHandling();
 
             expect(tempFiles.creationSuccess).toBe(true);
             expect(tempFiles.cleanupSuccess).toBe(true);
@@ -166,10 +166,10 @@ describe('Extension Conflict Testing', () => {
         });
 
         it('should handle VSCode API conflicts gracefully', async () => {
-            console.log('🔌 Testing VSCode API conflicts...`);;;
+            console.log('🔌 Testing VSCode API conflicts...');
 
-      // Test tree view API usage
-      const treeViewTests = [
+            // Test tree view API usage
+            const treeViewTests = [
                 await ExtensionTestHelper.testTreeViewAPI(),
                 await ExtensionTestHelper.testWebviewAPI(),
                 await ExtensionTestHelper.testCommandAPI(),
@@ -186,10 +186,10 @@ describe('Extension Conflict Testing', () => {
 
     describe('UI Component Conflicts', () => {
         it('should not interfere with status bar', async () => {
-            console.log('📊 Testing status bar conflicts...`);;;
+            console.log('📊 Testing status bar conflicts...');
 
-      // Test status bar item creation
-      const statusBarTest = await ExtensionTestHelper.testStatusBarIntegration();
+            // Test status bar item creation
+            const statusBarTest = await ExtensionTestHelper.testStatusBarIntegration();
             expect(statusBarTest.itemCreated).toBe(true);
             expect(statusBarTest.itemVisible).toBe(true);
 
@@ -218,10 +218,10 @@ describe('Extension Conflict Testing', () => {
         });
 
         it('should handle webview conflicts', async () => {
-            console.log('🖥️  Testing webview conflicts...`);;;
+            console.log('🖥️  Testing webview conflicts...');
 
-      // Test webview panel creation
-      const webviewTest = await ExtensionTestHelper.testWebviewIntegration();
+            // Test webview panel creation
+            const webviewTest = await ExtensionTestHelper.testWebviewIntegration();
             expect(webviewTest.panelCreated).toBe(true);
             expect(webviewTest.contentLoaded).toBe(true);
 
@@ -236,10 +236,10 @@ describe('Extension Conflict Testing', () => {
 
     describe('Performance Impact Testing', () => {
         it('should not significantly impact VSCode performance', async () => {
-            console.log('⚡ Testing performance impact...`);;;
+            console.log('⚡ Testing performance impact...');
 
-      // Measure baseline performance
-      const baselineMetrics = await ExtensionTestHelper.measureBaselinePerformance();
+            // Measure baseline performance
+            const baselineMetrics = await ExtensionTestHelper.measureBaselinePerformance();
 
             // Activate PostgreSQL extension
             await ExtensionTestHelper.activatePostgreSQLExtension();
@@ -268,10 +268,10 @@ describe('Extension Conflict Testing', () => {
         });
 
         it('should handle resource cleanup properly', async () => {
-            console.log('🧹 Testing resource cleanup...`);
+            console.log('🧹 Testing resource cleanup...');
 
-      // Create multiple resources
-      await ExtensionTestHelper.createTestResources();
+            // Create multiple resources
+            await ExtensionTestHelper.createTestResources();
 
             // Deactivate extension
             await ExtensionTestHelper.deactivatePostgreSQLExtension();
@@ -290,9 +290,9 @@ describe('Extension Conflict Testing', () => {
 
     describe('Integration Scenario Testing', () => {
         it('should work with popular extension combinations', async () => {
-            console.log('🔗 Testing popular extension combinations...`);
+            console.log('🔗 Testing popular extension combinations...');
 
-      const extensionCombinations = [
+            const extensionCombinations = [
                 ['ms-vscode.vscode-typescript-next', 'esbenp.prettier-vscode'],
                 ['ms-python.python', 'redhat.vscode-yaml'],
                 ['ms-vscode.powershell', 'ms-vscode.vscode-json'],
@@ -316,10 +316,10 @@ describe('Extension Conflict Testing', () => {
         });
 
         it('should handle extension dependency conflicts', async () => {
-            console.log('📦 Testing dependency conflicts...`);;;
+            console.log('📦 Testing dependency conflicts...');
 
-      // Test Node.js module conflicts
-      const moduleConflicts = await ExtensionTestHelper.testModuleConflicts();
+            // Test Node.js module conflicts
+            const moduleConflicts = await ExtensionTestHelper.testModuleConflicts();
             expect(moduleConflicts.critical).toBe(0);
 
             // Test native module compatibility

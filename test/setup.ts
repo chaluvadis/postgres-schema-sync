@@ -5,7 +5,6 @@ import { Logger } from '../src/utils/Logger';
  */
 
 // Mock VSCode API for testing
-const jest = require('jest');
 jest.mock('vscode', () => ({
   ExtensionContext: jest.fn(),
   SecretStorage: jest.fn(),
@@ -50,7 +49,7 @@ jest.mock('fs', () => ({
 
 // Mock path operations
 jest.mock('path', () => ({
-  join: jest.fn((...args) => args.join('/')),
+  join: jest.fn((...args: string[]) => args.join('/')),
 }));
 
 // Global test utilities
@@ -75,7 +74,7 @@ global.testUtils = {
   }),
 
   waitForAsync: (ms: number = 100) =>
-    new Promise(resolve => setTimeout(resolve, ms)),
+    new Promise<void>((resolve) => setTimeout(resolve, ms)),
 
   generateTestId: () =>
     `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -97,15 +96,15 @@ beforeEach(() => {
   jest.clearAllMocks();
 
   // Reset Logger state
-  Logger['isInitialized'] = false;
-  Logger['outputChannel'] = undefined;
+  (Logger as any)['isInitialized'] = false;
+  (Logger as any)['outputChannel'] = undefined;
 
   // Setup default mock implementations
   const mockContext = global.testUtils.createMockContext();
   const mockSecrets = global.testUtils.createMockSecretStorage();
 
-  require('vscode').ExtensionContext.mockReturnValue(mockContext);
-  require('vscode').SecretStorage.mockReturnValue(mockSecrets);
+  jest.mocked(require('vscode').ExtensionContext).mockReturnValue(mockContext);
+  jest.mocked(require('vscode').SecretStorage).mockReturnValue(mockSecrets);
 });
 
 afterEach(() => {
