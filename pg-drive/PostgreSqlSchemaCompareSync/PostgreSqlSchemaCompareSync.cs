@@ -34,7 +34,6 @@ public class PostgreSqlSchemaCompareSync : IDisposable
         services.AddSingleton<ISchemaComparator, SchemaComparator>();
         // Register migration services
         services.AddSingleton<IMigrationScriptGenerator, MigrationScriptGenerator>();
-        services.AddSingleton<IMigrationGenerator, MigrationGenerator>();
         services.AddSingleton<IMigrationExecutor, MigrationExecutor>();
         _serviceProvider = services.BuildServiceProvider();
         _logger = _serviceProvider.GetRequiredService<ILogger<PostgreSqlSchemaCompareSync>>();
@@ -108,8 +107,8 @@ public class PostgreSqlSchemaCompareSync : IDisposable
     {
         try
         {
-            var generator = _serviceProvider.GetRequiredService<IMigrationGenerator>();
-            var migration = await generator.GenerateMigrationAsync(comparison, options, ct);
+            var generator = _serviceProvider.GetRequiredService<IMigrationScriptGenerator>();
+            var migration = await generator.GenerateMigrationScriptAsync(comparison, options, ct);
             _logger.LogInformation("Migration script generated with {OperationCount} operations",
                 migration.SqlScript.Split('\n').Length);
             return migration;

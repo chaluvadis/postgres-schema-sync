@@ -1,30 +1,20 @@
 namespace PostgreSqlSchemaCompareSync.Core.Migration.Generation;
 
 public class MigrationScriptGenerator(
-    ILogger<MigrationScriptGenerator> logger,
-    IOptions<AppSettings> settings) : IMigrationScriptGenerator
+    ILogger<MigrationScriptGenerator> logger) : IMigrationScriptGenerator
 {
     private readonly ILogger<MigrationScriptGenerator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    private readonly AppSettings _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
 
     public async Task<MigrationScript> GenerateMigrationScriptAsync(
         SchemaComparison comparison,
         MigrationOptions options,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(comparison);
-        ArgumentNullException.ThrowIfNull(options);
-
         try
         {
-            // Validate inputs
-            if (comparison == null)
-                throw new ArgumentNullException(nameof(comparison), "Schema comparison cannot be null");
-
-            if (options == null)
-                throw new ArgumentNullException(nameof(options), "Migration options cannot be null");
-
-            if (comparison.Differences == null || !comparison.Differences.Any())
+            ArgumentNullException.ThrowIfNull(options);
+            ArgumentNullException.ThrowIfNull(comparison);
+            if (comparison.Differences == null || comparison.Differences.Count == 0)
             {
                 _logger.LogWarning("No differences found in comparison {ComparisonId}", comparison.Id);
                 return new MigrationScript
