@@ -17,9 +17,7 @@
   },
   "include": [
     "src/**/*",
-    "test/**/*",
-    "src/verify-dotnet-dll.ts",
-    "src/build-dotnet.ts"
+    "test/**/*"
   ],
   "exclude": [
     "node_modules",
