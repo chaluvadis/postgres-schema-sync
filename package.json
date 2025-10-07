@@ -669,7 +669,6 @@
     "build:dotnet": "dotnet build --project ./pg-drive/PostgreSqlSchemaCompareSync/PostgreSqlSchemaCompareSync.csproj",
     "build:all": "pnpm run build:dotnet && pnpm run compile",
     "package": "pnpm run build:all && vsce package",
-    "verify:dotnet": "npx ts-node verify-dotnet-dll.ts",
     "clean": "rimraf bin out"
   },
   "devDependencies": {
