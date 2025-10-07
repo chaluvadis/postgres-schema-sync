@@ -2,13 +2,13 @@
   "compilerOptions": {
     "module": "es2020",
     "target": "es2020",
-    "outDir": "out",
     "lib": [
       "ES2020",
       "DOM"
     ],
     "sourceMap": true,
-    "rootDir": ".",
+    "rootDir": "src",
+    "outDir": "dist",
     "strict": true,
     "moduleResolution": "node",
     "esModuleInterop": true,
@@ -35,8 +35,8 @@
   "include": [
     "src/**/*",
     "test/**/*",
-    "verify-dotnet-dll.ts",
-    "build-dotnet.ts"
+    "src/verify-dotnet-dll.ts",
+    "src/build-dotnet.ts"
   ],
   "exclude": [
     "node_modules",
