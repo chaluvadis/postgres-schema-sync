@@ -1,36 +1,19 @@
 {
   "compilerOptions": {
-    "module": "es2020",
-    "target": "es2020",
+    "module": "nodenext",
+    "target": "ES2022",
     "lib": [
-      "ES2020",
+      "ES2022",
       "DOM"
     ],
     "sourceMap": true,
     "rootDir": "src",
     "outDir": "dist",
     "strict": true,
-    "moduleResolution": "node",
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "removeComments": false,
-    "noImplicitAny": true,
-    "noImplicitReturns": true,
-    "noImplicitThis": true,
-    "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": false,
-    "noUncheckedIndexedAccess": false,
-    "types": [
-      "node",
-      "jest"
-    ]
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
   },
   "include": [
     "src/**/*",
