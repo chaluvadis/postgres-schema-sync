@@ -27,7 +27,7 @@ public class SchemaCacheManager : ISchemaCacheManager
     /// <summary>
     /// Gets cached database objects for a connection
     /// </summary>
-    public Task<List<DatabaseObject>?> GetCachedObjectsAsync(
+    public async Task<List<DatabaseObject>?> GetCachedObjectsAsync(
         string connectionId,
         string? schemaFilter = null,
         CancellationToken cancellationToken = default)
@@ -46,7 +46,9 @@ public class SchemaCacheManager : ISchemaCacheManager
 
                 // Update access time
                 entry.LastAccessed = DateTime.UtcNow;
-                return Task.FromResult<List<DatabaseObject>?>(DeepClone(entry.Objects));
+
+                // Use Task.Run for CPU-bound deep cloning operation
+                return await Task.Run(() => DeepClone(entry.Objects), cancellationToken);
             }
             else
             {
@@ -58,7 +60,7 @@ public class SchemaCacheManager : ISchemaCacheManager
 
         Interlocked.Increment(ref _missCount);
         _logger.LogDebug("Cache miss for connection {ConnectionId}, schema filter: {SchemaFilter}", connectionId, schemaFilter);
-        return Task.FromResult<List<DatabaseObject>?>(null);
+        return null;
     }
 
     /// <summary>
@@ -127,7 +129,7 @@ public class SchemaCacheManager : ISchemaCacheManager
     /// <summary>
     /// Checks if cache is valid for a connection
     /// </summary>
-    public Task<bool> IsCacheValidAsync(
+    public async Task<bool> IsCacheValidAsync(
         string connectionId,
         string? schemaFilter = null,
         CancellationToken cancellationToken = default)
@@ -139,10 +141,10 @@ public class SchemaCacheManager : ISchemaCacheManager
 
         if (_cache.TryGetValue(cacheKey, out var entry))
         {
-            return Task.FromResult(IsEntryValid(entry));
+            return IsEntryValid(entry);
         }
 
-        return Task.FromResult(false);
+        return false;
     }
 
     /// <summary>

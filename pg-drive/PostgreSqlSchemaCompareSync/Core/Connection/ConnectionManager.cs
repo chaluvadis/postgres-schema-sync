@@ -6,33 +6,39 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
     public class ConnectionManager : IConnectionManager
     {
         private readonly ILogger<ConnectionManager> _logger;
-        private readonly AppSettings _settings;
+        private readonly ConnectionSettings _settings;
         private readonly ConnectionPool _connectionPool;
+        private readonly ConnectionStringBuilder _connectionStringBuilder;
         private bool _disposed;
+
         public ConnectionManager(
             ILogger<ConnectionManager> logger,
             IOptions<AppSettings> settings,
-            ConnectionPool connectionPool)
+            ConnectionPool connectionPool,
+            ConnectionStringBuilder connectionStringBuilder)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
+            _settings = settings?.Value?.Connection ?? throw new ArgumentNullException(nameof(settings));
             _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
+            _connectionStringBuilder = connectionStringBuilder ?? throw new ArgumentNullException(nameof(connectionStringBuilder));
         }
-        /// <summary>
-        /// Creates a new database connection
-        /// </summary>
+
         public async Task<NpgsqlConnection> CreateConnectionAsync(
             ConnectionInfo connectionInfo,
             CancellationToken cancellationToken = default)
         {
-            if (connectionInfo == null)
-                throw new ArgumentNullException(nameof(connectionInfo));
+            ArgumentNullException.ThrowIfNull(connectionInfo);
             try
             {
-                _logger.LogDebug("Creating connection to {Database}", connectionInfo.Database);
-                var connectionString = BuildConnectionString(connectionInfo);
-                var connection = new NpgsqlConnection(connectionString);
-                await connection.OpenAsync(cancellationToken);
+                _logger.LogDebug("Creating connection to {Database} using {ConnectionInfo}",
+                    connectionInfo.Database, connectionInfo.GetMaskedConnectionString());
+
+                // Pre-connection validation
+                ValidateConnectionInfo(connectionInfo);
+
+                // Use connection pool for better resource management
+                var connection = await _connectionPool.GetConnectionAsync(connectionInfo, cancellationToken);
+
                 _logger.LogInformation("Connection established to {Database}", connectionInfo.Database);
                 return connection;
             }
@@ -69,7 +75,7 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
                 // Test a simple query to ensure the database is responsive
                 using var command = connection.CreateCommand();
                 command.CommandText = "SELECT 1";
-                command.CommandTimeout = Math.Min(_settings.Connection.CommandTimeout, 10);
+                command.CommandTimeout = Math.Min(_settings.CommandTimeout, 10);
                 await command.ExecuteScalarAsync(cancellationToken);
                 stopwatch.Stop();
                 _logger.LogInformation("Connection test successful for {Database} in {Elapsed}ms",
@@ -143,25 +149,50 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
             }
         }
         /// <summary>
-        /// Builds a connection string from connection info
+        /// Validates connection information before attempting to connect
         /// </summary>
-        private string BuildConnectionString(ConnectionInfo connectionInfo)
+        private void ValidateConnectionInfo(ConnectionInfo connectionInfo)
         {
-            var builder = new NpgsqlConnectionStringBuilder
-            {
-                Host = connectionInfo.Host,
-                Port = connectionInfo.Port,
-                Database = connectionInfo.Database,
-                Username = connectionInfo.Username,
-                Password = connectionInfo.Password,
-                Timeout = _settings.Connection.ConnectionTimeout,
-                CommandTimeout = _settings.Connection.CommandTimeout,
-                Pooling = true,
-                MinPoolSize = _settings.Connection.MinPoolSize,
-                MaxPoolSize = _settings.Connection.MaxPoolSize
-            };
-            return builder.ConnectionString;
+            if (string.IsNullOrEmpty(connectionInfo.Host))
+                throw new ConnectionException("Host is required", connectionInfo.Id);
+
+            if (connectionInfo.Port <= 0 || connectionInfo.Port > 65535)
+                throw new ConnectionException($"Invalid port number: {connectionInfo.Port}", connectionInfo.Id);
+
+            if (string.IsNullOrEmpty(connectionInfo.Database))
+                throw new ConnectionException("Database name is required", connectionInfo.Id);
+
+            if (string.IsNullOrEmpty(connectionInfo.Username))
+                throw new ConnectionException("Username is required", connectionInfo.Id);
+
+            if (string.IsNullOrEmpty(connectionInfo.Password))
+                throw new ConnectionException("Password is required", connectionInfo.Id);
+
+            // Validate host format (basic check)
+            if (connectionInfo.Host.Length > 255)
+                throw new ConnectionException($"Host name too long: {connectionInfo.Host.Length} characters", connectionInfo.Id);
+
+            // Check for suspicious characters in database name
+            if (!IsValidDatabaseName(connectionInfo.Database))
+                throw new ConnectionException($"Invalid database name: {connectionInfo.Database}", connectionInfo.Id);
         }
+
+        /// <summary>
+        /// Validates database name format
+        /// </summary>
+        private bool IsValidDatabaseName(string databaseName)
+        {
+            if (string.IsNullOrEmpty(databaseName) || databaseName.Length > 63)
+                return false;
+
+            // PostgreSQL database name rules
+            return databaseName.All(c =>
+                char.IsLetterOrDigit(c) ||
+                c == '_' ||
+                c == '-' ||
+                c == '.');
+        }
+
         public void Dispose()
         {
             if (!_disposed)

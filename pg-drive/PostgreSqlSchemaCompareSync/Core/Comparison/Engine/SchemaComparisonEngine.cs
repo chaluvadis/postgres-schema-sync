@@ -179,7 +179,7 @@ public class SchemaComparisonEngine(
             throw new SchemaException($"Object comparison failed: {ex.Message}", sourceConnection.Id, ex);
         }
     }
-    public Task<bool> AreObjectsEquivalentAsync(
+    public async Task<bool> AreObjectsEquivalentAsync(
         DatabaseObject sourceObject,
         DatabaseObject targetObject,
         MigrationComparisonOptions options,
@@ -196,26 +196,26 @@ public class SchemaComparisonEngine(
                 sourceObject.Schema != targetObject.Schema ||
                 sourceObject.Name != targetObject.Name)
             {
-                return Task.FromResult(false);
+                return false;
             }
 
             // Definition comparison based on mode
             if (options.Mode == ComparisonMode.Strict)
             {
-                return Task.FromResult(string.Equals(sourceObject.Definition, targetObject.Definition, StringComparison.Ordinal));
+                return string.Equals(sourceObject.Definition, targetObject.Definition, StringComparison.Ordinal);
             }
             else // Lenient mode
             {
                 var sourceNormalized = NormalizeDefinition(sourceObject.Definition);
                 var targetNormalized = NormalizeDefinition(targetObject.Definition);
-                return Task.FromResult(string.Equals(sourceNormalized, targetNormalized, StringComparison.OrdinalIgnoreCase));
+                return string.Equals(sourceNormalized, targetNormalized, StringComparison.OrdinalIgnoreCase);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking object equivalence for {ObjectType} {ObjectName}",
                 sourceObject.Type, sourceObject.Name);
-            return Task.FromResult(false);
+            return false;
         }
     }
     private List<DatabaseObject> FilterObjects(List<DatabaseObject> objects, MigrationComparisonOptions options)

@@ -46,6 +46,21 @@ public class SchemaBrowser(
             objects.AddRange(indexes);
             objects.AddRange(triggers);
             objects.AddRange(constraints);
+
+            // Add missing object types
+            var domains = await ExtractDomainMetadataAsync(connection, schemaFilter, ct);
+            var collations = await ExtractCollationMetadataAsync(connection, schemaFilter, ct);
+            var extensions = await ExtractExtensionMetadataAsync(connection, schemaFilter, ct);
+            var roles = await ExtractRoleMetadataAsync(connection, schemaFilter, ct);
+            var tablespaces = await ExtractTablespaceMetadataAsync(connection, schemaFilter, ct);
+            var schemas = await ExtractSchemaMetadataAsync(connection, schemaFilter, ct);
+
+            objects.AddRange(domains);
+            objects.AddRange(collations);
+            objects.AddRange(extensions);
+            objects.AddRange(roles);
+            objects.AddRange(tablespaces);
+            objects.AddRange(schemas);
             _logger.LogInformation("Retrieved {ObjectCount} objects from {Database}", objects.Count, connectionInfo.Database);
             return objects;
         }
@@ -96,6 +111,34 @@ public class SchemaBrowser(
                     break;
                 case ObjectType.Index:
                     await PopulateIndexDetailsAsync(connection, details, ct);
+                    break;
+                case ObjectType.Sequence:
+                    await PopulateSequenceDetailsAsync(connection, details, ct);
+                    break;
+                case ObjectType.Type:
+                case ObjectType.Domain:
+                    await PopulateTypeDetailsAsync(connection, details, ct);
+                    break;
+                case ObjectType.Trigger:
+                    await PopulateTriggerDetailsAsync(connection, details, ct);
+                    break;
+                case ObjectType.Constraint:
+                    await PopulateConstraintDetailsAsync(connection, details, ct);
+                    break;
+                case ObjectType.Schema:
+                    await PopulateSchemaDetailsAsync(connection, details, ct);
+                    break;
+                case ObjectType.Collation:
+                    await PopulateCollationDetailsAsync(connection, details, ct);
+                    break;
+                case ObjectType.Extension:
+                    await PopulateExtensionDetailsAsync(connection, details, ct);
+                    break;
+                case ObjectType.Role:
+                    await PopulateRoleDetailsAsync(connection, details, ct);
+                    break;
+                case ObjectType.Tablespace:
+                    await PopulateTablespaceDetailsAsync(connection, details, ct);
                     break;
                 default:
                     await PopulateBasicDetailsAsync(connection, details, ct);
@@ -494,6 +537,242 @@ public class SchemaBrowser(
         }
         return constraints;
     }
+
+    /// <summary>
+    /// Helper method to get domains
+    /// </summary>
+    private async Task<List<DatabaseObject>> ExtractDomainMetadataAsync(NpgsqlConnection connection, string? schemaFilter, CancellationToken ct)
+    {
+        var domains = new List<DatabaseObject>();
+        var query = @"
+                SELECT
+                    t.typname as domain_name,
+                    n.nspname as domain_schema,
+                    pg_get_domaindef(t.oid) as domain_definition,
+                    obj_description(t.oid) as description,
+                    t.typowner::regrole as owner
+                FROM pg_type t
+                JOIN pg_namespace n ON t.typnamespace = n.oid
+                WHERE t.typtype = 'd'
+                  AND (@schemaFilter IS NULL OR n.nspname = @schemaFilter)
+                  AND n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                ORDER BY n.nspname, t.typname";
+
+        using var command = new NpgsqlCommand(query, connection);
+        command.Parameters.AddWithValue("@schemaFilter", schemaFilter ?? (object)DBNull.Value);
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            domains.Add(new DatabaseObject
+            {
+                Name = reader.GetString(0),
+                Schema = reader.GetString(1),
+                Type = ObjectType.Domain,
+                Database = connection.Database,
+                Definition = reader.IsDBNull(2) ? null : reader.GetString(2),
+                Owner = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        return domains;
+    }
+
+    /// <summary>
+    /// Helper method to get collations
+    /// </summary>
+    private async Task<List<DatabaseObject>> ExtractCollationMetadataAsync(NpgsqlConnection connection, string? schemaFilter, CancellationToken ct)
+    {
+        var collations = new List<DatabaseObject>();
+        var query = @"
+                SELECT
+                    c.collname as collation_name,
+                    n.nspname as collation_schema,
+                    c.collowner::regrole as owner,
+                    c.collprovider as provider,
+                    c.collisdeterministic as is_deterministic,
+                    c.collencoding as encoding,
+                    obj_description(c.oid) as description
+                FROM pg_collation c
+                JOIN pg_namespace n ON c.collnamespace = n.oid
+                WHERE (@schemaFilter IS NULL OR n.nspname = @schemaFilter)
+                  AND n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                ORDER BY n.nspname, c.collname";
+
+        using var command = new NpgsqlCommand(query, connection);
+        command.Parameters.AddWithValue("@schemaFilter", schemaFilter ?? (object)DBNull.Value);
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            collations.Add(new DatabaseObject
+            {
+                Name = reader.GetString(0),
+                Schema = reader.GetString(1),
+                Type = ObjectType.Collation,
+                Database = connection.Database,
+                Owner = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                Definition = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        return collations;
+    }
+
+    /// <summary>
+    /// Helper method to get extensions
+    /// </summary>
+    private async Task<List<DatabaseObject>> ExtractExtensionMetadataAsync(NpgsqlConnection connection, string? schemaFilter, CancellationToken ct)
+    {
+        var extensions = new List<DatabaseObject>();
+        var query = @"
+                SELECT
+                    e.extname as extension_name,
+                    e.extversion as extension_version,
+                    n.nspname as extension_schema,
+                    e.extowner::regrole as owner,
+                    obj_description(e.oid) as description
+                FROM pg_extension e
+                JOIN pg_namespace n ON e.extnamespace = n.oid
+                WHERE (@schemaFilter IS NULL OR n.nspname = @schemaFilter)
+                  AND n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                ORDER BY n.nspname, e.extname";
+
+        using var command = new NpgsqlCommand(query, connection);
+        command.Parameters.AddWithValue("@schemaFilter", schemaFilter ?? (object)DBNull.Value);
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            extensions.Add(new DatabaseObject
+            {
+                Name = reader.GetString(0),
+                Schema = reader.GetString(2),
+                Type = ObjectType.Extension,
+                Database = connection.Database,
+                Definition = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                Owner = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        return extensions;
+    }
+
+    /// <summary>
+    /// Helper method to get roles
+    /// </summary>
+    private async Task<List<DatabaseObject>> ExtractRoleMetadataAsync(NpgsqlConnection connection, string? schemaFilter, CancellationToken ct)
+    {
+        var roles = new List<DatabaseObject>();
+        var query = @"
+                SELECT
+                    r.rolname as role_name,
+                    r.rolsuper as is_superuser,
+                    r.rolcreaterole as can_create_role,
+                    r.rolcreatedb as can_create_db,
+                    r.rolcanlogin as can_login,
+                    r.rolconnlimit as connection_limit,
+                    r.rolvaliduntil as valid_until,
+                    obj_description(r.oid) as description
+                FROM pg_roles r
+                WHERE (@schemaFilter IS NULL OR r.rolname = @schemaFilter)
+                ORDER BY r.rolname";
+
+        using var command = new NpgsqlCommand(query, connection);
+        command.Parameters.AddWithValue("@schemaFilter", schemaFilter ?? (object)DBNull.Value);
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            roles.Add(new DatabaseObject
+            {
+                Name = reader.GetString(0),
+                Schema = "pg_catalog", // Roles are in pg_catalog schema
+                Type = ObjectType.Role,
+                Database = connection.Database,
+                Definition = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                Owner = reader.GetString(0), // Role owns itself
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        return roles;
+    }
+
+    /// <summary>
+    /// Helper method to get tablespaces
+    /// </summary>
+    private async Task<List<DatabaseObject>> ExtractTablespaceMetadataAsync(NpgsqlConnection connection, string? schemaFilter, CancellationToken ct)
+    {
+        var tablespaces = new List<DatabaseObject>();
+        var query = @"
+                SELECT
+                    t.spcname as tablespace_name,
+                    t.spcowner::regrole as owner,
+                    t.spclocation as location,
+                    t.spcacl as access_privileges,
+                    t.spcoptions as options,
+                    obj_description(t.oid) as description
+                FROM pg_tablespace t
+                WHERE (@schemaFilter IS NULL OR t.spcname = @schemaFilter)
+                ORDER BY t.spcname";
+
+        using var command = new NpgsqlCommand(query, connection);
+        command.Parameters.AddWithValue("@schemaFilter", schemaFilter ?? (object)DBNull.Value);
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            tablespaces.Add(new DatabaseObject
+            {
+                Name = reader.GetString(0),
+                Schema = "pg_catalog", // Tablespaces are in pg_catalog schema
+                Type = ObjectType.Tablespace,
+                Database = connection.Database,
+                Definition = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                Owner = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        return tablespaces;
+    }
+
+    /// <summary>
+    /// Helper method to get schemas
+    /// </summary>
+    private async Task<List<DatabaseObject>> ExtractSchemaMetadataAsync(NpgsqlConnection connection, string? schemaFilter, CancellationToken ct)
+    {
+        var schemas = new List<DatabaseObject>();
+        var query = @"
+                SELECT
+                    n.nspname as schema_name,
+                    n.nspowner::regrole as owner,
+                    n.nspacl as access_privileges,
+                    obj_description(n.oid) as description
+                FROM pg_namespace n
+                WHERE (@schemaFilter IS NULL OR n.nspname = @schemaFilter)
+                  AND n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                ORDER BY n.nspname";
+
+        using var command = new NpgsqlCommand(query, connection);
+        command.Parameters.AddWithValue("@schemaFilter", schemaFilter ?? (object)DBNull.Value);
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            schemas.Add(new DatabaseObject
+            {
+                Name = reader.GetString(0),
+                Schema = "pg_catalog", // Schemas are in pg_catalog schema
+                Type = ObjectType.Schema,
+                Database = connection.Database,
+                Definition = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                Owner = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        return schemas;
+    }
+
     /// <summary>
     /// Helper method to populate table details
     /// </summary>
@@ -915,6 +1194,368 @@ public class SchemaBrowser(
                 break;
         }
     }
+
+    /// <summary>
+    /// Helper method to populate sequence details
+    /// </summary>
+    private async Task PopulateSequenceDetailsAsync(NpgsqlConnection connection, DatabaseObjectDetails details, CancellationToken ct)
+    {
+        var sequenceQuery = @"
+            SELECT
+                c.relname as sequence_name,
+                n.nspname as sequence_schema,
+                s.seqstart as start_value,
+                s.seqincrement as increment_by,
+                s.seqmax as max_value,
+                s.seqmin as min_value,
+                s.seqcache as cache_size,
+                s.seqcycle as is_cycled,
+                c.relowner::regrole as owner,
+                obj_description(c.oid) as description
+            FROM pg_class c
+            JOIN pg_namespace n ON c.relnamespace = n.oid
+            JOIN pg_sequence s ON c.oid = s.seqrelid
+            WHERE n.nspname = @schema AND c.relname = @sequenceName";
+
+        using var seqCommand = new NpgsqlCommand(sequenceQuery, connection);
+        seqCommand.Parameters.AddWithValue("@schema", details.Schema);
+        seqCommand.Parameters.AddWithValue("@sequenceName", details.Name);
+
+        using var seqReader = await seqCommand.ExecuteReaderAsync(ct);
+        if (await seqReader.ReadAsync(ct))
+        {
+            details.AdditionalInfo["StartValue"] = seqReader.GetInt64(2);
+            details.AdditionalInfo["IncrementBy"] = seqReader.GetInt64(3);
+            details.AdditionalInfo["MaxValue"] = seqReader.GetInt64(4);
+            details.AdditionalInfo["MinValue"] = seqReader.GetInt64(5);
+            details.AdditionalInfo["CacheSize"] = seqReader.GetInt64(6);
+            details.AdditionalInfo["IsCycled"] = seqReader.GetBoolean(7);
+            details.AdditionalInfo["Owner"] = seqReader.IsDBNull(8) ? string.Empty : seqReader.GetString(8);
+            details.AdditionalInfo["Description"] = seqReader.IsDBNull(9) ? string.Empty : seqReader.GetString(9);
+        }
+    }
+
+    /// <summary>
+    /// Helper method to populate type details
+    /// </summary>
+    private async Task PopulateTypeDetailsAsync(NpgsqlConnection connection, DatabaseObjectDetails details, CancellationToken ct)
+    {
+        var typeQuery = @"
+            SELECT
+                t.typname as type_name,
+                n.nspname as type_schema,
+                t.typtype as type_type,
+                t.typlen as type_length,
+                t.typrelid as relation_id,
+                t.typelem as element_type,
+                t.typarray as array_type,
+                t.typowner::regrole as owner,
+                obj_description(t.oid) as description
+            FROM pg_type t
+            JOIN pg_namespace n ON t.typnamespace = n.oid
+            WHERE n.nspname = @schema AND t.typname = @typeName";
+
+        using var typeCommand = new NpgsqlCommand(typeQuery, connection);
+        typeCommand.Parameters.AddWithValue("@schema", details.Schema);
+        typeCommand.Parameters.AddWithValue("@typeName", details.Name);
+
+        using var typeReader = await typeCommand.ExecuteReaderAsync(ct);
+        if (await typeReader.ReadAsync(ct))
+        {
+            details.AdditionalInfo["TypeType"] = typeReader.IsDBNull(2) ? string.Empty : typeReader.GetString(2);
+            details.AdditionalInfo["TypeLength"] = typeReader.GetInt16(3);
+            details.AdditionalInfo["RelationId"] = typeReader.GetInt32(4);
+            details.AdditionalInfo["ElementType"] = typeReader.GetInt32(5);
+            details.AdditionalInfo["ArrayType"] = typeReader.GetInt32(6);
+            details.AdditionalInfo["Owner"] = typeReader.IsDBNull(7) ? string.Empty : typeReader.GetString(7);
+            details.AdditionalInfo["Description"] = typeReader.IsDBNull(8) ? string.Empty : typeReader.GetString(8);
+        }
+    }
+
+    /// <summary>
+    /// Helper method to populate trigger details
+    /// </summary>
+    private async Task PopulateTriggerDetailsAsync(NpgsqlConnection connection, DatabaseObjectDetails details, CancellationToken ct)
+    {
+        var triggerQuery = @"
+            SELECT
+                t.tgname as trigger_name,
+                c.relname as table_name,
+                n.nspname as trigger_schema,
+                p.proname as function_name,
+                fn.nspname as function_schema,
+                t.tgenabled as is_enabled,
+                t.tgisinternal as is_internal,
+                t.tgconstraint as is_constraint,
+                t.tgdeferrable as is_deferrable,
+                t.tginitdeferred as is_deferred,
+                t.tgnargs as number_of_arguments,
+                t.tgargs as arguments,
+                CASE
+                    WHEN t.tgtype & 2 = 2 THEN 'BEFORE'
+                    WHEN t.tgtype & 64 = 64 THEN 'INSTEAD OF'
+                    ELSE 'AFTER'
+                END as timing,
+                CASE
+                    WHEN t.tgtype & 4 = 4 THEN 'INSERT'
+                    WHEN t.tgtype & 8 = 8 THEN 'DELETE'
+                    WHEN t.tgtype & 16 = 16 THEN 'UPDATE'
+                    WHEN t.tgtype & 32 = 32 THEN 'TRUNCATE'
+                    ELSE 'UNKNOWN'
+                END as event,
+                obj_description(t.oid) as description
+            FROM pg_trigger t
+            JOIN pg_class c ON t.tgrelid = c.oid
+            JOIN pg_proc p ON t.tgfoid = p.oid
+            JOIN pg_namespace n ON c.relnamespace = n.oid
+            JOIN pg_namespace fn ON p.pronamespace = fn.oid
+            WHERE n.nspname = @schema AND t.tgname = @triggerName";
+
+        using var triggerCommand = new NpgsqlCommand(triggerQuery, connection);
+        triggerCommand.Parameters.AddWithValue("@schema", details.Schema);
+        triggerCommand.Parameters.AddWithValue("@triggerName", details.Name);
+
+        using var triggerReader = await triggerCommand.ExecuteReaderAsync(ct);
+        if (await triggerReader.ReadAsync(ct))
+        {
+            details.AdditionalInfo["IsEnabled"] = triggerReader.GetBoolean(5);
+            details.AdditionalInfo["IsInternal"] = triggerReader.GetBoolean(6);
+            details.AdditionalInfo["IsConstraint"] = triggerReader.GetBoolean(7);
+            details.AdditionalInfo["IsDeferrable"] = triggerReader.GetBoolean(8);
+            details.AdditionalInfo["IsDeferred"] = triggerReader.GetBoolean(9);
+            details.AdditionalInfo["NumberOfArguments"] = triggerReader.GetInt16(10);
+            details.AdditionalInfo["Arguments"] = triggerReader.IsDBNull(11) ? string.Empty : triggerReader.GetString(11);
+            details.AdditionalInfo["Timing"] = triggerReader.GetString(12);
+            details.AdditionalInfo["Event"] = triggerReader.GetString(13);
+
+            // Add trigger info to the Triggers collection
+            details.Triggers.Add(new TriggerInfo
+            {
+                Name = triggerReader.GetString(0),
+                Event = triggerReader.GetString(13),
+                Timing = triggerReader.GetString(12),
+                Function = $"{triggerReader.GetString(4)}.{triggerReader.GetString(3)}"
+            });
+        }
+    }
+
+    /// <summary>
+    /// Helper method to populate constraint details
+    /// </summary>
+    private async Task PopulateConstraintDetailsAsync(NpgsqlConnection connection, DatabaseObjectDetails details, CancellationToken ct)
+    {
+        var constraintQuery = @"
+            SELECT
+                c.conname as constraint_name,
+                t.relname as table_name,
+                n.nspname as constraint_schema,
+                c.contype as constraint_type,
+                c.condeferrable as is_deferrable,
+                c.condeferred as is_deferred,
+                c.convalidated as is_validated,
+                pg_get_constraintdef(c.oid) as constraint_definition,
+                obj_description(c.oid) as description,
+                c.conkey as column_positions,
+                array_agg(a.attname ORDER BY a.attnum) as column_names
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            JOIN pg_namespace n ON t.relnamespace = n.oid
+            LEFT JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+            WHERE n.nspname = @schema AND c.conname = @constraintName
+            GROUP BY c.conname, t.relname, n.nspname, c.contype, c.condeferrable,
+                     c.condeferred, c.convalidated, c.oid, c.conkey";
+
+        using var constraintCommand = new NpgsqlCommand(constraintQuery, connection);
+        constraintCommand.Parameters.AddWithValue("@schema", details.Schema);
+        constraintCommand.Parameters.AddWithValue("@constraintName", details.Name);
+
+        using var constraintReader = await constraintCommand.ExecuteReaderAsync(ct);
+        if (await constraintReader.ReadAsync(ct))
+        {
+            var constraintType = constraintReader.GetChar(3) switch
+            {
+                'p' => "PRIMARY KEY",
+                'f' => "FOREIGN KEY",
+                'u' => "UNIQUE",
+                'c' => "CHECK",
+                'x' => "EXCLUSION",
+                _ => "UNKNOWN"
+            };
+
+            details.AdditionalInfo["ConstraintType"] = constraintType;
+            details.AdditionalInfo["IsDeferrable"] = constraintReader.GetBoolean(4);
+            details.AdditionalInfo["IsDeferred"] = constraintReader.GetBoolean(5);
+            details.AdditionalInfo["IsValidated"] = constraintReader.GetBoolean(6);
+            details.AdditionalInfo["ConstraintDefinition"] = constraintReader.IsDBNull(7) ? string.Empty : constraintReader.GetString(7);
+            details.AdditionalInfo["ColumnPositions"] = constraintReader.IsDBNull(9) ? string.Empty : constraintReader.GetString(9);
+            details.AdditionalInfo["ColumnNames"] = constraintReader.IsDBNull(10) ? string.Empty : constraintReader.GetString(10);
+        }
+    }
+
+    /// <summary>
+    /// Helper method to populate schema details
+    /// </summary>
+    private async Task PopulateSchemaDetailsAsync(NpgsqlConnection connection, DatabaseObjectDetails details, CancellationToken ct)
+    {
+        var schemaQuery = @"
+            SELECT
+                n.nspname as schema_name,
+                n.nspowner::regrole as owner,
+                n.nspacl as access_privileges,
+                obj_description(n.oid) as description
+            FROM pg_namespace n
+            WHERE n.nspname = @schemaName";
+
+        using var schemaCommand = new NpgsqlCommand(schemaQuery, connection);
+        schemaCommand.Parameters.AddWithValue("@schemaName", details.Name);
+
+        using var schemaReader = await schemaCommand.ExecuteReaderAsync(ct);
+        if (await schemaReader.ReadAsync(ct))
+        {
+            details.AdditionalInfo["Owner"] = schemaReader.IsDBNull(1) ? string.Empty : schemaReader.GetString(1);
+            details.AdditionalInfo["AccessPrivileges"] = schemaReader.IsDBNull(2) ? string.Empty : schemaReader.GetString(2);
+            details.AdditionalInfo["Description"] = schemaReader.IsDBNull(3) ? string.Empty : schemaReader.GetString(3);
+        }
+    }
+
+    /// <summary>
+    /// Helper method to populate collation details
+    /// </summary>
+    private async Task PopulateCollationDetailsAsync(NpgsqlConnection connection, DatabaseObjectDetails details, CancellationToken ct)
+    {
+        var collationQuery = @"
+            SELECT
+                c.collname as collation_name,
+                n.nspname as collation_schema,
+                c.collowner::regrole as owner,
+                c.collprovider as provider,
+                c.collisdeterministic as is_deterministic,
+                c.collencoding as encoding,
+                c.collcollate as collate,
+                c.collctype as ctype,
+                obj_description(c.oid) as description
+            FROM pg_collation c
+            JOIN pg_namespace n ON c.collnamespace = n.oid
+            WHERE n.nspname = @schema AND c.collname = @collationName";
+
+        using var collationCommand = new NpgsqlCommand(collationQuery, connection);
+        collationCommand.Parameters.AddWithValue("@schema", details.Schema);
+        collationCommand.Parameters.AddWithValue("@collationName", details.Name);
+
+        using var collationReader = await collationCommand.ExecuteReaderAsync(ct);
+        if (await collationReader.ReadAsync(ct))
+        {
+            details.AdditionalInfo["Owner"] = collationReader.IsDBNull(2) ? string.Empty : collationReader.GetString(2);
+            details.AdditionalInfo["Provider"] = collationReader.IsDBNull(3) ? string.Empty : collationReader.GetString(3);
+            details.AdditionalInfo["IsDeterministic"] = collationReader.GetBoolean(4);
+            details.AdditionalInfo["Encoding"] = collationReader.GetInt32(5);
+            details.AdditionalInfo["Collate"] = collationReader.IsDBNull(6) ? string.Empty : collationReader.GetString(6);
+            details.AdditionalInfo["CType"] = collationReader.IsDBNull(7) ? string.Empty : collationReader.GetString(7);
+            details.AdditionalInfo["Description"] = collationReader.IsDBNull(8) ? string.Empty : collationReader.GetString(8);
+        }
+    }
+
+    /// <summary>
+    /// Helper method to populate extension details
+    /// </summary>
+    private async Task PopulateExtensionDetailsAsync(NpgsqlConnection connection, DatabaseObjectDetails details, CancellationToken ct)
+    {
+        var extensionQuery = @"
+            SELECT
+                e.extname as extension_name,
+                e.extversion as extension_version,
+                n.nspname as extension_schema,
+                e.extowner::regrole as owner,
+                e.extrelocatable as is_relocatable,
+                e.extcondition as condition,
+                obj_description(e.oid) as description
+            FROM pg_extension e
+            JOIN pg_namespace n ON e.extnamespace = n.oid
+            WHERE n.nspname = @schema AND e.extname = @extensionName";
+
+        using var extensionCommand = new NpgsqlCommand(extensionQuery, connection);
+        extensionCommand.Parameters.AddWithValue("@schema", details.Schema);
+        extensionCommand.Parameters.AddWithValue("@extensionName", details.Name);
+
+        using var extensionReader = await extensionCommand.ExecuteReaderAsync(ct);
+        if (await extensionReader.ReadAsync(ct))
+        {
+            details.AdditionalInfo["Version"] = extensionReader.IsDBNull(1) ? string.Empty : extensionReader.GetString(1);
+            details.AdditionalInfo["Owner"] = extensionReader.IsDBNull(3) ? string.Empty : extensionReader.GetString(3);
+            details.AdditionalInfo["IsRelocatable"] = extensionReader.GetBoolean(4);
+            details.AdditionalInfo["Condition"] = extensionReader.IsDBNull(5) ? string.Empty : extensionReader.GetString(5);
+            details.AdditionalInfo["Description"] = extensionReader.IsDBNull(6) ? string.Empty : extensionReader.GetString(6);
+        }
+    }
+
+    /// <summary>
+    /// Helper method to populate role details
+    /// </summary>
+    private async Task PopulateRoleDetailsAsync(NpgsqlConnection connection, DatabaseObjectDetails details, CancellationToken ct)
+    {
+        var roleQuery = @"
+            SELECT
+                r.rolname as role_name,
+                r.rolsuper as is_superuser,
+                r.rolcreaterole as can_create_role,
+                r.rolcreatedb as can_create_db,
+                r.rolcanlogin as can_login,
+                r.rolconnlimit as connection_limit,
+                r.rolvaliduntil as valid_until,
+                r.rolinherit as inherit_role,
+                r.rolreplication as is_replication_role,
+                obj_description(r.oid) as description
+            FROM pg_roles r
+            WHERE r.rolname = @roleName";
+
+        using var roleCommand = new NpgsqlCommand(roleQuery, connection);
+        roleCommand.Parameters.AddWithValue("@roleName", details.Name);
+
+        using var roleReader = await roleCommand.ExecuteReaderAsync(ct);
+        if (await roleReader.ReadAsync(ct))
+        {
+            details.AdditionalInfo["IsSuperuser"] = roleReader.GetBoolean(1);
+            details.AdditionalInfo["CanCreateRole"] = roleReader.GetBoolean(2);
+            details.AdditionalInfo["CanCreateDatabase"] = roleReader.GetBoolean(3);
+            details.AdditionalInfo["CanLogin"] = roleReader.GetBoolean(4);
+            details.AdditionalInfo["ConnectionLimit"] = roleReader.GetInt32(5);
+            details.AdditionalInfo["ValidUntil"] = roleReader.IsDBNull(6) ? null : roleReader.GetDateTime(6);
+            details.AdditionalInfo["InheritRole"] = roleReader.GetBoolean(7);
+            details.AdditionalInfo["IsReplicationRole"] = roleReader.GetBoolean(8);
+            details.AdditionalInfo["Description"] = roleReader.IsDBNull(9) ? string.Empty : roleReader.GetString(9);
+        }
+    }
+
+    /// <summary>
+    /// Helper method to populate tablespace details
+    /// </summary>
+    private async Task PopulateTablespaceDetailsAsync(NpgsqlConnection connection, DatabaseObjectDetails details, CancellationToken ct)
+    {
+        var tablespaceQuery = @"
+            SELECT
+                t.spcname as tablespace_name,
+                t.spcowner::regrole as owner,
+                t.spclocation as location,
+                t.spcacl as access_privileges,
+                t.spcoptions as options,
+                obj_description(t.oid) as description
+            FROM pg_tablespace t
+            WHERE t.spcname = @tablespaceName";
+
+        using var tablespaceCommand = new NpgsqlCommand(tablespaceQuery, connection);
+        tablespaceCommand.Parameters.AddWithValue("@tablespaceName", details.Name);
+
+        using var tablespaceReader = await tablespaceCommand.ExecuteReaderAsync(ct);
+        if (await tablespaceReader.ReadAsync(ct))
+        {
+            details.AdditionalInfo["Owner"] = tablespaceReader.IsDBNull(1) ? string.Empty : tablespaceReader.GetString(1);
+            details.AdditionalInfo["Location"] = tablespaceReader.IsDBNull(2) ? string.Empty : tablespaceReader.GetString(2);
+            details.AdditionalInfo["AccessPrivileges"] = tablespaceReader.IsDBNull(3) ? string.Empty : tablespaceReader.GetString(3);
+            details.AdditionalInfo["Options"] = tablespaceReader.IsDBNull(4) ? string.Empty : tablespaceReader.GetString(4);
+            details.AdditionalInfo["Description"] = tablespaceReader.IsDBNull(5) ? string.Empty : tablespaceReader.GetString(5);
+        }
+    }
+
     public void Dispose()
     {
         if (!_disposed)
