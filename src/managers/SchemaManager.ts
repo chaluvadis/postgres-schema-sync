@@ -1,6 +1,6 @@
 import { ConnectionManager } from './ConnectionManager';
-import { Logger } from '../utils/Logger';
-import { DotNetIntegrationService, DotNetConnectionInfo } from '../services/DotNetIntegrationService';
+import { Logger } from '@/utils/Logger';
+import { DotNetIntegrationService, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
 
 export interface DatabaseObject {
     id: string;

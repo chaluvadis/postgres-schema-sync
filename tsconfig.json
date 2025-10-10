@@ -1,19 +1,38 @@
 {
   "compilerOptions": {
-    "module": "nodenext",
+    "module": "es2022",
+    "moduleResolution": "bundler",
     "target": "ES2022",
     "lib": [
       "ES2022",
       "DOM"
     ],
     "sourceMap": true,
-    "rootDir": "src",
     "outDir": "dist",
     "strict": true,
     "noUnusedParameters": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": "./src",
+    "paths": {
+      "@/services/*": [
+        "services/*"
+      ],
+      "@/utils/*": [
+        "utils/*"
+      ],
+      "@/managers/*": [
+        "managers/*"
+      ],
+      "@/providers/*": [
+        "providers/*"
+      ],
+      "@/views/*": [
+        "views/*"
+      ]
+    }
   },
   "include": [
     "src/**/*",

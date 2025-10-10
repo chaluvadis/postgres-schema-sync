@@ -1,20 +1,22 @@
 import * as vscode from 'vscode';
-import { ConnectionManager } from '../managers/ConnectionManager';
-import { SchemaManager } from '../managers/SchemaManager';
-import { MigrationManager } from '../managers/MigrationManager';
-import { PostgreSqlTreeProvider } from '../providers/PostgreSqlTreeProvider';
-import { ActivityBarProvider } from '../providers/ActivityBarProvider';
-import { EnhancedStatusBarProvider } from '../providers/EnhancedStatusBarProvider';
-import { ConnectionManagementView } from '../views/ConnectionManagementView';
-import { SchemaBrowserView } from '../views/SchemaBrowserView';
-import { SchemaComparisonView } from '../views/SchemaComparisonView';
-import { MigrationPreviewView } from '../views/MigrationPreviewView';
-import { SettingsView } from '../views/SettingsView';
-import { DashboardView } from '../views/DashboardView';
-import { ErrorDisplayView } from '../views/ErrorDisplayView';
-import { NotificationManager } from '../views/NotificationManager';
-import { DotNetIntegrationService } from '../services/DotNetIntegrationService';
-import { Logger } from './Logger';
+import { ConnectionManager } from '@/managers/ConnectionManager';
+import { SchemaManager } from '@/managers/SchemaManager';
+import { MigrationManager } from '@/managers/MigrationManager';
+import { PostgreSqlTreeProvider } from '@/providers/PostgreSqlTreeProvider';
+import { ActivityBarProvider } from '@/providers/ActivityBarProvider';
+import { EnhancedStatusBarProvider } from '@/providers/EnhancedStatusBarProvider';
+import { ConnectionManagementView } from '@/views/ConnectionManagementView';
+import { SchemaBrowserView } from '@/views/SchemaBrowserView';
+import { SchemaComparisonView } from '@/views/SchemaComparisonView';
+import { MigrationPreviewView } from '@/views/MigrationPreviewView';
+import { SettingsView } from '@/views/SettingsView';
+import { DashboardView } from '@/views/DashboardView';
+import { ErrorDisplayView } from '@/views/ErrorDisplayView';
+import { NotificationManager } from '@/views/NotificationManager';
+import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { QueryExecutionService } from '@/services/QueryExecutionService';
+import { QueryEditorView } from '@/views/QueryEditorView';
+import { Logger } from '@/utils/Logger';
 
 export interface ExtensionComponents {
     connectionManager: ConnectionManager;
@@ -32,6 +34,8 @@ export interface ExtensionComponents {
     settingsView?: SettingsView;
     errorDisplayView?: ErrorDisplayView;
     notificationManager?: NotificationManager;
+    queryExecutionService?: QueryExecutionService;
+    queryEditorView?: QueryEditorView;
     advancedMigrationPreviewView?: any;
     enhancedTreeProvider?: any;
 }
@@ -99,6 +103,8 @@ export class ExtensionInitializer {
             const migrationPreviewView = new MigrationPreviewView();
             const settingsView = new SettingsView();
             const errorDisplayView = new ErrorDisplayView();
+            const queryExecutionService = new QueryExecutionService(coreComponents.connectionManager, coreComponents.schemaManager);
+            const queryEditorView = new QueryEditorView(queryExecutionService, coreComponents.connectionManager);
 
             // Add optional components to the core components
             const components: ExtensionComponents = {
@@ -112,7 +118,9 @@ export class ExtensionInitializer {
                 migrationPreviewView,
                 settingsView,
                 errorDisplayView,
-                notificationManager
+                notificationManager,
+                queryExecutionService,
+                queryEditorView
             };
 
             Logger.info('Optional UI components initialized successfully');

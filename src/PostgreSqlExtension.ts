@@ -1,16 +1,16 @@
 import * as vscode from 'vscode';
-import { PostgreSqlTreeProvider } from './providers/PostgreSqlTreeProvider';
-import { ConnectionManager } from './managers/ConnectionManager';
-import { SchemaManager } from './managers/SchemaManager';
-import { MigrationManager } from './managers/MigrationManager';
-import { ConnectionManagementView } from './views/ConnectionManagementView';
-import { SchemaBrowserView } from './views/SchemaBrowserView';
-import { SchemaComparisonView, SchemaComparisonData } from './views/SchemaComparisonView';
-import { MigrationPreviewView } from './views/MigrationPreviewView';
-import { SettingsView } from './views/SettingsView';
-import { Logger } from './utils/Logger';
-import { ErrorHandler, ErrorSeverity } from './utils/ErrorHandler';
-import { ExtensionInitializer } from './utils/ExtensionInitializer';
+import { PostgreSqlTreeProvider } from '@/providers/PostgreSqlTreeProvider';
+import { ConnectionManager } from '@/managers/ConnectionManager';
+import { SchemaManager } from '@/managers/SchemaManager';
+import { MigrationManager } from '@/managers/MigrationManager';
+import { ConnectionManagementView } from '@/views/ConnectionManagementView';
+import { SchemaBrowserView } from '@/views/SchemaBrowserView';
+import { SchemaComparisonView, SchemaComparisonData } from '@/views/SchemaComparisonView';
+import { MigrationPreviewView } from '@/views/MigrationPreviewView';
+import { SettingsView } from '@/views/SettingsView';
+import { Logger } from '@/utils/Logger';
+import { ErrorHandler, ErrorSeverity } from '@/utils/ErrorHandler';
+import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 
 export class PostgreSqlExtension {
     private context: vscode.ExtensionContext;

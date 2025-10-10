@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { Logger } from '../utils/Logger';
-import { ConnectionManager } from '../managers/ConnectionManager';
-import { NotificationManager } from '../views/NotificationManager';
+import { Logger } from '@/utils/Logger';
+import { ConnectionManager } from '@/managers/ConnectionManager';
+import { NotificationManager } from '@/views/NotificationManager';
 
 export interface StatusBarItem {
     id: string;

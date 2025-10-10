@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as tls from 'tls';
-import { Logger } from '../utils/Logger';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { Logger } from '@/utils/Logger';
 
 export interface SecurityConfiguration {
     enabled: boolean;

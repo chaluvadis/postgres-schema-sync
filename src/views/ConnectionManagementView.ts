@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { ConnectionManager, DatabaseConnection } from '../managers/ConnectionManager';
-import { Logger } from '../utils/Logger';
+import { ConnectionManager, DatabaseConnection } from '@/managers/ConnectionManager';
+import { Logger } from '@/utils/Logger';
 
 export class ConnectionManagementView {
     private connectionManager: ConnectionManager;

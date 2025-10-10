@@ -1,3 +1,5 @@
+using PostgreSqlSchemaCompareSync.Core.Models;
+
 namespace PostgreSqlSchemaCompareSync;
 
 public class PostgreSqlSchemaCompareSync : IDisposable
@@ -183,6 +185,94 @@ public class PostgreSqlSchemaCompareSync : IDisposable
             _logger.LogError(ex, "Failed to get object details for {ObjectType} {ObjectName}",
                 objectType, objectName);
             throw;
+        }
+    }
+
+    public async Task<QueryResult> ExecuteQueryAsync(
+        ConnectionInfo connectionInfo,
+        string query,
+        QueryOptions options,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var connectionManager = _serviceProvider.GetRequiredService<IConnectionManager>();
+            using var connection = await connectionManager.CreateConnectionAsync(connectionInfo, ct);
+
+            _logger.LogInformation("Executing query for {ConnectionName}", connectionInfo.Name);
+
+            using var command = connection.CreateCommand();
+            command.CommandText = query;
+            command.CommandTimeout = options.TimeoutSeconds;
+
+            if (options.CancellationToken.HasValue)
+            {
+                ct = options.CancellationToken.Value;
+            }
+
+            using var reader = await command.ExecuteReaderAsync(ct);
+
+            var result = new QueryResult
+            {
+                RowCount = 0,
+                Columns = new List<QueryColumn>(),
+                Rows = new List<List<object?>>(),
+                ExecutionPlan = options.IncludeExecutionPlan ? await GetExecutionPlanAsync(command) : null
+            };
+
+            // Get column information
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                result.Columns.Add(new QueryColumn
+                {
+                    Name = reader.GetName(i),
+                    Type = reader.GetFieldType(i)?.Name ?? "unknown",
+                    Nullable = reader.IsDBNull(i)
+                });
+            }
+
+            // Get rows
+            while (await reader.ReadAsync(ct))
+            {
+                if (result.RowCount >= options.MaxRows)
+                    break;
+
+                var row = new List<object?>();
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    row.Add(reader.IsDBNull(i) ? null : reader.GetValue(i));
+                }
+                result.Rows.Add(row);
+                result.RowCount++;
+            }
+
+            _logger.LogInformation("Query executed successfully: {RowCount} rows returned", result.RowCount);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Query execution failed for {ConnectionName}", connectionInfo.Name);
+            return new QueryResult
+            {
+                RowCount = 0,
+                Columns = new List<QueryColumn>(),
+                Rows = new List<List<object?>>(),
+                Error = ex.Message
+            };
+        }
+    }
+
+    private async Task<string?> GetExecutionPlanAsync(System.Data.Common.DbCommand command)
+    {
+        try
+        {
+            // This is a simplified implementation
+            // In a real implementation, you would use EXPLAIN ANALYZE
+            return "Execution plan analysis not implemented in this version";
+        }
+        catch
+        {
+            return null;
         }
     }
     public void Dispose()

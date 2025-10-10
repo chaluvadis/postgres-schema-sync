@@ -1,6 +1,6 @@
 import { ConnectionManager } from './ConnectionManager';
-import { Logger } from '../utils/Logger';
-import { DotNetIntegrationService, DotNetConnectionInfo, DotNetSchemaComparison, DotNetMigrationScript } from '../services/DotNetIntegrationService';
+import { Logger } from '@/utils/Logger';
+import { DotNetIntegrationService, DotNetConnectionInfo, DotNetSchemaComparison, DotNetMigrationScript } from '@/services/DotNetIntegrationService';
 
 export interface MigrationScript {
     id: string;

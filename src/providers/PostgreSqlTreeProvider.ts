@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { ConnectionManager, DatabaseConnection } from '../managers/ConnectionManager';
-import { SchemaManager, DatabaseObject } from '../managers/SchemaManager';
-import { Logger } from '../utils/Logger';
+import { ConnectionManager, DatabaseConnection } from '@/managers/ConnectionManager';
+import { SchemaManager, DatabaseObject } from '@/managers/SchemaManager';
+import { Logger } from '@/utils/Logger';
 
 export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | void> = new vscode.EventEmitter<TreeItem | undefined | void>();

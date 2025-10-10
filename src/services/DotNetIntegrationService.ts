@@ -1,14 +1,11 @@
-import { Logger } from '../utils/Logger';
-import { PerformanceMonitor } from './PerformanceMonitor';
+import { Logger } from '@/utils/Logger';
+import { PerformanceMonitor } from '@/services/PerformanceMonitor';
+import * as path from 'path';
+import * as fs from 'fs';
 
 // Import Edge.js for .NET interop
 // Note: edge-js is installed as a dependency
 let edge: any;
-try {
-    edge = require('edge-js');
-} catch (error) {
-    Logger.warn('Edge.js not available, .NET integration will use mock implementation');
-}
 
 // Define Edge.js function type for TypeScript
 type EdgeFunction = (args: any[], callback: (error: any, result?: any) => void) => void;
@@ -93,6 +90,21 @@ export interface DotNetMigrationResult {
     warnings: string[];
 }
 
+export interface DotNetQueryResult {
+    rowCount: number;
+    columns: DotNetQueryColumn[];
+    rows: any[][];
+    error?: string;
+    executionPlan?: string;
+}
+
+export interface DotNetQueryColumn {
+    name: string;
+    type: string;
+    nullable: boolean;
+    primaryKey?: boolean;
+}
+
 export class DotNetIntegrationService {
     private static instance: DotNetIntegrationService;
     private isInitialized: boolean = false;
@@ -128,6 +140,16 @@ export class DotNetIntegrationService {
         try {
             Logger.debug('Loading PostgreSqlSchemaCompareSync library');
 
+            // Import edge-js dynamically for ESM compatibility
+            if (!edge) {
+                try {
+                    const edgeModule = await import('edge-js');
+                    edge = edgeModule;
+                } catch (error) {
+                    Logger.warn('Edge.js not available, .NET integration will use mock implementation');
+                }
+            }
+
             // Get the path to the .NET DLL for VS Code extension
             const dllPath = this.getDotNetDllPath();
 
@@ -137,7 +159,7 @@ export class DotNetIntegrationService {
             }
 
             // Check if edge-js is available
-            if (typeof edge !== 'undefined') {
+            if (edge) {
                 Logger.info('Edge.js available, initializing production .NET functions');
 
                 // Create Edge.js functions for .NET methods used in production
@@ -176,6 +198,12 @@ export class DotNetIntegrationService {
                         assemblyFile: dllPath,
                         typeName: 'PostgreSqlSchemaCompareSync.PostgreSqlSchemaCompareSync',
                         methodName: 'GetObjectDetailsAsync'
+                    }),
+
+                    ExecuteQueryAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.PostgreSqlSchemaCompareSync',
+                        methodName: 'ExecuteQueryAsync'
                     })
                 };
 
@@ -190,7 +218,8 @@ export class DotNetIntegrationService {
                     CompareSchemasAsync: this.createMockDotNetFunction('CompareSchemasAsync'),
                     GenerateMigrationAsync: this.createMockDotNetFunction('GenerateMigrationAsync'),
                     ExecuteMigrationAsync: this.createMockDotNetFunction('ExecuteMigrationAsync'),
-                    GetObjectDetailsAsync: this.createMockDotNetFunction('GetObjectDetailsAsync')
+                    GetObjectDetailsAsync: this.createMockDotNetFunction('GetObjectDetailsAsync'),
+                    ExecuteQueryAsync: this.createMockDotNetFunction('ExecuteQueryAsync')
                 };
 
                 Logger.info('.NET library functions initialized successfully (using mock implementation)');
@@ -293,17 +322,41 @@ export class DotNetIntegrationService {
                     }
                 };
 
+            case 'ExecuteQueryAsync':
+                const query = args[1] || '';
+                const isSelect = query.trim().toUpperCase().startsWith('SELECT');
+
+                if (isSelect) {
+                    return {
+                        rowCount: 2,
+                        columns: [
+                            { name: 'id', type: 'integer', nullable: false, primaryKey: true },
+                            { name: 'name', type: 'varchar', nullable: true }
+                        ],
+                        rows: [
+                            [1, 'Test User 1'],
+                            [2, 'Test User 2']
+                        ],
+                        executionPlan: 'Seq Scan on users'
+                    };
+                } else {
+                    return {
+                        rowCount: 0,
+                        columns: [],
+                        rows: [],
+                        executionPlan: 'DDL operation completed'
+                    };
+                }
+
             default:
                 throw new Error(`Unknown method: ${methodName}`);
         }
     }
 
     private getDotNetDllPath(): string {
-        const path = require('path');
-        const fs = require('fs');
-
         // For VS Code extension, look in the extension's bin directory
-        const extensionPath = path.join(__dirname, '..', '..');
+        // Use Node.js __dirname equivalent for ESM compatibility
+        const extensionPath = path.dirname(path.dirname(__dirname));
         const dllPath = path.join(extensionPath, 'pg-drive', 'PostgreSqlSchemaCompareSync', 'bin', 'PostgreSqlSchemaCompareSync.dll');
 
         if (fs.existsSync(dllPath)) {
@@ -424,7 +477,7 @@ export class DotNetIntegrationService {
 
             Logger.info('Migration generation completed', 'generateMigration', {
                 migrationId: migration.id,
-                operationCount: migration.sqlScript.split('\n').length
+                operationCount: migration.sqlScript ? migration.sqlScript.split('\n').length : 0
             });
 
             return migration;
@@ -505,6 +558,43 @@ export class DotNetIntegrationService {
         }
     }
 
+    async executeQuery(
+        connectionInfo: DotNetConnectionInfo,
+        query: string,
+        options: {
+            maxRows?: number;
+            timeout?: number;
+            includeExecutionPlan?: boolean;
+        } = {}
+    ): Promise<DotNetQueryResult> {
+        await this.ensureInitialized();
+
+        try {
+            Logger.debug('Executing query via .NET library', 'executeQuery', {
+                connectionId: connectionInfo.id,
+                queryLength: query.length,
+                options
+            });
+
+            // Call .NET library method
+            const result = await this.callDotNetMethod<DotNetQueryResult>(
+                'ExecuteQueryAsync',
+                connectionInfo,
+                query,
+                options
+            );
+
+            Logger.info('Query execution completed', 'executeQuery', {
+                connectionId: connectionInfo.id,
+                rowCount: result.rowCount
+            });
+
+            return result;
+        } catch (error) {
+            Logger.error('Failed to execute query via .NET library', error as Error);
+            throw error;
+        }
+    }
 
     // Direct .NET interop implementation using Edge.js with comprehensive error handling
     private async callDotNetMethod<TResult>(

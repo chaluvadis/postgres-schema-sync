@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { PostgreSqlExtension } from './PostgreSqlExtension';
-import { ExtensionInitializer, ExtensionComponents } from './utils/ExtensionInitializer';
-import { Logger } from './utils/Logger';
-import { ErrorHandler } from './utils/ErrorHandler';
-import { DotNetIntegrationService } from './services/DotNetIntegrationService';
+import { ExtensionInitializer, ExtensionComponents } from '@/utils/ExtensionInitializer';
+import { Logger } from '@/utils/Logger';
+import { ErrorHandler } from '@/utils/ErrorHandler';
+import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
 export enum ErrorSeverity {
     LOW = 'LOW',
     MEDIUM = 'MEDIUM',
@@ -520,6 +520,50 @@ function registerCommands(
             if (components.treeView) {
                 // Refresh the tree view to show updated state
                 components.treeView.title = `PostgreSQL Explorer (${new Date().toLocaleTimeString()})`;
+            }
+        })
+    );
+
+    // Query Editor Commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.openQueryEditor', async (connection) => {
+            if (components.queryEditorView) {
+                await components.queryEditorView.showQueryEditor(connection?.id);
+            } else {
+                vscode.window.showErrorMessage('Query editor not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.executeQuery', async () => {
+            if (components.queryEditorView) {
+                // Show connection quick pick if no active connection
+                const connections = components.connectionManager.getConnections();
+                if (connections.length === 0) {
+                    vscode.window.showErrorMessage('No database connections available. Please add a connection first.');
+                    return;
+                }
+
+                let selectedConnection = connections[0]; // Default to first connection
+                if (connections.length > 1) {
+                    const connectionItems = connections.map((conn: any) => ({
+                        label: conn.name,
+                        detail: `${conn.host}:${conn.port}/${conn.database}`,
+                        connection: conn
+                    }));
+
+                    const selected = await vscode.window.showQuickPick(connectionItems, {
+                        placeHolder: 'Select a database connection'
+                    });
+
+                    if (!selected) return;
+                    selectedConnection = selected.connection;
+                }
+
+                await components.queryEditorView.showQueryEditor(selectedConnection.id);
+            } else {
+                vscode.window.showErrorMessage('Query editor not available');
             }
         })
     );

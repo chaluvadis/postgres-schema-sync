@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Logger } from '../utils/Logger';
+import { Logger } from '@/utils/Logger';
 
 export interface NotificationConfig {
     enabled: boolean;

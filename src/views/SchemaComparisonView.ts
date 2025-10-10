@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { Logger } from '../utils/Logger';
-import { DotNetIntegrationService, DotNetSchemaComparison, DotNetConnectionInfo } from '../services/DotNetIntegrationService';
+import { Logger } from '@/utils/Logger';
+import { DotNetIntegrationService, DotNetSchemaComparison, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
 
 export interface SchemaComparisonData {
     id: string;

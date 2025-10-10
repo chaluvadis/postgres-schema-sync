@@ -229,6 +229,18 @@
         "title": "Refresh Connection",
         "category": "PostgreSQL",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "postgresql.openQueryEditor",
+        "title": "Open Query Editor",
+        "category": "PostgreSQL",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "postgresql.executeQuery",
+        "title": "Execute Query",
+        "category": "PostgreSQL",
+        "icon": "$(run)"
       }
     ],
     "menus": {
@@ -279,6 +291,11 @@
           "command": "postgresql.viewObjectDetails",
           "when": "view == postgresqlExplorer && viewItem =~ /^(table|view|function|procedure|sequence|type|domain|collation|extension|role|tablespace)$/",
           "group": "details"
+        },
+        {
+          "command": "postgresql.openQueryEditor",
+          "when": "view == postgresqlExplorer && viewItem == connection",
+          "group": "query"
         }
       ],
       "commandPalette": [
@@ -297,6 +314,14 @@
         {
           "command": "postgresql.executeMigration",
           "when": "workspaceState.postgresql.migrationExists == true"
+        },
+        {
+          "command": "postgresql.openQueryEditor",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.executeQuery",
+          "when": "workspaceState.postgresql.connectionsExist == true"
         }
       ]
     },

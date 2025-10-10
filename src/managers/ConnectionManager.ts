@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { Logger } from '../utils/Logger';
-import { DotNetIntegrationService, DotNetConnectionInfo } from '../services/DotNetIntegrationService';
-import { SecurityManager } from '../services/SecurityManager';
-import { ActivityBarProvider } from '../providers/ActivityBarProvider';
+import { Logger } from '@/utils/Logger';
+import { DotNetIntegrationService, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
+import { SecurityManager } from '@/services/SecurityManager';
+import { ActivityBarProvider } from '@/providers/ActivityBarProvider';
 
 export interface DatabaseConnection {
     id: string;

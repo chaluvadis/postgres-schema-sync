@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { SchemaManager, DatabaseObject } from '../managers/SchemaManager';
-import { ConnectionManager } from '../managers/ConnectionManager';
-import { Logger } from '../utils/Logger';
+import { SchemaManager, DatabaseObject } from '@/managers/SchemaManager';
+import { ConnectionManager } from '@/managers/ConnectionManager';
+import { Logger } from '@/utils/Logger';
 
 export class SchemaBrowserView {
     private schemaManager: SchemaManager;

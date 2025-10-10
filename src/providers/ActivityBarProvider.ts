@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { ConnectionManager } from '../managers/ConnectionManager';
-import { Logger } from '../utils/Logger';
+import { ConnectionManager } from '@/managers/ConnectionManager';
+import { Logger } from '@/utils/Logger';
 
 export class ActivityBarProvider {
     private connectionManager: ConnectionManager;
