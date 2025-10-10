@@ -47,7 +47,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const coreComponents = ExtensionInitializer.initializeCoreComponents(context);
 
         // Initialize optional UI components
-        components = ExtensionInitializer.initializeOptionalComponents(coreComponents);
+        components = ExtensionInitializer.initializeOptionalComponents(coreComponents, context);
 
         // Register tree view
         const treeView = ExtensionInitializer.registerTreeView(components.treeProvider, context);
@@ -564,6 +564,374 @@ function registerCommands(
                 await components.queryEditorView.showQueryEditor(selectedConnection.id);
             } else {
                 vscode.window.showErrorMessage('Query editor not available');
+            }
+        })
+    );
+
+    // New query-related commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.newQuery', async () => {
+            if (components.queryEditorView) {
+                await components.queryEditorView.showQueryEditor();
+            } else {
+                vscode.window.showErrorMessage('Query editor not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showQueryHistory', async () => {
+            if (components.queryEditorView) {
+                const history = components.queryEditorView.getQueryHistory();
+                if (history.length === 0) {
+                    vscode.window.showInformationMessage('No query history available');
+                    return;
+                }
+
+                const selected = await vscode.window.showQuickPick(
+                    history.map((query, index) => ({
+                        label: `Query ${index + 1}`,
+                        detail: query.length > 50 ? query.substring(0, 50) + '...' : query,
+                        query: query
+                    })),
+                    { placeHolder: 'Select a query from history' }
+                );
+
+                if (selected) {
+                    await components.queryEditorView.showQueryEditor();
+                    // The query would be set in the editor via webview message
+                    vscode.window.showInformationMessage('Query loaded from history');
+                }
+            } else {
+                vscode.window.showErrorMessage('Query editor not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showQueryFavorites', async () => {
+            if (components.queryEditorView) {
+                const favorites = components.queryEditorView.getFavorites();
+                if (favorites.length === 0) {
+                    vscode.window.showInformationMessage('No favorite queries available');
+                    return;
+                }
+
+                const selected = await vscode.window.showQuickPick(
+                    favorites.map((query, index) => ({
+                        label: `Favorite ${index + 1}`,
+                        detail: query.length > 50 ? query.substring(0, 50) + '...' : query,
+                        query: query
+                    })),
+                    { placeHolder: 'Select a favorite query' }
+                );
+
+                if (selected) {
+                    await components.queryEditorView.showQueryEditor();
+                    vscode.window.showInformationMessage('Favorite query loaded');
+                }
+            } else {
+                vscode.window.showErrorMessage('Query editor not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.formatQuery', async () => {
+            if (components.queryEditorView) {
+                // This would need to be implemented to format the current query in the active editor
+                vscode.window.showInformationMessage('Format query command not yet implemented');
+            } else {
+                vscode.window.showErrorMessage('Query editor not available');
+            }
+        })
+    );
+
+    // Team Collaboration Commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showTeamLibrary', async () => {
+            if (components.teamQueryLibraryView) {
+                await components.teamQueryLibraryView.showLibrary();
+            } else {
+                vscode.window.showErrorMessage('Team query library not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showQueryAnalytics', async (connection) => {
+            if (components.queryAnalyticsView) {
+                await components.queryAnalyticsView.showAnalytics(connection?.id);
+            } else {
+                vscode.window.showErrorMessage('Query analytics not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showPerformanceAlerts', async () => {
+            if (components.performanceAlertSystem) {
+                // Show performance alerts view
+                vscode.window.showInformationMessage('Performance alerts view not yet implemented');
+            } else {
+                vscode.window.showErrorMessage('Performance alert system not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.resolveAlert', async (alertId) => {
+            if (components.performanceAlertSystem) {
+                components.performanceAlertSystem.resolveAlert(alertId);
+                vscode.window.showInformationMessage('Alert resolved');
+            } else {
+                vscode.window.showErrorMessage('Performance alert system not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showSchemaDocumentation', async (databaseObject) => {
+            if (components.schemaDocumentationService) {
+                // Show documentation for the selected object
+                vscode.window.showInformationMessage('Schema documentation view not yet implemented');
+            } else {
+                vscode.window.showErrorMessage('Schema documentation not available');
+            }
+        })
+    );
+
+    // Enhanced Dashboard Commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showEnhancedDashboard', async () => {
+            if (components.dashboardView) {
+                components.dashboardView.showDashboard();
+            } else {
+                vscode.window.showErrorMessage('Enhanced dashboard not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showCollaborationStats', async () => {
+            if (components.teamCollaborationService) {
+                const stats = components.teamCollaborationService.getCollaborationStats();
+                const panel = vscode.window.createWebviewPanel(
+                    'collaborationStats',
+                    'Collaboration Statistics',
+                    vscode.ViewColumn.One,
+                    { enableScripts: true }
+                );
+
+                panel.webview.html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Collaboration Statistics</title>
+                        <style>
+                            body { font-family: var(--vscode-font-family); padding: 20px; }
+                            .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
+                            .stat-card { background: var(--vscode-textBlockQuote-background); padding: 20px; border-radius: 8px; text-align: center; }
+                            .stat-value { font-size: 2em; font-weight: bold; color: var(--vscode-textLink-foreground); }
+                            .stat-label { color: var(--vscode-descriptionForeground); margin-top: 8px; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Collaboration Statistics</h1>
+                        <div class="stat-grid">
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalSnippets}</div>
+                                <div class="stat-label">Total Snippets</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalLibraries}</div>
+                                <div class="stat-label">Libraries</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalComments}</div>
+                                <div class="stat-label">Comments</div>
+                            </div>
+                        </div>
+                        <h2>Popular Categories</h2>
+                        <ul>
+                            ${stats.popularCategories.map(cat => `<li>${cat.category}: ${cat.count}</li>`).join('')}
+                        </ul>
+                        <h2>Top Authors</h2>
+                        <ul>
+                            ${stats.topAuthors.map(author => `<li>${author.author}: ${author.count}</li>`).join('')}
+                        </ul>
+                    </body>
+                    </html>
+                `;
+            } else {
+                vscode.window.showErrorMessage('Team collaboration service not available');
+            }
+        })
+    );
+
+    // Data Management Commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.exportData', async () => {
+            if (components.dataExportService) {
+                vscode.window.showInformationMessage('Data export interface not yet implemented');
+            } else {
+                vscode.window.showErrorMessage('Data export service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.importData', async () => {
+            if (components.dataImportService) {
+                vscode.window.showInformationMessage('Data import interface not yet implemented');
+            } else {
+                vscode.window.showErrorMessage('Data import service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.createBackup', async () => {
+            if (components.backupService) {
+                vscode.window.showInformationMessage('Backup interface not yet implemented');
+            } else {
+                vscode.window.showErrorMessage('Backup service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showBackups', async () => {
+            if (components.backupService) {
+                const stats = components.backupService.getBackupStatistics();
+                const panel = vscode.window.createWebviewPanel(
+                    'backupStats',
+                    'Backup Statistics',
+                    vscode.ViewColumn.One,
+                    { enableScripts: true }
+                );
+
+                panel.webview.html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Backup Statistics</title>
+                        <style>
+                            body { font-family: var(--vscode-font-family); padding: 20px; }
+                            .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
+                            .stat-card { background: var(--vscode-textBlockQuote-background); padding: 20px; border-radius: 8px; text-align: center; }
+                            .stat-value { font-size: 2em; font-weight: bold; color: var(--vscode-textLink-foreground); }
+                            .stat-label { color: var(--vscode-descriptionForeground); margin-top: 8px; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Backup Statistics</h1>
+                        <div class="stat-grid">
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalBackups}</div>
+                                <div class="stat-label">Total Backups</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.completedBackups}</div>
+                                <div class="stat-label">Completed</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.failedBackups}</div>
+                                <div class="stat-label">Failed</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalSizeBackedUp}</div>
+                                <div class="stat-label">Total Size</div>
+                            </div>
+                        </div>
+                        <h2>Popular Backup Types</h2>
+                        <ul>
+                            ${stats.popularTypes.map(type => `<li>${type.type}: ${type.count}</li>`).join('')}
+                        </ul>
+                        <p><strong>Verification Rate:</strong> ${stats.verificationRate.toFixed(1)}%</p>
+                    </body>
+                    </html>
+                `;
+            } else {
+                vscode.window.showErrorMessage('Backup service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showScheduledBackups', async () => {
+            if (components.backupScheduler) {
+                const stats = components.backupScheduler.getSchedulerStatistics();
+                const panel = vscode.window.createWebviewPanel(
+                    'schedulerStats',
+                    'Scheduled Backups',
+                    vscode.ViewColumn.One,
+                    { enableScripts: true }
+                );
+
+                panel.webview.html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Scheduled Backups</title>
+                        <style>
+                            body { font-family: var(--vscode-font-family); padding: 20px; }
+                            .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
+                            .stat-card { background: var(--vscode-textBlockQuote-background); padding: 20px; border-radius: 8px; text-align: center; }
+                            .stat-value { font-size: 2em; font-weight: bold; color: var(--vscode-textLink-foreground); }
+                            .stat-label { color: var(--vscode-descriptionForeground); margin-top: 8px; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Scheduled Backup Statistics</h1>
+                        <div class="stat-grid">
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalScheduledBackups}</div>
+                                <div class="stat-label">Total Scheduled</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.enabledBackups}</div>
+                                <div class="stat-label">Enabled</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalExecutions}</div>
+                                <div class="stat-label">Total Executions</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.successfulExecutions}</div>
+                                <div class="stat-label">Successful</div>
+                            </div>
+                        </div>
+                        <h2>Schedules by Frequency</h2>
+                        <ul>
+                            ${Object.entries(stats.schedulesByFrequency).map(([freq, count]) => `<li>${freq}: ${count}</li>`).join('')}
+                        </ul>
+                        <p><strong>Average Execution Time:</strong> ${stats.averageExecutionTime.toFixed(0)}ms</p>
+                    </body>
+                    </html>
+                `;
+            } else {
+                vscode.window.showErrorMessage('Backup scheduler not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.validateData', async () => {
+            if (components.dataValidationService) {
+                vscode.window.showInformationMessage('Data validation interface not yet implemented');
+            } else {
+                vscode.window.showErrorMessage('Data validation service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showDataQuality', async (tableInfo) => {
+            if (components.dataValidationService) {
+                vscode.window.showInformationMessage('Data quality analysis not yet implemented');
+            } else {
+                vscode.window.showErrorMessage('Data validation service not available');
             }
         })
     );

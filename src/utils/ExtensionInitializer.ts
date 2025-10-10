@@ -16,6 +16,18 @@ import { NotificationManager } from '@/views/NotificationManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
 import { QueryExecutionService } from '@/services/QueryExecutionService';
 import { QueryEditorView } from '@/views/QueryEditorView';
+import { TeamCollaborationService } from '@/services/TeamCollaborationService';
+import { PerformanceMonitorService } from '@/services/PerformanceMonitorService';
+import { PerformanceAlertSystem } from '@/services/PerformanceAlertSystem';
+import { SchemaDocumentationService } from '@/services/SchemaDocumentationService';
+import { DataExportService } from '@/services/DataExportService';
+import { DataImportService } from '@/services/DataImportService';
+import { BackupService } from '@/services/BackupService';
+import { RecoveryService } from '@/services/RecoveryService';
+import { BackupScheduler } from '@/services/BackupScheduler';
+import { DataValidationService } from '@/services/DataValidationService';
+import { QueryAnalyticsView } from '@/views/QueryAnalyticsView';
+import { TeamQueryLibraryView } from '@/views/TeamQueryLibraryView';
 import { Logger } from '@/utils/Logger';
 
 export interface ExtensionComponents {
@@ -36,6 +48,18 @@ export interface ExtensionComponents {
     notificationManager?: NotificationManager;
     queryExecutionService?: QueryExecutionService;
     queryEditorView?: QueryEditorView;
+    teamCollaborationService?: TeamCollaborationService;
+    performanceMonitorService?: PerformanceMonitorService;
+    performanceAlertSystem?: PerformanceAlertSystem;
+    schemaDocumentationService?: SchemaDocumentationService;
+    dataExportService?: DataExportService;
+    dataImportService?: DataImportService;
+    backupService?: BackupService;
+    recoveryService?: RecoveryService;
+    backupScheduler?: BackupScheduler;
+    dataValidationService?: DataValidationService;
+    queryAnalyticsView?: QueryAnalyticsView;
+    teamQueryLibraryView?: TeamQueryLibraryView;
     advancedMigrationPreviewView?: any;
     enhancedTreeProvider?: any;
 }
@@ -87,7 +111,8 @@ export class ExtensionInitializer {
     }
 
     static initializeOptionalComponents(
-        coreComponents: ExtensionComponents
+        coreComponents: ExtensionComponents,
+        context: vscode.ExtensionContext
     ): ExtensionComponents {
         try {
             Logger.info('Initializing optional UI components');
@@ -103,8 +128,20 @@ export class ExtensionInitializer {
             const migrationPreviewView = new MigrationPreviewView();
             const settingsView = new SettingsView();
             const errorDisplayView = new ErrorDisplayView();
-            const queryExecutionService = new QueryExecutionService(coreComponents.connectionManager, coreComponents.schemaManager);
-            const queryEditorView = new QueryEditorView(queryExecutionService, coreComponents.connectionManager);
+            const queryExecutionService = new QueryExecutionService(coreComponents.connectionManager);
+            const queryEditorView = new QueryEditorView(coreComponents.connectionManager, queryExecutionService);
+            const teamCollaborationService = new TeamCollaborationService(context);
+            const performanceMonitorService = PerformanceMonitorService.getInstance();
+            const performanceAlertSystem = PerformanceAlertSystem.getInstance(context, performanceMonitorService);
+            const schemaDocumentationService = new SchemaDocumentationService(context);
+            const dataExportService = new DataExportService(context, coreComponents.connectionManager);
+            const dataImportService = new DataImportService(context, coreComponents.connectionManager);
+            const backupService = new BackupService(context, coreComponents.connectionManager);
+            const recoveryService = new RecoveryService(context, coreComponents.connectionManager);
+            const backupScheduler = new BackupScheduler(context, coreComponents.connectionManager, backupService);
+            const dataValidationService = new DataValidationService(context, coreComponents.connectionManager);
+            const queryAnalyticsView = new QueryAnalyticsView(context, performanceMonitorService, teamCollaborationService);
+            const teamQueryLibraryView = new TeamQueryLibraryView(context, teamCollaborationService);
 
             // Add optional components to the core components
             const components: ExtensionComponents = {
@@ -120,7 +157,19 @@ export class ExtensionInitializer {
                 errorDisplayView,
                 notificationManager,
                 queryExecutionService,
-                queryEditorView
+                queryEditorView,
+                teamCollaborationService,
+                performanceMonitorService,
+                performanceAlertSystem,
+                schemaDocumentationService,
+                dataExportService,
+                dataImportService,
+                backupService,
+                recoveryService,
+                backupScheduler,
+                dataValidationService,
+                queryAnalyticsView,
+                teamQueryLibraryView
             };
 
             Logger.info('Optional UI components initialized successfully');

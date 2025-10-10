@@ -37,6 +37,15 @@
         }
       ]
     },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "postgresql-team",
+          "title": "PostgreSQL Team",
+          "icon": "$(organization)"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "postgresql.addConnection",
@@ -241,6 +250,108 @@
         "title": "Execute Query",
         "category": "PostgreSQL",
         "icon": "$(run)"
+      },
+      {
+        "command": "postgresql.newQuery",
+        "title": "New Query",
+        "category": "PostgreSQL",
+        "icon": "$(add)"
+      },
+      {
+        "command": "postgresql.showQueryHistory",
+        "title": "Show Query History",
+        "category": "PostgreSQL",
+        "icon": "$(history)"
+      },
+      {
+        "command": "postgresql.showQueryFavorites",
+        "title": "Show Query Favorites",
+        "category": "PostgreSQL",
+        "icon": "$(star)"
+      },
+      {
+        "command": "postgresql.formatQuery",
+        "title": "Format Query",
+        "category": "PostgreSQL",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "postgresql.showTeamLibrary",
+        "title": "Team Query Library",
+        "category": "PostgreSQL",
+        "icon": "$(library)"
+      },
+      {
+        "command": "postgresql.showQueryAnalytics",
+        "title": "Query Performance Analytics",
+        "category": "PostgreSQL",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "postgresql.showPerformanceAlerts",
+        "title": "Performance Alerts",
+        "category": "PostgreSQL",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "postgresql.showSchemaDocumentation",
+        "title": "Schema Documentation",
+        "category": "PostgreSQL",
+        "icon": "$(book)"
+      },
+      {
+        "command": "postgresql.showEnhancedDashboard",
+        "title": "Enhanced Dashboard",
+        "category": "PostgreSQL",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "postgresql.showCollaborationStats",
+        "title": "Collaboration Statistics",
+        "category": "PostgreSQL",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "postgresql.exportData",
+        "title": "Export Data",
+        "category": "PostgreSQL",
+        "icon": "$(export)"
+      },
+      {
+        "command": "postgresql.importData",
+        "title": "Import Data",
+        "category": "PostgreSQL",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "postgresql.createBackup",
+        "title": "Create Backup",
+        "category": "PostgreSQL",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "postgresql.showBackups",
+        "title": "Backup History",
+        "category": "PostgreSQL",
+        "icon": "$(history)"
+      },
+      {
+        "command": "postgresql.showScheduledBackups",
+        "title": "Scheduled Backups",
+        "category": "PostgreSQL",
+        "icon": "$(clock)"
+      },
+      {
+        "command": "postgresql.validateData",
+        "title": "Validate Data",
+        "category": "PostgreSQL",
+        "icon": "$(check)"
+      },
+      {
+        "command": "postgresql.showDataQuality",
+        "title": "Data Quality Report",
+        "category": "PostgreSQL",
+        "icon": "$(graph)"
       }
     ],
     "menus": {
@@ -321,6 +432,70 @@
         },
         {
           "command": "postgresql.executeQuery",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.newQuery",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showQueryHistory",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showQueryFavorites",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.formatQuery",
+          "when": "resourceExtname == .sql || resourceExtname == .psql"
+        },
+        {
+          "command": "postgresql.showTeamLibrary",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showQueryAnalytics",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showPerformanceAlerts",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showSchemaDocumentation",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showCollaborationStats",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.exportData",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.importData",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.createBackup",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showBackups",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showScheduledBackups",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.validateData",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showDataQuality",
           "when": "workspaceState.postgresql.connectionsExist == true"
         }
       ]
@@ -679,6 +854,216 @@
           "type": "boolean",
           "default": true,
           "description": "Validate certificates when reconnecting to databases"
+        },
+        "postgresql.queryEditor.maxResults": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Maximum number of rows to display in query results"
+        },
+        "postgresql.queryEditor.queryTimeout": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "maximum": 300,
+          "description": "Query execution timeout in seconds"
+        },
+        "postgresql.queryEditor.autoComplete.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable autocomplete in query editor"
+        },
+        "postgresql.queryEditor.syntaxHighlighting.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SQL syntax highlighting"
+        },
+        "postgresql.queryEditor.historySize": {
+          "type": "number",
+          "default": 100,
+          "minimum": 50,
+          "maximum": 500,
+          "description": "Maximum number of queries to keep in history"
+        },
+        "postgresql.queryEditor.exportFormats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["csv", "json", "excel"]
+          },
+          "default": ["csv", "json"],
+          "description": "Available export formats for query results"
+        },
+        "postgresql.teamCollaboration.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable team collaboration features"
+        },
+        "postgresql.teamCollaboration.autoShareQueries": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically share queries with team members"
+        },
+        "postgresql.teamCollaboration.requireApproval": {
+          "type": "boolean",
+          "default": false,
+          "description": "Require approval before sharing queries"
+        },
+        "postgresql.teamCollaboration.organizationId": {
+          "type": "string",
+          "default": "",
+          "description": "Organization ID for multi-organization setups"
+        },
+        "postgresql.performanceMonitoring.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable performance monitoring and analytics"
+        },
+        "postgresql.performanceMonitoring.slowQueryThreshold": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Threshold for slow query detection in milliseconds"
+        },
+        "postgresql.performanceMonitoring.alertCooldown": {
+          "type": "number",
+          "default": 300,
+          "minimum": 60,
+          "maximum": 3600,
+          "description": "Cooldown period between similar alerts in seconds"
+        },
+        "postgresql.performanceMonitoring.retentionDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 7,
+          "maximum": 365,
+          "description": "Number of days to retain performance data"
+        },
+        "postgresql.schemaDocumentation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable collaborative schema documentation"
+        },
+        "postgresql.schemaDocumentation.requireReview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require review before publishing documentation"
+        },
+        "postgresql.schemaDocumentation.autoGenerate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-generate documentation from schema metadata"
+        },
+        "postgresql.dataExport.chunkSize": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Number of rows to process in each export chunk"
+        },
+        "postgresql.dataExport.parallelProcessing": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable parallel processing for large exports"
+        },
+        "postgresql.dataExport.compression.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable compression for export files"
+        },
+        "postgresql.dataExport.compression.level": {
+          "type": "number",
+          "default": 6,
+          "minimum": 1,
+          "maximum": 9,
+          "description": "Compression level (1-9, higher = smaller files but slower)"
+        },
+        "postgresql.dataImport.batchSize": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Number of rows to process in each import batch"
+        },
+        "postgresql.dataImport.continueOnError": {
+          "type": "boolean",
+          "default": false,
+          "description": "Continue importing when errors are encountered"
+        },
+        "postgresql.dataImport.validateBeforeImport": {
+          "type": "boolean",
+          "default": true,
+          "description": "Validate data before performing import"
+        },
+        "postgresql.backup.compression.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable compression for backup files"
+        },
+        "postgresql.backup.encryption.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable encryption for backup files"
+        },
+        "postgresql.backup.parallel.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable parallel backup processing"
+        },
+        "postgresql.backup.verifyAfterCreation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Verify backup integrity after creation"
+        },
+        "postgresql.backup.retention.daily": {
+          "type": "number",
+          "default": 7,
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Number of daily backups to retain"
+        },
+        "postgresql.backup.retention.weekly": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 52,
+          "description": "Number of weekly backups to retain"
+        },
+        "postgresql.backup.retention.monthly": {
+          "type": "number",
+          "default": 12,
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Number of monthly backups to retain"
+        },
+        "postgresql.recovery.pointInTime.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable point-in-time recovery capabilities"
+        },
+        "postgresql.recovery.verifyAfterRecovery": {
+          "type": "boolean",
+          "default": true,
+          "description": "Verify data integrity after recovery"
+        },
+        "postgresql.validation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable data validation features"
+        },
+        "postgresql.validation.strictMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable strict validation mode (fail on any warning)"
+        },
+        "postgresql.validation.sampleSize": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Sample size for data quality analysis"
         }
       }
     }
