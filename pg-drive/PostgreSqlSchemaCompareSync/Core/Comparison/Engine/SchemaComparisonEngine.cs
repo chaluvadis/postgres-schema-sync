@@ -31,13 +31,8 @@ public class SchemaComparisonEngine(
                 sourceConnection.Database, targetConnection.Database);
 
             // Get objects from both databases
-            var sourceObjectsTask = _schemaBrowser.GetDatabaseObjectsAsync(sourceConnection, null, cancellationToken);
-            var targetObjectsTask = _schemaBrowser.GetDatabaseObjectsAsync(targetConnection, null, cancellationToken);
-
-            await Task.WhenAll(sourceObjectsTask, targetObjectsTask);
-
-            var sourceObjects = sourceObjectsTask.Result;
-            var targetObjects = targetObjectsTask.Result;
+            var sourceObjects = await _schemaBrowser.GetDatabaseObjectsAsync(sourceConnection, null, cancellationToken);
+            var targetObjects = await _schemaBrowser.GetDatabaseObjectsAsync(targetConnection, null, cancellationToken);
 
             // Filter objects based on options
             var filteredSourceObjects = FilterObjects(sourceObjects, options);

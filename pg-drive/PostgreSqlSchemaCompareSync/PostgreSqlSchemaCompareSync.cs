@@ -27,11 +27,32 @@ public class PostgreSqlSchemaCompareSync : IDisposable
         services.AddSingleton<ConnectionPool>();
         services.AddSingleton<IConnectionManager, ConnectionManager>();
         // Register schema management services
-        services.AddSingleton<ISchemaMetadataExtractor, SchemaMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, SchemaMetadataExtractor>();
+        services.AddSingleton<IObjectMetadataExtractor, SchemaMetadataExtractor>();
+        services.AddSingleton<IObjectValidator, SchemaMetadataExtractor>();
         services.AddSingleton<ISchemaCacheManager, SchemaCacheManager>();
         services.AddSingleton<ISchemaComparisonEngine, SchemaComparisonEngine>();
         services.AddSingleton<ISchemaBrowser, SchemaBrowser>();
         services.AddSingleton<ISchemaComparator, SchemaComparator>();
+        // Register metadata extractors for all PostgreSQL object types
+        services.AddSingleton<IMetadataExtractor, TableMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, ViewMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, FunctionMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, SequenceMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, IndexMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, TypeMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, TriggerMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, ConstraintMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, ExtensionMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, CollationMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, RoleMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, TablespaceMetadataExtractor>();
+        // Register additional metadata extractors for advanced PostgreSQL features
+        services.AddSingleton<IMetadataExtractor, MaterializedViewMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, ProcedureMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, ColumnMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, ForeignTableMetadataExtractor>();
+        services.AddSingleton<IMetadataExtractor, PartitionMetadataExtractor>();
         // Register migration services
         services.AddSingleton<IMigrationScriptGenerator, MigrationScriptGenerator>();
         services.AddSingleton<IMigrationExecutor, MigrationExecutor>();
