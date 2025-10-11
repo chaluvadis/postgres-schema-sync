@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
 import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
 
 export interface ExportJob {
     id: string;

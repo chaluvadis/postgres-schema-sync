@@ -1,5 +1,4 @@
 import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
 
 export interface QueryPerformanceMetrics {
     id: string;
@@ -69,7 +68,7 @@ export interface PerformanceAlert {
 
 export interface PerformanceRecommendation {
     id: string;
-    type: 'Index' | 'QueryRewrite' | 'Configuration' | 'Hardware';
+    type: 'Index' | 'QueryRewrite' | 'Configuration' | 'Hardware' | 'QueryStructure' | 'DataModel';
     category: 'Performance' | 'Maintenance' | 'Security' | 'Cost';
     title: string;
     description: string;
@@ -81,6 +80,43 @@ export interface PerformanceRecommendation {
     estimatedImprovement: string;
     createdAt: Date;
     status: 'New' | 'Applied' | 'Dismissed';
+    priority: number;
+    tags: string[];
+    relatedQueries?: string[];
+    implementationDetails?: string;
+    rollbackScript?: string;
+}
+
+export interface QueryAnalysisResult {
+    queryId: string;
+    complexityScore: number;
+    optimizationScore: number;
+    issues: QueryIssue[];
+    suggestions: QuerySuggestion[];
+    estimatedImprovement: number;
+    analysisTime: Date;
+}
+
+export interface QueryIssue {
+    type: 'MissingIndex' | 'SuboptimalJoin' | 'RedundantCondition' | 'DataTypeMismatch' | 'LockContention' | 'InefficientAggregation';
+    severity: 'Low' | 'Medium' | 'High' | 'Critical';
+    description: string;
+    location?: {
+        line?: number;
+        column?: number;
+        element?: string;
+    };
+    impact: string;
+}
+
+export interface QuerySuggestion {
+    type: 'AddIndex' | 'RewriteQuery' | 'RestructureJoin' | 'OptimizeAggregation' | 'AddPartitioning' | 'UseMaterializedView';
+    title: string;
+    description: string;
+    suggestedSQL?: string;
+    estimatedBenefit: string;
+    implementationEffort: 'Low' | 'Medium' | 'High';
+    risk: 'Low' | 'Medium' | 'High';
 }
 
 export interface PerformanceReport {
@@ -449,7 +485,9 @@ export class PerformanceMonitorService {
                 effort: 'Medium',
                 queryIds: [queryMetric.id],
                 suggestedAction: 'Analyze query WHERE clause and consider adding appropriate indexes',
-                estimatedImprovement: '50-90% reduction in execution time'
+                estimatedImprovement: '50-90% reduction in execution time',
+                priority: 8,
+                tags: ['index', 'performance', 'optimization']
             });
         }
 
@@ -464,7 +502,9 @@ export class PerformanceMonitorService {
                 effort: 'High',
                 queryIds: [queryMetric.id],
                 suggestedAction: 'Review and optimize query structure, consider breaking into smaller queries',
-                estimatedImprovement: '30-70% reduction in execution time'
+                estimatedImprovement: '30-70% reduction in execution time',
+                priority: 7,
+                tags: ['query-optimization', 'complexity', 'performance']
             });
         }
 
@@ -479,7 +519,9 @@ export class PerformanceMonitorService {
                 effort: 'Low',
                 queryIds: [queryMetric.id],
                 suggestedAction: 'Consider adding LIMIT clause or pagination for better performance',
-                estimatedImprovement: 'Reduced memory usage and faster response'
+                estimatedImprovement: 'Reduced memory usage and faster response',
+                priority: 6,
+                tags: ['pagination', 'memory', 'performance']
             });
         }
 
@@ -720,6 +762,183 @@ export class PerformanceMonitorService {
         });
 
         Logger.info('Old performance metrics cleaned up', 'cleanupOldMetrics');
+    }
+
+    private performAdvancedQueryAnalysis(queryMetric: QueryPerformanceMetrics): QueryAnalysisResult {
+        const issues: QueryIssue[] = [];
+        const suggestions: QuerySuggestion[] = [];
+        let complexityScore = 0;
+        let optimizationScore = 100;
+
+        try {
+            const query = queryMetric.query.toUpperCase();
+
+            // Analyze query complexity
+            if (query.includes('JOIN')) complexityScore += 3;
+            if (query.includes('SUBQUERY') || query.includes('CTE')) complexityScore += 2;
+            if (query.includes('WINDOW FUNCTION') || query.includes('OVER')) complexityScore += 2;
+            if (query.includes('UNION')) complexityScore += 2;
+            if (query.includes('GROUP BY')) complexityScore += 1;
+            if (query.includes('ORDER BY')) complexityScore += 1;
+
+            // Detect issues
+            if (queryMetric.executionPlan?.includes('Seq Scan') && query.includes('WHERE')) {
+                issues.push({
+                    type: 'MissingIndex',
+                    severity: 'High',
+                    description: 'Sequential scan detected on filtered query - index could improve performance',
+                    impact: 'High performance impact due to full table scan'
+                });
+                optimizationScore -= 30;
+            }
+
+            if (query.includes('SELECT *') && queryMetric.rowsReturned > 1000) {
+                issues.push({
+                    type: 'SuboptimalJoin',
+                    severity: 'Medium',
+                    description: 'SELECT * used with large result set - consider selecting only required columns',
+                    impact: 'Increased network traffic and memory usage'
+                });
+                optimizationScore -= 15;
+            }
+
+            if (query.includes('OR') && query.includes('WHERE') && !query.includes('UNION')) {
+                issues.push({
+                    type: 'SuboptimalJoin',
+                    severity: 'Medium',
+                    description: 'OR conditions may prevent index usage',
+                    impact: 'Index may not be used effectively'
+                });
+                optimizationScore -= 10;
+            }
+
+            if (query.includes('LIKE \'%')) {
+                issues.push({
+                    type: 'SuboptimalJoin',
+                    severity: 'Medium',
+                    description: 'Leading wildcard in LIKE prevents index usage',
+                    impact: 'Full table scan required'
+                });
+                optimizationScore -= 20;
+            }
+
+            // Generate suggestions based on issues
+            issues.forEach(issue => {
+                switch (issue.type) {
+                    case 'MissingIndex':
+                        suggestions.push({
+                            type: 'AddIndex',
+                            title: 'Add Database Index',
+                            description: 'Create appropriate indexes for WHERE clause columns',
+                            suggestedSQL: `-- Suggested index creation
+-- CREATE INDEX idx_table_column ON table_name(column_name);`,
+                            estimatedBenefit: '50-90% performance improvement',
+                            implementationEffort: 'Medium',
+                            risk: 'Low'
+                        });
+                        break;
+
+                    case 'SuboptimalJoin':
+                        if (issue.description.includes('SELECT *')) {
+                            suggestions.push({
+                                type: 'RewriteQuery',
+                                title: 'Optimize Column Selection',
+                                description: 'Select only required columns instead of using SELECT *',
+                                suggestedSQL: `-- Replace SELECT * with specific columns
+SELECT column1, column2, column3 FROM table_name;`,
+                                estimatedBenefit: 'Reduced memory and network usage',
+                                implementationEffort: 'Low',
+                                risk: 'Low'
+                            });
+                        }
+                        break;
+                }
+            });
+
+            // Additional suggestions based on query patterns
+            if (query.includes('GROUP BY') && !query.includes('HAVING')) {
+                suggestions.push({
+                    type: 'OptimizeAggregation',
+                    title: 'Review Aggregation Strategy',
+                    description: 'Consider if all GROUP BY columns are necessary',
+                    estimatedBenefit: 'Improved aggregation performance',
+                    implementationEffort: 'Low',
+                    risk: 'Low'
+                });
+            }
+
+            if (queryMetric.rowsReturned > 50000) {
+                suggestions.push({
+                    type: 'AddPartitioning',
+                    title: 'Consider Table Partitioning',
+                    description: 'Large tables may benefit from partitioning for better performance',
+                    estimatedBenefit: 'Significant performance improvement for large datasets',
+                    implementationEffort: 'High',
+                    risk: 'Medium'
+                });
+            }
+
+            return {
+                queryId: queryMetric.id,
+                complexityScore,
+                optimizationScore: Math.max(0, optimizationScore),
+                issues,
+                suggestions,
+                estimatedImprovement: Math.max(0, 100 - optimizationScore),
+                analysisTime: new Date()
+            };
+
+        } catch (error) {
+            Logger.error('Error in advanced query analysis', error as Error);
+            return {
+                queryId: queryMetric.id,
+                complexityScore: 0,
+                optimizationScore: 50,
+                issues: [{
+                    type: 'InefficientAggregation',
+                    severity: 'Medium',
+                    description: 'Unable to analyze query structure',
+                    impact: 'Manual review recommended'
+                }],
+                suggestions: [],
+                estimatedImprovement: 0,
+                analysisTime: new Date()
+            };
+        }
+    }
+
+    // Public method for advanced query analysis
+    async analyzeQuery(query: string, connectionId: string): Promise<QueryAnalysisResult> {
+        // Create a mock QueryPerformanceMetrics for analysis
+        const mockMetric: QueryPerformanceMetrics = {
+            id: this.generateId(),
+            queryHash: this.generateQueryHash(query),
+            query,
+            executionTime: 0,
+            rowsReturned: 0,
+            bytesTransferred: 0,
+            timestamp: new Date(),
+            connectionId,
+            database: '',
+            user: '',
+            success: true,
+            queryComplexity: 'Medium',
+            cacheHit: false,
+            indexUsage: []
+        };
+
+        return this.performAdvancedQueryAnalysis(mockMetric);
+    }
+
+    private generateQueryHash(query: string): string {
+        // Simple hash function for query identification
+        let hash = 0;
+        for (let i = 0; i < query.length; i++) {
+            const char = query.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return Math.abs(hash).toString(36);
     }
 
     private generateId(): string {

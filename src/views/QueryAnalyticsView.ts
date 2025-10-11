@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { PerformanceMonitorService, QueryPerformanceMetrics, PerformanceReport, PerformanceAlert } from '@/services/PerformanceMonitorService';
+import { PerformanceMonitorService, PerformanceReport } from '@/services/PerformanceMonitorService';
 import { TeamCollaborationService } from '@/services/TeamCollaborationService';
 import { Logger } from '@/utils/Logger';
 import { ErrorHandler } from '@/utils/ErrorHandler';
@@ -167,7 +167,7 @@ export class QueryAnalyticsView {
         });
     }
 
-    private async changeTimeRange(hours: number): Promise<void> {
+    private async changeTimeRange(_hours: number): Promise<void> {
         if (!this.currentReport) return;
 
         // Regenerate report with new time range

@@ -4,6 +4,7 @@ import { ExtensionInitializer, ExtensionComponents } from '@/utils/ExtensionInit
 import { Logger } from '@/utils/Logger';
 import { ErrorHandler } from '@/utils/ErrorHandler';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { TreeItem } from '@/providers/PostgreSqlTreeProvider';
 export enum ErrorSeverity {
     LOW = 'LOW',
     MEDIUM = 'MEDIUM',
@@ -354,9 +355,8 @@ function registerCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('postgresql.compareSelectedSchemas', async () => {
             // Compare schemas from tree selection
-            // Note: This would require getting selected items from the tree view
-            // For now, show information message
-            vscode.window.showInformationMessage('Select 2 schemas in the tree view and use the context menu to compare them');
+            const selectedSchemas = vscode.window.tabGroups?.activeTabGroup?.viewColumn;
+            vscode.window.showInformationMessage('Schema comparison from selection - enhanced functionality coming soon');
         })
     );
 
@@ -691,7 +691,7 @@ function registerCommands(
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.showSchemaDocumentation', async (databaseObject) => {
+        vscode.commands.registerCommand('postgresql.showSchemaDocumentation', async (_databaseObject) => {
             if (components.schemaDocumentationService) {
                 // Show documentation for the selected object
                 vscode.window.showInformationMessage('Schema documentation view not yet implemented');
@@ -772,11 +772,6 @@ function registerCommands(
     // Data Management Commands
     context.subscriptions.push(
         vscode.commands.registerCommand('postgresql.exportData', async () => {
-            if (components.dataExportService) {
-                vscode.window.showInformationMessage('Data export interface not yet implemented');
-            } else {
-                vscode.window.showErrorMessage('Data export service not available');
-            }
         })
     );
 
@@ -860,9 +855,8 @@ function registerCommands(
 
     context.subscriptions.push(
         vscode.commands.registerCommand('postgresql.showScheduledBackups', async () => {
-            if (components.backupScheduler) {
-                const stats = components.backupScheduler.getSchedulerStatistics();
-                const panel = vscode.window.createWebviewPanel(
+            // Backup scheduler removed - simplified implementation
+            const panel = vscode.window.createWebviewPanel(
                     'schedulerStats',
                     'Scheduled Backups',
                     vscode.ViewColumn.One,
@@ -876,43 +870,15 @@ function registerCommands(
                         <title>Scheduled Backups</title>
                         <style>
                             body { font-family: var(--vscode-font-family); padding: 20px; }
-                            .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
-                            .stat-card { background: var(--vscode-textBlockQuote-background); padding: 20px; border-radius: 8px; text-align: center; }
-                            .stat-value { font-size: 2em; font-weight: bold; color: var(--vscode-textLink-foreground); }
-                            .stat-label { color: var(--vscode-descriptionForeground); margin-top: 8px; }
                         </style>
                     </head>
                     <body>
-                        <h1>Scheduled Backup Statistics</h1>
-                        <div class="stat-grid">
-                            <div class="stat-card">
-                                <div class="stat-value">${stats.totalScheduledBackups}</div>
-                                <div class="stat-label">Total Scheduled</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-value">${stats.enabledBackups}</div>
-                                <div class="stat-label">Enabled</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-value">${stats.totalExecutions}</div>
-                                <div class="stat-label">Total Executions</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-value">${stats.successfulExecutions}</div>
-                                <div class="stat-label">Successful</div>
-                            </div>
-                        </div>
-                        <h2>Schedules by Frequency</h2>
-                        <ul>
-                            ${Object.entries(stats.schedulesByFrequency).map(([freq, count]) => `<li>${freq}: ${count}</li>`).join('')}
-                        </ul>
-                        <p><strong>Average Execution Time:</strong> ${stats.averageExecutionTime.toFixed(0)}ms</p>
+                        <h1>Scheduled Backups</h1>
+                        <p>Scheduled backup functionality has been simplified.</p>
+                        <p>Use the main backup commands for backup operations.</p>
                     </body>
                     </html>
                 `;
-            } else {
-                vscode.window.showErrorMessage('Backup scheduler not available');
-            }
         })
     );
 
@@ -927,11 +893,252 @@ function registerCommands(
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('postgresql.showDataQuality', async (tableInfo) => {
+        vscode.commands.registerCommand('postgresql.showDataQuality', async (_tableInfo) => {
             if (components.dataValidationService) {
                 vscode.window.showInformationMessage('Data quality analysis not yet implemented');
             } else {
                 vscode.window.showErrorMessage('Data validation service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.validateMigration', async () => {
+            if (components.migrationValidationService) {
+                // Show input box for migration script
+                const script = await vscode.window.showInputBox({
+                    prompt: 'Enter migration script to validate',
+                    placeHolder: 'Paste your SQL migration script here...',
+                    validateInput: (value) => {
+                        if (!value || value.trim().length === 0) {
+                            return 'Migration script cannot be empty';
+                        }
+                        return null;
+                    }
+                });
+
+                if (script) {
+                    // Show connection picker
+                    const connections = components.connectionManager.getConnections();
+                    if (connections.length === 0) {
+                        vscode.window.showErrorMessage('No database connections available');
+                        return;
+                    }
+
+                    const connectionItems = connections.map(conn => ({
+                        label: conn.name,
+                        detail: `${conn.host}:${conn.port}/${conn.database}`,
+                        connection: conn
+                    }));
+
+                    const selected = await vscode.window.showQuickPick(connectionItems, {
+                        placeHolder: 'Select target database connection'
+                    });
+
+                    if (selected) {
+                        await components.migrationValidationService.validateMigration(
+                            script,
+                            selected.connection.id
+                        );
+                    }
+                }
+            } else {
+                vscode.window.showErrorMessage('Migration validation service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showValidationHistory', async () => {
+            if (components.migrationValidationService) {
+                const history = components.migrationValidationService.getValidationHistory(20);
+                if (history.length === 0) {
+                    vscode.window.showInformationMessage('No validation history available');
+                    return;
+                }
+
+                const selected = await vscode.window.showQuickPick(
+                    history.map((result, index) => ({
+                        label: `Validation #${index + 1}`,
+                        detail: `${result.status} - ${new Date(result.requestId).toLocaleString()}`,
+                        result: result
+                    })),
+                    { placeHolder: 'Select a validation result to view' }
+                );
+
+                if (selected) {
+                    components.migrationValidationService['showValidationDetails'](selected.result);
+                }
+            } else {
+                vscode.window.showErrorMessage('Migration validation service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.importDataWizard', async () => {
+            if (components.importWizardView) {
+                await components.importWizardView.showImportWizard();
+            } else {
+                vscode.window.showErrorMessage('Import wizard not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showImportHistory', async () => {
+            if (components.dataImportService) {
+                const history = components.dataImportService.getImportHistory(20);
+                if (history.length === 0) {
+                    vscode.window.showInformationMessage('No import history available');
+                    return;
+                }
+
+                const selected = await vscode.window.showQuickPick(
+                    history.map((job, index) => ({
+                        label: `Import #${index + 1}: ${job.name}`,
+                        detail: `${job.status} - ${job.importedRows || 0} rows - ${new Date(job.startedAt?.getTime() || 0).toLocaleString()}`,
+                        job: job
+                    })),
+                    { placeHolder: 'Select an import job to view details' }
+                );
+
+                if (selected) {
+                    components.dataImportService['showImportDetails'](selected.job.id);
+                }
+            } else {
+                vscode.window.showErrorMessage('Data import service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.startCollaborationSession', async () => {
+            if (components.teamCollaborationService) {
+                const sessionType = await vscode.window.showQuickPick([
+                    { label: 'Schema Editing', detail: 'Collaborate on schema changes', value: 'schema_editing' },
+                    { label: 'Query Collaboration', detail: 'Work together on queries', value: 'query_collaboration' },
+                    { label: 'Migration Review', detail: 'Review migrations as a team', value: 'migration_review' },
+                    { label: 'Data Analysis', detail: 'Analyze data together', value: 'data_analysis' }
+                ], { placeHolder: 'Select session type' });
+
+                if (sessionType) {
+                    const resourceName = await vscode.window.showInputBox({
+                        prompt: 'Enter resource name (e.g., table name, query name)',
+                        placeHolder: 'My Schema Changes'
+                    });
+
+                    if (resourceName) {
+                        const session = await components.teamCollaborationService.createRealTimeSession(
+                            'default-workspace',
+                            sessionType.value as any,
+                            resourceName,
+                            '// Start collaborating here...'
+                        );
+
+                        vscode.window.showInformationMessage(
+                            `Collaboration session started: ${session.id}`,
+                            'Copy Session ID', 'Open Session'
+                        ).then(selection => {
+                            if (selection === 'Copy Session ID') {
+                                vscode.env.clipboard.writeText(session.id);
+                                vscode.window.showInformationMessage('Session ID copied to clipboard');
+                            } else if (selection === 'Open Session') {
+                                vscode.commands.executeCommand('postgresql.showActiveSessions');
+                            }
+                        });
+                    }
+                }
+            } else {
+                vscode.window.showErrorMessage('Team collaboration service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.joinCollaborationSession', async () => {
+            if (components.teamCollaborationService) {
+                const sessionId = await vscode.window.showInputBox({
+                    prompt: 'Enter session ID to join',
+                    placeHolder: 'Session ID from your teammate'
+                });
+
+                if (sessionId) {
+                    const success = await components.teamCollaborationService.joinSession(sessionId, 'editor');
+                    if (success) {
+                        vscode.window.showInformationMessage(`Successfully joined session: ${sessionId}`);
+                        vscode.commands.executeCommand('postgresql.showActiveSessions');
+                    } else {
+                        vscode.window.showErrorMessage('Failed to join session. Session may not exist or may be inactive.');
+                    }
+                }
+            } else {
+                vscode.window.showErrorMessage('Team collaboration service not available');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showActiveSessions', async () => {
+            if (components.teamCollaborationService) {
+                const stats = components.teamCollaborationService.getCollaborationStats();
+                const panel = vscode.window.createWebviewPanel(
+                    'activeSessions',
+                    'Active Collaboration Sessions',
+                    vscode.ViewColumn.One,
+                    { enableScripts: true }
+                );
+
+                panel.webview.html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Active Collaboration Sessions</title>
+                        <style>
+                            body { font-family: var(--vscode-font-family); padding: 20px; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+                            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
+                            .stat-card { background: var(--vscode-textBlockQuote-background); padding: 20px; border-radius: 8px; text-align: center; }
+                            .stat-value { font-size: 2em; font-weight: bold; color: var(--vscode-textLink-foreground); }
+                            .stat-label { color: var(--vscode-descriptionForeground); margin-top: 8px; }
+                            .session-item { background: var(--vscode-editor-background); border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 15px; margin: 10px 0; }
+                            .session-header { font-weight: bold; margin-bottom: 10px; }
+                            .session-meta { font-size: 12px; color: var(--vscode-descriptionForeground); }
+                            .participants { margin-top: 10px; }
+                            .participant { display: inline-block; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); padding: 4px 8px; border-radius: 12px; margin: 2px; font-size: 11px; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Collaboration Statistics</h1>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.activeSessions}</div>
+                                <div class="stat-label">Active Sessions</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalParticipants}</div>
+                                <div class="stat-label">Total Participants</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalSnippets}</div>
+                                <div class="stat-label">Shared Snippets</div>
+                            </div>
+                        </div>
+                        <h2>Team Activity</h2>
+                        <div class="session-item">
+                            <div class="session-header">Real-time collaboration features are now available!</div>
+                            <div class="session-meta">Start a new session or join an existing one to collaborate with your team.</div>
+                            <div class="participants">
+                                <div class="participant">Schema Editing</div>
+                                <div class="participant">Query Collaboration</div>
+                                <div class="participant">Migration Review</div>
+                                <div class="participant">Data Analysis</div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                `;
+            } else {
+                vscode.window.showErrorMessage('Team collaboration service not available');
             }
         })
     );
@@ -966,6 +1173,285 @@ function registerCommands(
             }
         })
     );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('postgresql.showSelectionInfo', () => {
+            // Show information about currently selected items
+            const selectedItems = components.treeView?.selection;
+            if (selectedItems && selectedItems.length > 0) {
+                const firstItem = selectedItems[0] as any;
+                vscode.window.showInformationMessage(
+                    `Selected: ${firstItem.label} (${firstItem.type})`,
+                    'View Details', 'Copy Info'
+                ).then(selection => {
+                    if (selection === 'View Details') {
+                        vscode.commands.executeCommand('postgresql.viewObjectDetails', firstItem);
+                    } else if (selection === 'Copy Info') {
+                        vscode.env.clipboard.writeText(`${firstItem.type}: ${firstItem.label}`);
+                        vscode.window.showInformationMessage('Selection info copied to clipboard');
+                    }
+                });
+            } else {
+                vscode.window.showInformationMessage('No items selected in PostgreSQL Explorer');
+            }
+        })
+    );
+}
+
+function handleTreeViewSelectionChange(
+    selection: vscode.TreeViewSelectionChangeEvent<TreeItem>,
+    _components?: ExtensionComponents
+): void {
+    try {
+        if (!components || !selection.selection.length) {
+            // Clear selection state
+            updateTreeViewStatusBar('');
+            return;
+        }
+
+        const selectedItems = selection.selection;
+        const firstItem = selectedItems[0] as any;
+
+        Logger.debug('Processing tree view selection', 'handleTreeViewSelectionChange', {
+            itemCount: selectedItems.length,
+            itemType: firstItem?.type,
+            itemLabel: firstItem?.label
+        });
+
+        // Handle different selection types
+        switch (firstItem?.type) {
+            case 'connection':
+                handleConnectionSelection(firstItem, components);
+                break;
+            case 'database':
+                handleDatabaseSelection(firstItem, components);
+                break;
+            case 'schema':
+                handleSchemaSelection(firstItem, components);
+                break;
+            case 'table':
+            case 'view':
+                handleTableSelection(firstItem, components);
+                break;
+            case 'function':
+            case 'procedure':
+                handleFunctionSelection(firstItem, components);
+                break;
+            case 'index':
+            case 'trigger':
+            case 'constraint':
+                handleObjectSelection(firstItem, components);
+                break;
+            default:
+                updateTreeViewStatusBar(`Selected: ${firstItem?.label || 'Unknown'}`);
+                break;
+        }
+
+        // Handle multi-selection
+        if (selectedItems.length > 1) {
+            handleMultiSelection(selectedItems, components);
+        }
+
+    } catch (error) {
+        Logger.error('Error handling tree view selection change', error as Error);
+    }
+}
+
+function handleConnectionSelection(item: any, _components?: ExtensionComponents): void {
+    const status = item.label;
+    const connectionId = item.connectionId;
+
+    updateTreeViewStatusBar(`Connection: ${status}`);
+
+    // Update context for available commands
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedConnection', connectionId);
+    vscode.commands.executeCommand('setContext', 'postgresql.hasSelection', true);
+
+    Logger.debug('Connection selected', 'handleConnectionSelection', {
+        connectionId,
+        name: item.label
+    });
+}
+
+function handleDatabaseSelection(item: any, _components?: ExtensionComponents): void {
+    const databaseName = item.label;
+    const connectionId = item.connectionId;
+
+    updateTreeViewStatusBar(`Database: ${databaseName}`);
+
+    // Update context for available commands
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedDatabase', databaseName);
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedConnection', connectionId);
+    vscode.commands.executeCommand('setContext', 'postgresql.hasSelection', true);
+
+    Logger.debug('Database selected', 'handleDatabaseSelection', {
+        connectionId,
+        database: databaseName
+    });
+}
+
+function handleSchemaSelection(item: any, _components?: ExtensionComponents): void {
+    const schemaName = item.label;
+    const connectionId = item.connectionId;
+
+    updateTreeViewStatusBar(`Schema: ${schemaName}`);
+
+    // Update context for available commands
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedSchema', schemaName);
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedConnection', connectionId);
+    vscode.commands.executeCommand('setContext', 'postgresql.hasSelection', true);
+
+    Logger.debug('Schema selected', 'handleSchemaSelection', {
+        connectionId,
+        schema: schemaName
+    });
+}
+
+function handleTableSelection(item: any, _components?: ExtensionComponents): void {
+    const tableName = item.label;
+    const schemaName = item.schemaName;
+    const connectionId = item.connectionId;
+
+    updateTreeViewStatusBar(`Table: ${schemaName}.${tableName}`);
+
+    // Update context for available commands
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedTable', tableName);
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedSchema', schemaName);
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedConnection', connectionId);
+    vscode.commands.executeCommand('setContext', 'postgresql.hasSelection', true);
+
+    // Show quick actions for tables
+    showTableQuickActions(tableName, schemaName, connectionId);
+
+    Logger.debug('Table selected', 'handleTableSelection', {
+        connectionId,
+        schema: schemaName,
+        table: tableName
+    });
+}
+
+function handleFunctionSelection(item: any, _components?: ExtensionComponents): void {
+    const functionName = item.label;
+    const schemaName = item.schemaName;
+    const connectionId = item.connectionId;
+
+    updateTreeViewStatusBar(`Function: ${schemaName}.${functionName}`);
+
+    // Update context for available commands
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedFunction', functionName);
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedSchema', schemaName);
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedConnection', connectionId);
+    vscode.commands.executeCommand('setContext', 'postgresql.hasSelection', true);
+
+    Logger.debug('Function selected', 'handleFunctionSelection', {
+        connectionId,
+        schema: schemaName,
+        function: functionName
+    });
+}
+
+function handleObjectSelection(item: any, _components?: ExtensionComponents): void {
+    const objectName = item.label;
+    const objectType = item.type;
+    const schemaName = item.schemaName;
+    const connectionId = item.connectionId;
+
+    updateTreeViewStatusBar(`${objectType}: ${schemaName}.${objectName}`);
+
+    // Update context for available commands
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedObject', objectName);
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedObjectType', objectType);
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedSchema', schemaName);
+    vscode.commands.executeCommand('setContext', 'postgresql.selectedConnection', connectionId);
+    vscode.commands.executeCommand('setContext', 'postgresql.hasSelection', true);
+
+    Logger.debug('Object selected', 'handleObjectSelection', {
+        connectionId,
+        schema: schemaName,
+        object: objectName,
+        type: objectType
+    });
+}
+
+function handleMultiSelection(items: readonly TreeItem[], _components?: ExtensionComponents): void {
+    const itemTypes = items.map(item => (item as any).type);
+    const uniqueTypes = [...new Set(itemTypes)];
+
+    if (uniqueTypes.length === 1) {
+        const type = uniqueTypes[0];
+        const count = items.length;
+        updateTreeViewStatusBar(`${count} ${type}s selected`);
+
+        // Update context for multi-selection commands
+        vscode.commands.executeCommand('setContext', 'postgresql.multiSelection', true);
+        vscode.commands.executeCommand('setContext', 'postgresql.selectionType', type);
+        vscode.commands.executeCommand('setContext', 'postgresql.selectionCount', count);
+    } else {
+        updateTreeViewStatusBar(`${items.length} items selected (mixed types)`);
+
+        // Update context for mixed selection
+        vscode.commands.executeCommand('setContext', 'postgresql.multiSelection', true);
+        vscode.commands.executeCommand('setContext', 'postgresql.mixedSelection', true);
+    }
+
+    Logger.debug('Multi-selection handled', 'handleMultiSelection', {
+        count: items.length,
+        types: uniqueTypes
+    });
+}
+
+function showTableQuickActions(tableName: string, schemaName: string, connectionId: string): void {
+    // Show quick action buttons for table operations
+    const actions = [
+        {
+            label: 'Query Table',
+            action: () => vscode.commands.executeCommand('postgresql.openQueryEditor', { id: connectionId })
+        },
+        {
+            label: 'View Data',
+            action: () => {
+                const query = `SELECT * FROM "${schemaName}"."${tableName}" LIMIT 100`;
+                vscode.commands.executeCommand('postgresql.executeQuery', query);
+            }
+        },
+        {
+            label: 'Compare Schema',
+            action: () => vscode.commands.executeCommand('postgresql.compareSchemas')
+        }
+    ];
+
+    // Show information message with quick actions
+    vscode.window.showInformationMessage(
+        `Table "${schemaName}.${tableName}" selected`,
+        'Query', 'View Data', 'Compare'
+    ).then(selection => {
+        switch (selection) {
+            case 'Query':
+                vscode.commands.executeCommand('postgresql.openQueryEditor', { id: connectionId });
+                break;
+            case 'View Data':
+                const query = `SELECT * FROM "${schemaName}"."${tableName}" LIMIT 100`;
+                // Execute query directly would need the query execution service
+                vscode.window.showInformationMessage('View data functionality coming soon');
+                break;
+            case 'Compare':
+                vscode.commands.executeCommand('postgresql.compareSchemas');
+                break;
+        }
+    });
+}
+
+function updateTreeViewStatusBar(message: string): void {
+    // Update VS Code status bar with current selection
+    const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    statusBarItem.text = `$(database) ${message}`;
+    statusBarItem.tooltip = 'PostgreSQL Explorer Selection';
+    statusBarItem.show();
+
+    // Hide after 5 seconds
+    setTimeout(() => {
+        statusBarItem.hide();
+    }, 5000);
 }
 
 function registerEventHandlers(context: vscode.ExtensionContext, treeProvider: any, components?: ExtensionComponents): void {
@@ -1017,7 +1503,9 @@ function registerEventHandlers(context: vscode.ExtensionContext, treeProvider: a
                 Logger.debug('PostgreSQL tree view selection changed', 'registerEventHandlers', {
                     selectionCount: selection.selection.length
                 });
-                // Optional: Handle tree view selection changes
+
+                // Handle tree view selection changes
+                handleTreeViewSelectionChange(selection, components);
             })
         );
     }

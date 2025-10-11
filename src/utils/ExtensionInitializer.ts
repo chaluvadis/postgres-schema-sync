@@ -20,14 +20,14 @@ import { TeamCollaborationService } from '@/services/TeamCollaborationService';
 import { PerformanceMonitorService } from '@/services/PerformanceMonitorService';
 import { PerformanceAlertSystem } from '@/services/PerformanceAlertSystem';
 import { SchemaDocumentationService } from '@/services/SchemaDocumentationService';
-import { DataExportService } from '@/services/DataExportService';
 import { DataImportService } from '@/services/DataImportService';
 import { BackupService } from '@/services/BackupService';
 import { RecoveryService } from '@/services/RecoveryService';
-import { BackupScheduler } from '@/services/BackupScheduler';
 import { DataValidationService } from '@/services/DataValidationService';
+import { MigrationValidationService } from '@/services/MigrationValidationService';
 import { QueryAnalyticsView } from '@/views/QueryAnalyticsView';
 import { TeamQueryLibraryView } from '@/views/TeamQueryLibraryView';
+import { ImportWizardView } from '@/views/ImportWizardView';
 import { Logger } from '@/utils/Logger';
 
 export interface ExtensionComponents {
@@ -52,12 +52,12 @@ export interface ExtensionComponents {
     performanceMonitorService?: PerformanceMonitorService;
     performanceAlertSystem?: PerformanceAlertSystem;
     schemaDocumentationService?: SchemaDocumentationService;
-    dataExportService?: DataExportService;
     dataImportService?: DataImportService;
     backupService?: BackupService;
     recoveryService?: RecoveryService;
-    backupScheduler?: BackupScheduler;
     dataValidationService?: DataValidationService;
+    migrationValidationService?: MigrationValidationService;
+    importWizardView?: ImportWizardView;
     queryAnalyticsView?: QueryAnalyticsView;
     teamQueryLibraryView?: TeamQueryLibraryView;
     advancedMigrationPreviewView?: any;
@@ -134,12 +134,13 @@ export class ExtensionInitializer {
             const performanceMonitorService = PerformanceMonitorService.getInstance();
             const performanceAlertSystem = PerformanceAlertSystem.getInstance(context, performanceMonitorService);
             const schemaDocumentationService = new SchemaDocumentationService(context);
-            const dataExportService = new DataExportService(context, coreComponents.connectionManager);
             const dataImportService = new DataImportService(context, coreComponents.connectionManager);
             const backupService = new BackupService(context, coreComponents.connectionManager);
             const recoveryService = new RecoveryService(context, coreComponents.connectionManager);
-            const backupScheduler = new BackupScheduler(context, coreComponents.connectionManager, backupService);
             const dataValidationService = new DataValidationService(context, coreComponents.connectionManager);
+            const migrationValidationService = new MigrationValidationService(coreComponents.connectionManager);
+            const importWizardView = coreComponents.dataImportService ?
+                new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
             const queryAnalyticsView = new QueryAnalyticsView(context, performanceMonitorService, teamCollaborationService);
             const teamQueryLibraryView = new TeamQueryLibraryView(context, teamCollaborationService);
 
@@ -162,12 +163,12 @@ export class ExtensionInitializer {
                 performanceMonitorService,
                 performanceAlertSystem,
                 schemaDocumentationService,
-                dataExportService,
                 dataImportService,
                 backupService,
                 recoveryService,
-                backupScheduler,
                 dataValidationService,
+                migrationValidationService,
+                importWizardView,
                 queryAnalyticsView,
                 teamQueryLibraryView
             };

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { TeamCollaborationService, QuerySnippet, TeamQueryLibrary } from '@/services/TeamCollaborationService';
+import { TeamCollaborationService, TeamQueryLibrary } from '@/services/TeamCollaborationService';
 import { Logger } from '@/utils/Logger';
 import { ErrorHandler } from '@/utils/ErrorHandler';
 

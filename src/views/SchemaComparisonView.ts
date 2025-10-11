@@ -22,6 +22,27 @@ export interface SchemaDifference {
     targetDefinition?: string | undefined;
     differenceDetails: string[];
     severity: 'low' | 'medium' | 'high' | 'critical';
+    conflictResolution?: ConflictResolution;
+    impactAnalysis?: ImpactAnalysis;
+}
+
+export interface ConflictResolution {
+    strategy: 'source_wins' | 'target_wins' | 'merge' | 'manual' | 'skip';
+    resolved: boolean;
+    customScript?: string;
+    notes?: string;
+    resolvedBy?: string;
+    resolvedAt?: Date;
+}
+
+export interface ImpactAnalysis {
+    riskLevel: 'low' | 'medium' | 'high' | 'critical';
+    affectedObjects: string[];
+    dataLossPotential: boolean;
+    breakingChanges: boolean;
+    dependencies: string[];
+    warnings: string[];
+    recommendations: string[];
 }
 
 export interface ComparisonOptions {
@@ -159,7 +180,12 @@ export class SchemaComparisonView {
                 sourceDefinition: diff.sourceDefinition,
                 targetDefinition: diff.targetDefinition,
                 differenceDetails: diff.differenceDetails,
-                severity: this.calculateSeverity(diff)
+                severity: this.calculateSeverity(diff),
+                conflictResolution: {
+                    strategy: 'manual',
+                    resolved: false
+                },
+                impactAnalysis: this.performImpactAnalysis(diff)
             })),
             comparisonOptions: options,
             createdAt: dotNetComparison.createdAt,
@@ -178,6 +204,49 @@ export class SchemaComparisonView {
         } else {
             return 'low';
         }
+    }
+
+    private performImpactAnalysis(difference: any): ImpactAnalysis {
+        const warnings: string[] = [];
+        const recommendations: string[] = [];
+        let riskLevel: 'low' | 'medium' | 'high' | 'critical' = 'low';
+        let dataLossPotential = false;
+        let breakingChanges = false;
+
+        // Analyze based on difference type and object type
+        if (difference.type === 'Removed') {
+            riskLevel = 'critical';
+            dataLossPotential = true;
+            breakingChanges = true;
+            warnings.push('Object removal may cause data loss');
+            warnings.push('Check for dependencies before proceeding');
+            recommendations.push('Review all dependent objects');
+            recommendations.push('Consider backing up data before removal');
+        } else if (difference.type === 'Modified') {
+            if (difference.objectType === 'table') {
+                riskLevel = 'high';
+                breakingChanges = true;
+                warnings.push('Table modification may affect existing queries');
+                recommendations.push('Review all queries using this table');
+                recommendations.push('Check application compatibility');
+            } else {
+                riskLevel = 'medium';
+                warnings.push('Object modification may affect functionality');
+            }
+        } else if (difference.type === 'Added') {
+            riskLevel = 'low';
+            recommendations.push('Review new object for consistency');
+        }
+
+        return {
+            riskLevel,
+            affectedObjects: [], // Would be populated by dependency analysis
+            dataLossPotential,
+            breakingChanges,
+            dependencies: [], // Would be populated by dependency analysis
+            warnings,
+            recommendations
+        };
     }
 
     private async generateComparisonHtml(data?: SchemaComparisonData): Promise<string> {
@@ -396,11 +465,263 @@ export class SchemaComparisonView {
                         background: var(--vscode-editor-background);
                         border: 1px solid var(--vscode-panel-border);
                         border-radius: 4px;
-                        padding: 15px;
                         margin-top: 10px;
+                    }
+
+                    .details-tabs {
+                        display: flex;
+                        border-bottom: 1px solid var(--vscode-panel-border);
+                        background: var(--vscode-titleBar-activeBackground, #2f2f2f);
+                    }
+
+                    .tab-btn {
+                        background: transparent;
+                        border: none;
+                        padding: 8px 16px;
+                        color: var(--vscode-editor-foreground);
+                        cursor: pointer;
+                        border-bottom: 2px solid transparent;
+                        font-size: 12px;
+                    }
+
+                    .tab-btn.active {
+                        border-bottom-color: var(--vscode-textLink-foreground);
+                        background: var(--vscode-editor-background);
+                    }
+
+                    .tab-btn:hover {
+                        background: var(--vscode-list-hoverBackground);
+                    }
+
+                    .tab-content {
+                        padding: 15px;
                         font-family: 'Consolas', 'Courier New', monospace;
                         font-size: 12px;
-                        white-space: pre-wrap;
+                    }
+
+                    .diff-viewer {
+                        display: flex;
+                        gap: 10px;
+                        height: 400px;
+                    }
+
+                    .diff-panel {
+                        flex: 1;
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 4px;
+                        overflow: hidden;
+                        display: flex;
+                        flex-direction: column;
+                    }
+
+                    .diff-panel-header {
+                        background: var(--vscode-titleBar-activeBackground, #2f2f2f);
+                        padding: 8px 12px;
+                        font-weight: bold;
+                        font-size: 11px;
+                        border-bottom: 1px solid var(--vscode-panel-border);
+                    }
+
+                    .diff-panel-content {
+                        flex: 1;
+                        overflow: auto;
+                        padding: 10px;
+                        background: var(--vscode-editor-background);
+                    }
+
+                    .line {
+                        display: flex;
+                        align-items: center;
+                        padding: 2px 0;
+                        font-family: 'Consolas', 'Courier New', monospace;
+                    }
+
+                    .line-number {
+                        width: 40px;
+                        text-align: right;
+                        color: var(--vscode-descriptionForeground);
+                        font-size: 10px;
+                        padding-right: 10px;
+                        border-right: 1px solid var(--vscode-panel-border);
+                        margin-right: 10px;
+                    }
+
+                    .line-content {
+                        flex: 1;
+                        white-space: pre;
+                    }
+
+                    .line-added {
+                        background: rgba(76, 183, 74, 0.2);
+                        border-left: 3px solid var(--vscode-gitDecoration-addedResourceForeground);
+                    }
+
+                    .line-removed {
+                        background: rgba(244, 135, 113, 0.2);
+                        border-left: 3px solid var(--vscode-gitDecoration-deletedResourceForeground);
+                    }
+
+                    .line-modified {
+                        background: rgba(77, 166, 255, 0.2);
+                        border-left: 3px solid var(--vscode-gitDecoration-modifiedResourceForeground);
+                    }
+
+                    .impact-analysis {
+                        background: var(--vscode-textBlockQuote-background);
+                        padding: 15px;
+                        border-radius: 4px;
+                        margin-bottom: 15px;
+                    }
+
+                    .risk-badge {
+                        display: inline-block;
+                        padding: 4px 8px;
+                        border-radius: 12px;
+                        font-size: 10px;
+                        font-weight: bold;
+                        text-transform: uppercase;
+                    }
+
+                    .risk-low { background: var(--vscode-gitDecoration-addedResourceForeground); color: var(--vscode-editor-background); }
+                    .risk-medium { background: var(--vscode-gitDecoration-renamedResourceForeground); color: var(--vscode-editor-background); }
+                    .risk-high { background: var(--vscode-gitDecoration-modifiedResourceForeground); color: var(--vscode-editor-background); }
+                    .risk-critical { background: var(--vscode-gitDecoration-deletedResourceForeground); color: var(--vscode-editor-background); }
+
+                    .conflict-resolution {
+                        background: var(--vscode-textBlockQuote-background);
+                        padding: 15px;
+                        border-radius: 4px;
+                    }
+
+                    .resolution-options {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                        gap: 10px;
+                        margin: 15px 0;
+                    }
+
+                    .resolution-option {
+                        padding: 10px;
+                        border: 2px solid var(--vscode-panel-border);
+                        border-radius: 4px;
+                        cursor: pointer;
+                        text-align: center;
+                        transition: all 0.2s;
+                    }
+
+                    .resolution-option.selected {
+                        border-color: var(--vscode-textLink-foreground);
+                        background: rgba(77, 166, 255, 0.1);
+                    }
+
+                    .resolution-option:hover {
+                        border-color: var(--vscode-textLink-foreground);
+                    }
+
+                    .custom-script {
+                        margin-top: 15px;
+                    }
+
+                    .custom-script textarea {
+                        width: 100%;
+                        min-height: 100px;
+                        background: var(--vscode-input-background);
+                        color: var(--vscode-input-foreground);
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 4px;
+                        padding: 8px;
+                        font-family: 'Consolas', 'Courier New', monospace;
+                        resize: vertical;
+                    }
+
+                    .warning-list {
+                        background: rgba(244, 135, 113, 0.1);
+                        border: 1px solid var(--vscode-gitDecoration-deletedResourceForeground);
+                        border-radius: 4px;
+                        padding: 10px;
+                        margin: 10px 0;
+                    }
+
+                    .warning-list h5 {
+                        margin: 0 0 10px 0;
+                        color: var(--vscode-gitDecoration-deletedResourceForeground);
+                    }
+
+                    .recommendation-list {
+                        background: rgba bluish( bluish, 166, 255, 0.1);
+                        border: 1px solid var(--vscode-gitDecoration-modifiedResourceForeground);
+                        border-radius: 4px;
+                        padding: 10px;
+                        margin: 10px 0;
+                    }
+
+                    .recommendation-list h5 {
+                        margin: 0 0 10px 0;
+                        color: var(--vscode-gitDecoration-modifiedResourceForeground);
+                    }
+
+                    .overview-content {
+                        padding: 15px;
+                    }
+
+                    .overview-row {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                        gap: 15px;
+                        margin-bottom: 20px;
+                        padding: 15px;
+                        background: var(--vscode-textBlockQuote-background);
+                        border-radius: 4px;
+                    }
+
+                    .overview-details {
+                        margin-bottom: 20px;
+                    }
+
+                    .definition-section {
+                        margin-top: 15px;
+                    }
+
+                    .definition-section h5 {
+                        margin-bottom: 8px;
+                        color: var(--vscode-textLink-foreground);
+                    }
+
+                    .definition-content {
+                        background: var(--vscode-input-background);
+                        padding: 10px;
+                        border-radius: 4px;
+                        border: 1px solid var(--vscode-panel-border);
+                        overflow-x: auto;
+                        font-size: 11px;
+                        line-height: 1.4;
+                    }
+
+                    .impact-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 15px;
+                    }
+
+                    .impact-grid {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                        gap: 15px;
+                        margin-bottom: 20px;
+                    }
+
+                    .impact-item {
+                        padding: 10px;
+                        background: var(--vscode-editor-background);
+                        border-radius: 4px;
+                        border: 1px solid var(--vscode-panel-border);
+                    }
+
+                    .resolution-actions {
+                        margin-top: 20px;
+                        display: flex;
+                        gap: 10px;
                     }
 
                     .footer {
@@ -515,8 +836,13 @@ export class SchemaComparisonView {
                     </div>
 
                     <div id="differenceDetails" class="diff-details" style="display: none;">
-                        <h4>Difference Details</h4>
-                        <div id="detailsContent"></div>
+                        <div class="details-tabs">
+                            <button class="tab-btn active" onclick="showTab('overview')">Overview</button>
+                            <button class="tab-btn" onclick="showTab('visual-diff')">Visual Diff</button>
+                            <button class="tab-btn" onclick="showTab('impact')">Impact Analysis</button>
+                            <button class="tab-btn" onclick="showTab('resolution')">Conflict Resolution</button>
+                        </div>
+                        <div id="detailsContent" class="tab-content"></div>
                     </div>
                 </div>
 
@@ -563,20 +889,270 @@ export class SchemaComparisonView {
                         const diff = differences.find(d => d.id === diffId);
 
                         if (diff) {
-                            contentDiv.innerHTML = \`
-                                <p><strong>Type:</strong> \${diff.type}</p>
-                                <p><strong>Object:</strong> \${diff.objectName} (\${diff.objectType})</p>
-                                <p><strong>Schema:</strong> \${diff.schema}</p>
-                                <p><strong>Severity:</strong> \${diff.severity}</p>
-                                <p><strong>Details:</strong></p>
-                                <ul>
-                                    \${diff.differenceDetails.map(detail => \`<li>\${detail}</li>\`).join('')}
-                                </ul>
-                                \${diff.sourceDefinition ? \`<p><strong>Source Definition:</strong></p><pre>\${diff.sourceDefinition}</pre>\` : ''}
-                                \${diff.targetDefinition ? \`<p><strong>Target Definition:</strong></p><pre>\${diff.targetDefinition}</pre>\` : ''}
-                            \`;
+                            // Show overview tab by default
+                            showTab('overview', diff);
                             detailsDiv.style.display = 'block';
                         }
+                    }
+
+                    function showTab(tabName, diff = null) {
+                        const contentDiv = document.getElementById('detailsContent');
+                        const differences = ${JSON.stringify(data.differences)};
+                        const currentDiff = diff || differences.find(d => d.id === currentDiffId);
+
+                        // Update tab buttons
+                        document.querySelectorAll('.tab-btn').forEach(btn => {
+                            btn.classList.remove('active');
+                        });
+                        event.target.classList.add('active');
+
+                        // Generate tab content
+                        switch (tabName) {
+                            case 'overview':
+                                contentDiv.innerHTML = generateOverviewTab(currentDiff);
+                                break;
+                            case 'visual-diff':
+                                contentDiv.innerHTML = generateVisualDiffTab(currentDiff);
+                                break;
+                            case 'impact':
+                                contentDiv.innerHTML = generateImpactTab(currentDiff);
+                                break;
+                            case 'resolution':
+                                contentDiv.innerHTML = generateResolutionTab(currentDiff);
+                                break;
+                        }
+                    }
+
+                    function generateOverviewTab(diff) {
+                        return \`
+                            <div class="overview-content">
+                                <div class="overview-row">
+                                    <div><strong>Type:</strong> \${diff.type}</div>
+                                    <div><strong>Object:</strong> \${diff.objectName} (\${diff.objectType})</div>
+                                    <div><strong>Schema:</strong> \${diff.schema}</div>
+                                    <div><strong>Severity:</strong> <span class="severity-badge severity-\${diff.severity}">\${diff.severity}</span></div>
+                                </div>
+                                <div class="overview-details">
+                                    <h5>Change Details:</h5>
+                                    <ul>
+                                        \${diff.differenceDetails.map(detail => \`<li>\${detail}</li>\`).join('')}
+                                    </ul>
+                                </div>
+                                \${diff.sourceDefinition ? \`
+                                    <div class="definition-section">
+                                        <h5>Source Definition:</h5>
+                                        <pre class="definition-content">\${diff.sourceDefinition}</pre>
+                                    </div>
+                                \` : ''}
+                                \${diff.targetDefinition ? \`
+                                    <div class="definition-section">
+                                        <h5>Target Definition:</h5>
+                                        <pre class="definition-content">\${diff.targetDefinition}</pre>
+                                    </div>
+                                \` : ''}
+                            </div>
+                        \`;
+                    }
+
+                    function generateVisualDiffTab(diff) {
+                        if (diff.type === 'Added') {
+                            return \`
+                                <div class="diff-viewer">
+                                    <div class="diff-panel">
+                                        <div class="diff-panel-header">Source (Not Present)</div>
+                                        <div class="diff-panel-content">
+                                            <div class="line">
+                                                <div class="line-content" style="color: var(--vscode-descriptionForeground);">
+                                                    Object does not exist in source
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="diff-panel">
+                                        <div class="diff-panel-header">Target (Added)</div>
+                                        <div class="diff-panel-content">
+                                            \${generateDiffLines(diff.targetDefinition, 'added')}
+                                        </div>
+                                    </div>
+                                </div>
+                            \`;
+                        } else if (diff.type === 'Removed') {
+                            return \`
+                                <div class="diff-viewer">
+                                    <div class="diff-panel">
+                                        <div class="diff-panel-header">Source (Removed)</div>
+                                        <div class="diff-panel-content">
+                                            \${generateDiffLines(diff.sourceDefinition, 'removed')}
+                                        </div>
+                                    </div>
+                                    <div class="diff-panel">
+                                        <div class="diff-panel-header">Target (Not Present)</div>
+                                        <div class="diff-panel-content">
+                                            <div class="line">
+                                                <div class="line-content" style="color: var(--vscode-descriptionForeground);">
+                                                    Object does not exist in target
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            \`;
+                        } else if (diff.type === 'Modified') {
+                            return \`
+                                <div class="diff-viewer">
+                                    <div class="diff-panel">
+                                        <div class="diff-panel-header">Source</div>
+                                        <div class="diff-panel-content">
+                                            \${generateDiffLines(diff.sourceDefinition)}
+                                        </div>
+                                    </div>
+                                    <div class="diff-panel">
+                                        <div class="diff-panel-header">Target</div>
+                                        <div class="diff-panel-content">
+                                            \${generateDiffLines(diff.targetDefinition)}
+                                        </div>
+                                    </div>
+                                </div>
+                            \`;
+                        }
+                        return '<div class="diff-viewer">Visual diff not available for this change type</div>';
+                    }
+
+                    function generateDiffLines(content, type = 'unchanged') {
+                        if (!content) return '';
+
+                        const lines = content.split('\\n');
+                        return lines.map((line, index) => \`
+                            <div class="line line-\${type}">
+                                <div class="line-number">\${index + 1}</div>
+                                <div class="line-content">\${escapeHtml(line)}</div>
+                            </div>
+                        \`).join('');
+                    }
+
+                    function generateImpactTab(diff) {
+                        const impact = diff.impactAnalysis || {};
+                        return \`
+                            <div class="impact-analysis">
+                                <div class="impact-header">
+                                    <h4>Impact Analysis</h4>
+                                    <span class="risk-badge risk-\${impact.riskLevel || 'low'}">\${impact.riskLevel || 'low'} Risk</span>
+                                </div>
+
+                                <div class="impact-grid">
+                                    <div class="impact-item">
+                                        <strong>Data Loss Potential:</strong>
+                                        <span class="risk-badge risk-\${impact.dataLossPotential ? 'critical' : 'low'}">
+                                            \${impact.dataLossPotential ? 'Yes' : 'No'}
+                                        </span>
+                                    </div>
+                                    <div class="impact-item">
+                                        <strong>Breaking Changes:</strong>
+                                        <span class="risk-badge risk-\${impact.breakingChanges ? 'high' : 'low'}">
+                                            \${impact.breakingChanges ? 'Yes' : 'No'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                \${impact.warnings && impact.warnings.length > 0 ? \`
+                                    <div class="warning-list">
+                                        <h5>⚠️ Warnings</h5>
+                                        <ul>
+                                            \${impact.warnings.map(w => \`<li>\${w}</li>\`).join('')}
+                                        </ul>
+                                    </div>
+                                \` : ''}
+
+                                \${impact.recommendations && impact.recommendations.length > 0 ? \`
+                                    <div class="recommendation-list">
+                                        <h5>💡 Recommendations</h5>
+                                        <ul>
+                                            \${impact.recommendations.map(r => \`<li>\${r}</li>\`).join('')}
+                                        </ul>
+                                    </div>
+                                \` : ''}
+                            </div>
+                        \`;
+                    }
+
+                    function generateResolutionTab(diff) {
+                        const resolution = diff.conflictResolution || { strategy: 'manual', resolved: false };
+                        return \`
+                            <div class="conflict-resolution">
+                                <h4>Conflict Resolution</h4>
+
+                                <div class="resolution-options">
+                                    <div class="resolution-option \${resolution.strategy === 'source_wins' ? 'selected' : ''}"
+                                         onclick="selectResolutionStrategy('source_wins', '\${diff.id}')">
+                                        <div class="option-title">Source Wins</div>
+                                        <div class="option-desc">Use source definition</div>
+                                    </div>
+                                    <div class="resolution-option \${resolution.strategy === 'target_wins' ? 'selected' : ''}"
+                                         onclick="selectResolutionStrategy('target_wins', '\${diff.id}')">
+                                        <div class="option-title">Target Wins</div>
+                                        <div class="option-desc">Use target definition</div>
+                                    </div>
+                                    <div class="resolution-option \${resolution.strategy === 'merge' ? 'selected' : ''}"
+                                         onclick="selectResolutionStrategy('merge', '\${diff.id}')">
+                                        <div class="option-title">Merge</div>
+                                        <div class="option-desc">Merge both definitions</div>
+                                    </div>
+                                    <div class="resolution-option \${resolution.strategy === 'manual' ? 'selected' : ''}"
+                                         onclick="selectResolutionStrategy('manual', '\${diff.id}')">
+                                        <div class="option-title">Manual</div>
+                                        <div class="option-desc">Custom resolution</div>
+                                    </div>
+                                    <div class="resolution-option \${resolution.strategy === 'skip' ? 'selected' : ''}"
+                                         onclick="selectResolutionStrategy('skip', '\${diff.id}')">
+                                        <div class="option-title">Skip</div>
+                                        <div class="option-desc">Skip this change</div>
+                                    </div>
+                                </div>
+
+                                <div class="custom-script" id="customScript_\${diff.id}" style="display: \${resolution.strategy === 'manual' ? 'block' : 'none'};">
+                                    <h5>Custom Resolution Script:</h5>
+                                    <textarea placeholder="Enter custom SQL script for this resolution...">\${resolution.customScript || ''}</textarea>
+                                </div>
+
+                                <div class="resolution-actions">
+                                    <button class="btn btn-primary" onclick="applyResolution('\${diff.id}')">Apply Resolution</button>
+                                    <button class="btn btn-secondary" onclick="resetResolution('\${diff.id}')">Reset</button>
+                                </div>
+                            </div>
+                        \`;
+                    }
+
+                    function selectResolutionStrategy(strategy, diffId) {
+                        // Update UI
+                        document.querySelectorAll('.resolution-option').forEach(opt => {
+                            opt.classList.remove('selected');
+                        });
+                        event.target.closest('.resolution-option').classList.add('selected');
+
+                        // Update data (would be sent to extension)
+                        console.log('Resolution strategy selected:', strategy, 'for diff:', diffId);
+                    }
+
+                    function applyResolution(diffId) {
+                        vscode.postMessage({
+                            command: 'applyResolution',
+                            diffId: diffId,
+                            resolution: getCurrentResolution(diffId)
+                        });
+                    }
+
+                    function getCurrentResolution(diffId) {
+                        const scriptElement = document.getElementById(\`customScript_\${diffId}\`);
+                        return {
+                            strategy: document.querySelector('.resolution-option.selected')?.textContent.trim() || 'manual',
+                            customScript: scriptElement ? scriptElement.querySelector('textarea').value : ''
+                        };
+                    }
+
+                    function escapeHtml(text) {
+                        const div = document.createElement('div');
+                        div.textContent = text;
+                        return div.innerHTML;
                     }
 
                     function exportComparison() {
@@ -690,6 +1266,12 @@ export class SchemaComparisonView {
             case 'startNewComparison':
                 await vscode.commands.executeCommand('postgresql.compareSchemas');
                 break;
+            case 'applyResolution':
+                await this.applyConflictResolution(message.diffId, message.resolution);
+                break;
+            case 'resetResolution':
+                await this.resetConflictResolution(message.diffId);
+                break;
         }
     }
 
@@ -725,6 +1307,63 @@ export class SchemaComparisonView {
         } catch (error) {
             Logger.error('Failed to generate migration from comparison', error as Error);
             vscode.window.showErrorMessage('Failed to generate migration');
+        }
+    }
+
+    private async applyConflictResolution(diffId: string, resolution: any): Promise<void> {
+        try {
+            Logger.info('Applying conflict resolution', 'applyConflictResolution', { diffId, resolution });
+
+            // Update the comparison data with the resolution
+            if (this.comparisonData) {
+                const diff = this.comparisonData.differences.find(d => d.id === diffId);
+                if (diff) {
+                    diff.conflictResolution = {
+                        strategy: resolution.strategy,
+                        resolved: true,
+                        customScript: resolution.customScript,
+                        resolvedBy: 'Current User', // Would get from VSCode user
+                        resolvedAt: new Date()
+                    };
+
+                    // Update the UI
+                    if (this.panel) {
+                        const htmlContent = await this.generateComparisonHtml(this.comparisonData);
+                        this.panel.webview.html = htmlContent;
+                    }
+
+                    vscode.window.showInformationMessage(`Resolution applied for ${diff.objectName}`);
+                }
+            }
+        } catch (error) {
+            Logger.error('Failed to apply conflict resolution', error as Error);
+            vscode.window.showErrorMessage('Failed to apply resolution');
+        }
+    }
+
+    private async resetConflictResolution(diffId: string): Promise<void> {
+        try {
+            Logger.info('Resetting conflict resolution', 'resetConflictResolution', { diffId });
+
+            // Reset the resolution in comparison data
+            if (this.comparisonData) {
+                const diff = this.comparisonData.differences.find(d => d.id === diffId);
+                if (diff) {
+                    diff.conflictResolution = {
+                        strategy: 'manual',
+                        resolved: false
+                    };
+
+                    // Update the UI
+                    if (this.panel) {
+                        const htmlContent = await this.generateComparisonHtml(this.comparisonData);
+                        this.panel.webview.html = htmlContent;
+                    }
+                }
+            }
+        } catch (error) {
+            Logger.error('Failed to reset conflict resolution', error as Error);
+            vscode.window.showErrorMessage('Failed to reset resolution');
         }
     }
 

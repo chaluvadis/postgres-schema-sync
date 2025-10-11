@@ -352,6 +352,54 @@
         "title": "Data Quality Report",
         "category": "PostgreSQL",
         "icon": "$(graph)"
+      },
+      {
+        "command": "postgresql.validateMigration",
+        "title": "Validate Migration",
+        "category": "PostgreSQL",
+        "icon": "$(check)"
+      },
+      {
+        "command": "postgresql.showValidationHistory",
+        "title": "Migration Validation History",
+        "category": "PostgreSQL",
+        "icon": "$(history)"
+      },
+      {
+        "command": "postgresql.importDataWizard",
+        "title": "Import Data with Wizard",
+        "category": "PostgreSQL",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "postgresql.showImportHistory",
+        "title": "Import History",
+        "category": "PostgreSQL",
+        "icon": "$(history)"
+      },
+      {
+        "command": "postgresql.startCollaborationSession",
+        "title": "Start Collaboration Session",
+        "category": "PostgreSQL",
+        "icon": "$(live-share)"
+      },
+      {
+        "command": "postgresql.joinCollaborationSession",
+        "title": "Join Collaboration Session",
+        "category": "PostgreSQL",
+        "icon": "$(person-add)"
+      },
+      {
+        "command": "postgresql.showActiveSessions",
+        "title": "Active Collaboration Sessions",
+        "category": "PostgreSQL",
+        "icon": "$(multiple-windows)"
+      },
+      {
+        "command": "postgresql.showSelectionInfo",
+        "title": "Show Selection Info",
+        "category": "PostgreSQL",
+        "icon": "$(info)"
       }
     ],
     "menus": {
@@ -496,6 +544,38 @@
         },
         {
           "command": "postgresql.showDataQuality",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.validateMigration",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showValidationHistory",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.importDataWizard",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showImportHistory",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.startCollaborationSession",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.joinCollaborationSession",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showActiveSessions",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showSelectionInfo",
           "when": "workspaceState.postgresql.connectionsExist == true"
         }
       ]

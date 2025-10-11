@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { QueryResult, QueryColumn } from '@/services/QueryExecutionService';
+import { QueryResult } from '@/services/QueryExecutionService';
 import { Logger } from '@/utils/Logger';
 import { ErrorHandler } from '@/utils/ErrorHandler';
 
@@ -253,12 +253,12 @@ Cell Details:
         vscode.window.showInformationMessage(details);
     }
 
-    private filterResults(tabId: string, filter: { column: string; operator: string; value: string }): void {
+    private filterResults(_tabId: string, _filter: { column: string; operator: string; value: string }): void {
         // Implementation for filtering results
         vscode.window.showInformationMessage('Filtering not yet implemented');
     }
 
-    private sortResults(tabId: string, columnIndex: number, direction: 'asc' | 'desc'): void {
+    private sortResults(_tabId: string, _columnIndex: number, _direction: 'asc' | 'desc'): void {
         // Implementation for sorting results
         vscode.window.showInformationMessage('Sorting not yet implemented');
     }
@@ -273,7 +273,7 @@ Cell Details:
         this.webviewPanel.webview.html = html;
     }
 
-    private async generateResultSetHtml(tabs: ResultSetTab[], activeTab?: ResultSetTab): Promise<string> {
+    private async generateResultSetHtml(_tabs: ResultSetTab[], activeTab?: ResultSetTab): Promise<string> {
         return `
             <!DOCTYPE html>
             <html>
@@ -565,8 +565,8 @@ Cell Details:
             </th>`
         ).join('');
 
-        const rows = result.rows.slice(0, 1000).map((row, rowIndex) =>
-            '<tr>' + result.columns.map((col, colIndex) => {
+        const rows = result.rows.slice(0, 1000).map((row) =>
+            '<tr>' + result.columns.map((_col, colIndex) => {
                 const cellValue = row[colIndex];
                 const displayValue = cellValue === null || cellValue === undefined ? '<em class="null-value">null</em>' : String(cellValue);
                 return `<td title="${displayValue}">${displayValue}</td>`;

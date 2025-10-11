@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { PerformanceMonitorService, PerformanceAlert, QueryPerformanceMetrics } from '@/services/PerformanceMonitorService';
 import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
 
 export interface AlertRule {
     id: string;
@@ -382,7 +381,7 @@ export class PerformanceAlertSystem {
         }
     }
 
-    private evaluateCustomCondition(rule: AlertRule, metrics: QueryPerformanceMetrics[]): boolean {
+    private evaluateCustomCondition(_rule: AlertRule, _metrics: QueryPerformanceMetrics[]): boolean {
         // Custom condition evaluation logic
         // This is a simplified implementation
         return false;

@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
 import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
 
 export interface ValidationRule {
     id: string;
@@ -446,7 +445,7 @@ export class DataValidationService {
 
         const headers = lines[startRow].split(delimiter).map(header => header.trim().replace(/"/g, ''));
 
-        const rows = lines.slice(startRow + 1).map((line, index) => {
+        const rows = lines.slice(startRow + 1).map((line) => {
             const values = line.split(delimiter).map(val => val.trim().replace(/"/g, ''));
             const row: any = {};
 

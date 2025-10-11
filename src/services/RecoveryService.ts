@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
 import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
 
 export interface RecoveryPoint {
     id: string;
@@ -439,7 +438,7 @@ export class RecoveryService {
     }
 
     private async performRecovery(
-        connection: any,
+        _connection: any,
         job: RecoveryJob,
         recoveryPoint: RecoveryPoint,
         token: any
@@ -601,7 +600,7 @@ export class RecoveryService {
     }
 
     private async verifyRecovery(
-        job: RecoveryJob,
+        _job: RecoveryJob,
         recoveryResult: { recoveredObjects: string[] }
     ): Promise<RecoveryVerification> {
         // In a real implementation, this would:

@@ -342,7 +342,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
     }
 }
 
-class TreeItem extends vscode.TreeItem {
+export class TreeItem extends vscode.TreeItem {
     public connectionId?: string | undefined;
     public schemaName?: string | undefined;
     public objectName?: string | undefined;

@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
 import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
 
 export interface ImportJob {
     id: string;
@@ -43,6 +42,32 @@ export interface ImportOptions {
     updateExisting?: boolean;
     conflictResolution?: 'skip' | 'update' | 'error';
     schedule?: ImportSchedule;
+    advancedValidation?: AdvancedValidationOptions;
+    dataQualityChecks?: DataQualityCheck[];
+    previewMode?: boolean;
+    dryRun?: boolean;
+}
+
+export interface AdvancedValidationOptions {
+    checkDuplicates?: boolean;
+    checkForeignKeys?: boolean;
+    checkReferentialIntegrity?: boolean;
+    validateBusinessRules?: boolean;
+    customValidationRules?: CustomValidationRule[];
+}
+
+export interface CustomValidationRule {
+    name: string;
+    description: string;
+    rule: string;
+    severity: 'error' | 'warning' | 'info';
+}
+
+export interface DataQualityCheck {
+    type: 'completeness' | 'uniqueness' | 'validity' | 'accuracy' | 'consistency';
+    columnName: string;
+    threshold: number;
+    action: 'error' | 'warning' | 'log';
 }
 
 export interface DataTransformation {
@@ -90,6 +115,43 @@ export interface ColumnMapping {
     nullable: boolean;
     defaultValue?: string;
     transformation?: string;
+}
+
+export interface DataQualityReport {
+    overallScore: number;
+    completeness: ColumnQualityMetric[];
+    uniqueness: ColumnQualityMetric[];
+    validity: ColumnQualityMetric[];
+    consistency: ColumnQualityMetric[];
+    issues: DataQualityIssue[];
+    recommendations: string[];
+}
+
+export interface ColumnQualityMetric {
+    columnName: string;
+    score: number;
+    totalValues: number;
+    validValues: number;
+    nullValues: number;
+    uniqueValues: number;
+}
+
+export interface DataQualityIssue {
+    type: 'missing_data' | 'duplicate_data' | 'invalid_format' | 'inconsistent_format' | 'outlier';
+    columnName: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    description: string;
+    affectedRows: number;
+    suggestion: string;
+}
+
+export interface ValidationIssue {
+    type: 'error' | 'warning' | 'info';
+    category: 'data_quality' | 'format' | 'constraint' | 'business_rule';
+    columnName?: string;
+    rowNumber?: number;
+    message: string;
+    suggestion?: string;
 }
 
 export interface ImportTemplate {
@@ -228,6 +290,8 @@ export class DataImportService {
         totalRows: number;
         previewData: any[];
         recommendedMappings: ColumnMapping[];
+        dataQualityReport?: DataQualityReport;
+        validationIssues?: ValidationIssue[];
     }> {
         try {
             const job = this.importJobs.get(jobId);
@@ -292,18 +356,31 @@ export class DataImportService {
             // Generate recommended column mappings
             const recommendedMappings = this.generateRecommendedMappings(detectedColumns);
 
+            // Perform data quality analysis if enabled
+            let dataQualityReport: DataQualityReport | undefined;
+            let validationIssues: ValidationIssue[] = [];
+
+            if (job.options.validateData !== false) {
+                const qualityResult = await this.performDataQualityAnalysis(previewData, detectedColumns);
+                dataQualityReport = qualityResult.report;
+                validationIssues = qualityResult.issues;
+            }
+
             Logger.info('Import file analyzed', 'analyzeImportFile', {
                 jobId,
                 columnCount: detectedColumns.length,
                 totalRows,
-                previewRows: previewData.length
+                previewRows: previewData.length,
+                qualityScore: dataQualityReport?.overallScore
             });
 
             return {
                 detectedColumns,
                 totalRows,
                 previewData,
-                recommendedMappings
+                recommendedMappings,
+                dataQualityReport,
+                validationIssues
             };
 
         } catch (error) {
@@ -539,6 +616,194 @@ export class DataImportService {
         }
     }
 
+    private async performDataQualityAnalysis(
+        previewData: any[],
+        columns: DetectedColumn[]
+    ): Promise<{
+        report: DataQualityReport;
+        issues: ValidationIssue[];
+    }> {
+        const issues: ValidationIssue[] = [];
+        const completeness: ColumnQualityMetric[] = [];
+        const uniqueness: ColumnQualityMetric[] = [];
+        const validity: ColumnQualityMetric[] = [];
+        const consistency: ColumnQualityMetric[] = [];
+
+        // Analyze each column
+        columns.forEach(column => {
+            const columnValues = previewData.map(row => row[column.name]).filter(val => val !== null && val !== undefined);
+
+            // Completeness analysis
+            const nullCount = previewData.length - columnValues.length;
+            const completenessScore = previewData.length > 0 ? ((previewData.length - nullCount) / previewData.length) * 100 : 0;
+
+            completeness.push({
+                columnName: column.name,
+                score: completenessScore,
+                totalValues: previewData.length,
+                validValues: columnValues.length,
+                nullValues: nullCount,
+                uniqueValues: new Set(columnValues.map(String)).size
+            });
+
+            // Uniqueness analysis
+            const uniqueValues = new Set(columnValues.map(String));
+            const uniquenessScore = columnValues.length > 0 ? (uniqueValues.size / columnValues.length) * 100 : 0;
+
+            uniqueness.push({
+                columnName: column.name,
+                score: uniquenessScore,
+                totalValues: columnValues.length,
+                validValues: uniqueValues.size,
+                nullValues: 0,
+                uniqueValues: uniqueValues.size
+            });
+
+            // Validity analysis based on detected type
+            let validCount = 0;
+            columnValues.forEach(value => {
+                if (this.isValidValue(value, column.type)) {
+                    validCount++;
+                }
+            });
+
+            const validityScore = columnValues.length > 0 ? (validCount / columnValues.length) * 100 : 0;
+
+            validity.push({
+                columnName: column.name,
+                score: validityScore,
+                totalValues: columnValues.length,
+                validValues: validCount,
+                nullValues: 0,
+                uniqueValues: 0
+            });
+
+            // Consistency analysis (format consistency for strings)
+            let formatConsistency = 100;
+            if (column.type === 'string' && columnValues.length > 1) {
+                const formats = columnValues.map(val => this.detectValueFormat(String(val)));
+                const mostCommonFormat = formats.reduce((acc, format) => {
+                    acc[format] = (acc[format] || 0) + 1;
+                    return acc;
+                }, {} as Record<string, number>);
+
+                const maxFormatCount = Math.max(...Object.values(mostCommonFormat));
+                formatConsistency = (maxFormatCount / columnValues.length) * 100;
+            }
+
+            consistency.push({
+                columnName: column.name,
+                score: formatConsistency,
+                totalValues: columnValues.length,
+                validValues: columnValues.length,
+                nullValues: 0,
+                uniqueValues: 0
+            });
+
+            // Generate issues based on quality scores
+            if (completenessScore < 80) {
+                issues.push({
+                    type: 'warning',
+                    category: 'data_quality',
+                    columnName: column.name,
+                    message: `Low completeness: ${completenessScore.toFixed(1)}% of values are present`,
+                    suggestion: 'Consider reviewing data source for missing values'
+                });
+            }
+
+            if (uniquenessScore < 50 && column.name.toLowerCase().includes('id')) {
+                issues.push({
+                    type: 'warning',
+                    category: 'data_quality',
+                    columnName: column.name,
+                    message: `Potential duplicate IDs detected: ${uniquenessScore.toFixed(1)}% uniqueness`,
+                    suggestion: 'Check for duplicate primary key values'
+                });
+            }
+
+            if (validityScore < 90) {
+                issues.push({
+                    type: 'error',
+                    category: 'data_quality',
+                    columnName: column.name,
+                    message: `Data type validation failed: ${validityScore.toFixed(1)}% valid values`,
+                    suggestion: 'Review data types and formats in the source file'
+                });
+            }
+        });
+
+        // Calculate overall score
+        const overallScore = [
+            ...completeness.map(c => c.score),
+            ...uniqueness.map(u => u.score),
+            ...validity.map(v => v.score),
+            ...consistency.map(c => c.score)
+        ].reduce((sum, score) => sum + score, 0) / (completeness.length * 4);
+
+        // Generate recommendations
+        const recommendations: string[] = [];
+        if (overallScore < 70) {
+            recommendations.push('Data quality is below acceptable threshold. Consider data cleansing.');
+        }
+        if (issues.some(i => i.type === 'error')) {
+            recommendations.push('Fix data type and format errors before importing.');
+        }
+        if (issues.some(i => i.category === 'data_quality')) {
+            recommendations.push('Review data quality issues and consider preprocessing the data.');
+        }
+
+        const report: DataQualityReport = {
+            overallScore,
+            completeness,
+            uniqueness,
+            validity,
+            consistency,
+            issues: issues.map(issue => ({
+                type: issue.category === 'data_quality' ? 'missing_data' : 'invalid_format',
+                columnName: issue.columnName || 'unknown',
+                severity: issue.type === 'error' ? 'high' : issue.type === 'warning' ? 'medium' : 'low',
+                description: issue.message,
+                affectedRows: 0, // Would need row-level analysis
+                suggestion: issue.suggestion || 'Review data quality'
+            })),
+            recommendations
+        };
+
+        return { report, issues };
+    }
+
+    private isValidValue(value: any, type: DetectedColumn['type']): boolean {
+        if (value === null || value === undefined || value === '') {
+            return true; // Null values are considered valid
+        }
+
+        switch (type) {
+            case 'number':
+                return !isNaN(Number(value));
+            case 'date':
+                const date = new Date(value);
+                return !isNaN(date.getTime());
+            case 'boolean':
+                const lowerValue = String(value).toLowerCase();
+                return ['true', 'false', '1', '0', 'yes', 'no'].includes(lowerValue);
+            case 'string':
+            default:
+                return typeof value === 'string' || value.toString();
+        }
+    }
+
+    private detectValueFormat(value: string): string {
+        // Simple format detection
+        if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'date-yyyy-mm-dd';
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return 'date-mm/dd/yyyy';
+        if (/^\d{2}-\d{2}-\d{4}$/.test(value)) return 'date-mm-dd-yyyy';
+        if (/^\d+\.\d+$/.test(value)) return 'decimal';
+        if (/^\d+$/.test(value)) return 'integer';
+        if (/^[A-Z\s]+$/.test(value)) return 'uppercase';
+        if (/^[a-z\s]+$/.test(value)) return 'lowercase';
+        return 'mixed';
+    }
+
     async executeImportJob(
         jobId: string,
         targetTable: string,
@@ -754,7 +1019,7 @@ export class DataImportService {
 
         const headers = lines[startRow].split(delimiter).map(header => header.trim().replace(/"/g, ''));
 
-        return lines.slice(startRow + 1).map((line, index) => {
+        return lines.slice(startRow + 1).map((line) => {
             const values = line.split(delimiter).map(val => val.trim().replace(/"/g, ''));
             const row: any = {};
 

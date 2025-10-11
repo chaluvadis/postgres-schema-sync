@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
 
 export interface SchemaDocumentation {
     id: string;

@@ -1,7 +1,6 @@
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { Logger } from '@/utils/Logger';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
-import { ErrorHandler } from '@/utils/ErrorHandler';
 
 export interface QueryResult {
     id: string;
@@ -47,7 +46,7 @@ export class QueryExecutionService {
         connectionId: string,
         query: string,
         options: QueryOptions = {},
-        cancellationToken?: any
+        _cancellationToken?: any
     ): Promise<QueryResult> {
         const startTime = Date.now();
 
@@ -141,7 +140,7 @@ export class QueryExecutionService {
 
     async getIntelliSense(
         connectionId: string,
-        query: string,
+        _query: string,
         position: { line: number; column: number }
     ): Promise<IntelliSenseSuggestion[]> {
         try {
@@ -292,162 +291,6 @@ export class QueryExecutionService {
         return JSON.stringify(data, null, 2);
     }
 
-    async validateQuery(query: string): Promise<{ valid: boolean; error?: string }> {
-        try {
-            // Basic SQL validation
-            const trimmed = query.trim();
-
-            if (!trimmed) {
-                return { valid: false, error: 'Query cannot be empty' };
-            }
-
-            // Check for basic SQL keywords
-            const sqlKeywords = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER'];
-            const hasKeyword = sqlKeywords.some(keyword =>
-                trimmed.toUpperCase().includes(keyword)
-            );
-
-            if (!hasKeyword) {
-                return { valid: false, error: 'Query does not appear to be valid SQL' };
-            }
-
-            // Check for potentially dangerous operations
-            const dangerousPatterns = [
-                /DROP\s+DATABASE/i,
-                /DROP\s+SCHEMA/i,
-                /TRUNCATE\s+TABLE/i,
-                /DELETE\s+FROM\s+\w+\s+WHERE\s+1\s*=\s*1/i
-            ];
-
-            for (const pattern of dangerousPatterns) {
-                if (pattern.test(trimmed)) {
-                    return {
-                        valid: false,
-                        error: 'Query contains potentially dangerous operations. Please review carefully.'
-                    };
-                }
-            }
-
-            return { valid: true };
-
-        } catch (error) {
-            return { valid: false, error: (error as Error).message };
-        }
-    }
-
-    async formatQuery(query: string): Promise<string> {
-        try {
-            // Basic SQL formatting
-            let formatted = query;
-
-            // Normalize whitespace
-            formatted = formatted.replace(/\s+/g, ' ');
-
-            // Add newlines after keywords
-            const keywords = ['SELECT', 'FROM', 'WHERE', 'ORDER BY', 'GROUP BY', 'HAVING', 'INSERT', 'UPDATE', 'DELETE'];
-            keywords.forEach(keyword => {
-                const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-                formatted = formatted.replace(regex, `\n${keyword}`);
-            });
-
-            // Add indentation
-            const lines = formatted.split('\n');
-            let indentLevel = 0;
-            const indentSize = 4;
-
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
-
-                if (!line) continue;
-
-                // Decrease indent for certain keywords
-                if (line.startsWith('FROM') || line.startsWith('WHERE') || line.startsWith('ORDER BY')) {
-                    indentLevel = Math.max(0, indentLevel - 1);
-                }
-
-                lines[i] = ' '.repeat(indentLevel * indentSize) + line;
-
-                // Increase indent after certain keywords
-                if (line.startsWith('SELECT') || line.startsWith('FROM')) {
-                    indentLevel++;
-                }
-            }
-
-            return lines.join('\n').trim();
-
-        } catch (error) {
-            Logger.error('Failed to format query', error as Error);
-            return query; // Return original query if formatting fails
-        }
-    }
-
-    async getQueryStatistics(query: string): Promise<{
-        estimatedComplexity: 'Simple' | 'Medium' | 'Complex';
-        estimatedRows: number;
-        warnings: string[];
-    }> {
-        const warnings: string[] = [];
-        let complexity: 'Simple' | 'Medium' | 'Complex' = 'Simple';
-        let estimatedRows = 1000;
-
-        try {
-            const upperQuery = query.toUpperCase();
-
-            // Analyze complexity
-            if (upperQuery.includes('JOIN')) {
-                complexity = 'Medium';
-            }
-
-            if (upperQuery.includes('SUBQUERY') || upperQuery.includes('CTE') ||
-                upperQuery.includes('WINDOW FUNCTION') || upperQuery.match(/JOIN.*JOIN/)) {
-                complexity = 'Complex';
-            }
-
-            // Check for missing WHERE clauses in DELETE/UPDATE
-            if ((upperQuery.includes('DELETE') || upperQuery.includes('UPDATE')) &&
-                !upperQuery.includes('WHERE')) {
-                warnings.push('DELETE/UPDATE without WHERE clause may affect all rows');
-            }
-
-            // Check for SELECT * (could be expensive)
-            if (upperQuery.includes('SELECT *') && !upperQuery.includes('COUNT')) {
-                warnings.push('SELECT * may return large amounts of data');
-            }
-
-            // Check for missing LIMIT
-            if (upperQuery.includes('SELECT') && !upperQuery.includes('LIMIT') &&
-                !upperQuery.includes('COUNT') && !upperQuery.includes('EXISTS')) {
-                warnings.push('Consider adding LIMIT clause for large result sets');
-            }
-
-            // Estimate row count (very basic heuristic)
-            if (upperQuery.includes('COUNT')) {
-                estimatedRows = 1;
-            } else if (upperQuery.includes('LIMIT')) {
-                const limitMatch = upperQuery.match(/LIMIT\s+(\d+)/i);
-                if (limitMatch) {
-                    estimatedRows = Math.min(parseInt(limitMatch[1]), 10000);
-                }
-            } else {
-                estimatedRows = complexity === 'Simple' ? 1000 :
-                               complexity === 'Medium' ? 10000 : 100000;
-            }
-
-            return {
-                estimatedComplexity: complexity,
-                estimatedRows,
-                warnings
-            };
-
-        } catch (error) {
-            Logger.error('Failed to analyze query statistics', error as Error);
-            return {
-                estimatedComplexity: 'Simple',
-                estimatedRows: 1000,
-                warnings: ['Failed to analyze query']
-            };
-        }
-    }
 
     dispose(): void {
         // Cleanup if needed
