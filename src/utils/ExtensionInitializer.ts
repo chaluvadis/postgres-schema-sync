@@ -28,6 +28,7 @@ import { MigrationValidationService } from '@/services/MigrationValidationServic
 import { QueryAnalyticsView } from '@/views/QueryAnalyticsView';
 import { TeamQueryLibraryView } from '@/views/TeamQueryLibraryView';
 import { ImportWizardView } from '@/views/ImportWizardView';
+import { ImportManagementView } from '@/views/ImportManagementView';
 import { Logger } from '@/utils/Logger';
 
 export interface ExtensionComponents {
@@ -58,6 +59,7 @@ export interface ExtensionComponents {
     dataValidationService?: DataValidationService;
     migrationValidationService?: MigrationValidationService;
     importWizardView?: ImportWizardView;
+    importManagementView?: ImportManagementView;
     queryAnalyticsView?: QueryAnalyticsView;
     teamQueryLibraryView?: TeamQueryLibraryView;
     advancedMigrationPreviewView?: any;
@@ -141,6 +143,8 @@ export class ExtensionInitializer {
             const migrationValidationService = new MigrationValidationService(coreComponents.connectionManager);
             const importWizardView = coreComponents.dataImportService ?
                 new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
+            const importManagementView = coreComponents.dataImportService ?
+                new ImportManagementView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
             const queryAnalyticsView = new QueryAnalyticsView(context, performanceMonitorService, teamCollaborationService);
             const teamQueryLibraryView = new TeamQueryLibraryView(context, teamCollaborationService);
 
@@ -169,6 +173,7 @@ export class ExtensionInitializer {
                 dataValidationService,
                 migrationValidationService,
                 importWizardView,
+                importManagementView,
                 queryAnalyticsView,
                 teamQueryLibraryView
             };
@@ -230,5 +235,22 @@ export class ExtensionInitializer {
             throw new Error('.NET integration service not initialized');
         }
         return this.dotNetService;
+    }
+
+    static getStatusBarProvider(): EnhancedStatusBarProvider {
+        return EnhancedStatusBarProvider.getCurrentInstance();
+    }
+
+    static getImportManagementView(components: ExtensionComponents): ImportManagementView {
+        if (!components.importManagementView) {
+            throw new Error('ImportManagementView not initialized');
+        }
+        return components.importManagementView;
+    }
+
+    static disposeImportManagementView(components: ExtensionComponents): void {
+        if (components.importManagementView) {
+            components.importManagementView.dispose();
+        }
     }
 }

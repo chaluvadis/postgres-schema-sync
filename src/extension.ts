@@ -154,6 +154,17 @@ export function deactivate(): Thenable<void> | undefined {
             }
         }
 
+        if (components) {
+            try {
+                ExtensionInitializer.disposeImportManagementView(components);
+                promises.push(Promise.resolve());
+            } catch (error) {
+                Logger.warn('Error disposing import management view', 'deactivate', error as Error);
+                ErrorHandler.handleError(error, ErrorHandler.createContext('ImportManagementViewDisposal'));
+                promises.push(Promise.resolve()); // Don't fail deactivation for view disposal errors
+            }
+        }
+
         try {
             Logger.dispose();
             promises.push(Promise.resolve());

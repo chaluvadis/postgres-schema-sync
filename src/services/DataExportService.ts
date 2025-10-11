@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
 
 export interface ExportJob {
@@ -197,110 +198,150 @@ export class DataExportService {
 
             Logger.info('Export job started', 'executeExportJob', { jobId });
 
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Exporting: ${job.name}`,
-                cancellable: true
-            }, async (progress, token) => {
-                try {
-                    // Get connection and validate
-                    const connection = this.connectionManager.getConnection(job.connectionId);
-                    if (!connection) {
-                        throw new Error(`Connection ${job.connectionId} not found`);
-                    }
+            // Start operation tracking in status bar
+            const statusBarProvider = ExtensionInitializer.getStatusBarProvider();
+            const operationSteps = [
+                { id: 'prepare', name: 'Preparing export', status: 'pending' as const },
+                { id: 'query', name: 'Executing query', status: 'pending' as const },
+                { id: 'process', name: 'Processing data', status: 'pending' as const },
+                { id: 'generate', name: 'Generating file', status: 'pending' as const }
+            ];
 
-                    const password = await this.connectionManager.getConnectionPassword(job.connectionId);
-                    if (!password) {
-                        throw new Error('Connection password not found');
-                    }
-
-                    // Create .NET connection info
-                    const dotNetConnection = {
-                        id: connection.id,
-                        name: connection.name,
-                        host: connection.host,
-                        port: connection.port,
-                        database: connection.database,
-                        username: connection.username,
-                        password: password,
-                        createdDate: new Date().toISOString()
-                    };
-
-                    progress.report({ increment: 0, message: 'Preparing export...' });
-
-                    // Execute export via .NET service
-                    const result = await this.dotNetService.executeQuery(
-                        dotNetConnection,
-                        job.query,
-                        {
-                            maxRows: 1000000, // Large limit for exports
-                            timeout: 300 // 5 minute timeout for exports
-                        }
-                    );
-
-                    progress.report({ increment: 25, message: 'Processing data...' });
-
-                    if (token.isCancellationRequested) {
-                        job.status = 'cancelled';
-                        return;
-                    }
-
-                    // Generate export file
-                    const filePath = await this.generateExportFile(job, result);
-
-                    progress.report({ increment: 75, message: 'Finalizing export...' });
-
-                    if (token.isCancellationRequested) {
-                        job.status = 'cancelled';
-                        return;
-                    }
-
-                    // Update job with results
-                    job.status = 'completed';
-                    job.progress = 100;
-                    job.totalRows = result.rowCount;
-                    job.exportedRows = result.rowCount;
-                    job.filePath = filePath;
-                    job.completedAt = new Date();
-                    job.estimatedSize = await this.getFileSize(filePath);
-
-                    this.exportJobs.set(jobId, job);
-                    this.exportHistory.unshift(job);
-                    this.activeExports.delete(jobId);
-
-                    progress.report({ increment: 100, message: 'Export completed' });
-
-                    // Show success message with file path
-                    vscode.window.showInformationMessage(
-                        `Export completed: ${job.exportedRows} rows exported to ${filePath}`,
-                        'Open File', 'Open Folder'
-                    ).then(selection => {
-                        if (selection === 'Open File') {
-                            vscode.workspace.openTextDocument(filePath).then(doc => {
-                                vscode.window.showTextDocument(doc);
-                            });
-                        } else if (selection === 'Open Folder') {
-                            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(filePath));
-                        }
-                    });
-
-                    Logger.info('Export job completed', 'executeExportJob', {
-                        jobId,
-                        exportedRows: job.exportedRows,
-                        filePath
-                    });
-
-                } catch (error) {
-                    job.status = 'failed';
-                    job.error = (error as Error).message;
-                    job.completedAt = new Date();
-                    this.exportJobs.set(jobId, job);
-                    this.activeExports.delete(jobId);
-
-                    Logger.error('Export job failed', error as Error);
-                    throw error;
-                }
+            const operationIndicator = statusBarProvider.startOperation(`export-${jobId}`, `Export: ${job.name}`, {
+                message: 'Starting export process...',
+                cancellable: true,
+                steps: operationSteps,
+                estimatedDuration: 60000 // 1 minute estimated
             });
+
+            try {
+                // Step 1: Prepare
+                statusBarProvider.updateOperationStep(`export-${jobId}`, 0, 'running', {
+                    message: 'Preparing export...'
+                });
+
+                // Get connection and validate
+                const connection = this.connectionManager.getConnection(job.connectionId);
+                if (!connection) {
+                    throw new Error(`Connection ${job.connectionId} not found`);
+                }
+
+                const password = await this.connectionManager.getConnectionPassword(job.connectionId);
+                if (!password) {
+                    throw new Error('Connection password not found');
+                }
+
+                // Create .NET connection info
+                const dotNetConnection = {
+                    id: connection.id,
+                    name: connection.name,
+                    host: connection.host,
+                    port: connection.port,
+                    database: connection.database,
+                    username: connection.username,
+                    password: password,
+                    createdDate: new Date().toISOString()
+                };
+
+                // Step 2: Execute query
+                statusBarProvider.updateOperationStep(`export-${jobId}`, 0, 'completed');
+                statusBarProvider.updateOperationStep(`export-${jobId}`, 1, 'running', {
+                    message: 'Executing query...'
+                });
+
+                // Execute export via .NET service
+                const result = await this.dotNetService.executeQuery(
+                    dotNetConnection,
+                    job.query,
+                    {
+                        maxRows: 1000000, // Large limit for exports
+                        timeout: 300 // 5 minute timeout for exports
+                    }
+                );
+
+                // Step 3: Process data
+                statusBarProvider.updateOperationStep(`export-${jobId}`, 1, 'completed');
+                statusBarProvider.updateOperationStep(`export-${jobId}`, 2, 'running', {
+                    message: 'Processing data...'
+                });
+
+                // Check for cancellation
+                if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
+                    job.status = 'cancelled';
+                    statusBarProvider.updateOperation(`export-${jobId}`, 'cancelled');
+                    return;
+                }
+
+                // Generate export file
+                const filePath = await this.generateExportFile(job, result);
+
+                // Step 4: Finalize
+                statusBarProvider.updateOperationStep(`export-${jobId}`, 2, 'completed');
+                statusBarProvider.updateOperationStep(`export-${jobId}`, 3, 'running', {
+                    message: 'Finalizing export...'
+                });
+
+                // Check for cancellation
+                if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
+                    job.status = 'cancelled';
+                    statusBarProvider.updateOperation(`export-${jobId}`, 'cancelled');
+                    return;
+                }
+
+                // Update job with results
+                job.status = 'completed';
+                job.progress = 100;
+                job.totalRows = result.rowCount;
+                job.exportedRows = result.rowCount;
+                job.filePath = filePath;
+                job.completedAt = new Date();
+                job.estimatedSize = await this.getFileSize(filePath);
+
+                this.exportJobs.set(jobId, job);
+                this.exportHistory.unshift(job);
+                this.activeExports.delete(jobId);
+
+                // Complete the operation
+                statusBarProvider.updateOperationStep(`export-${jobId}`, 3, 'completed');
+                statusBarProvider.updateOperation(`export-${jobId}`, 'completed', {
+                    message: `Export completed: ${job.exportedRows} rows`
+                });
+
+                // Show success message with file path
+                vscode.window.showInformationMessage(
+                    `Export completed: ${job.exportedRows} rows exported to ${filePath}`,
+                    'Open File', 'Open Folder'
+                ).then(selection => {
+                    if (selection === 'Open File') {
+                        vscode.workspace.openTextDocument(filePath).then(doc => {
+                            vscode.window.showTextDocument(doc);
+                        });
+                    } else if (selection === 'Open Folder') {
+                        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(filePath));
+                    }
+                });
+
+                Logger.info('Export job completed', 'executeExportJob', {
+                    jobId,
+                    exportedRows: job.exportedRows,
+                    filePath
+                });
+
+            } catch (error) {
+                job.status = 'failed';
+                job.error = (error as Error).message;
+                job.completedAt = new Date();
+                this.exportJobs.set(jobId, job);
+                this.activeExports.delete(jobId);
+
+                // Mark operation as failed
+                statusBarProvider.updateOperation(`export-${jobId}`, 'failed', {
+                    message: `Export failed: ${(error as Error).message}`
+                });
+
+                Logger.error('Export job failed', error as Error);
+                throw error;
+            }
 
         } catch (error) {
             Logger.error('Failed to execute export job', error as Error);

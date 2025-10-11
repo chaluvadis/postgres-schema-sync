@@ -1,6 +1,7 @@
 import { ConnectionManager } from './ConnectionManager';
 import { Logger } from '@/utils/Logger';
 import { DotNetIntegrationService, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
+import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 
 export interface DatabaseObject {
     id: string;
@@ -44,8 +45,30 @@ export class SchemaManager {
     }
 
     async getDatabaseObjects(connectionId: string, schemaFilter?: string): Promise<DatabaseObject[]> {
+        const operationId = `schema-load-${connectionId}-${Date.now()}`;
+
         try {
             Logger.info('Getting database objects', 'getDatabaseObjects', { connectionId });
+
+            // Start operation tracking
+            const statusBarProvider = ExtensionInitializer.getStatusBarProvider();
+            const operationSteps = [
+                { id: 'connect', name: 'Connecting to database', status: 'pending' as const },
+                { id: 'query', name: 'Querying schema objects', status: 'pending' as const },
+                { id: 'process', name: 'Processing objects', status: 'pending' as const }
+            ];
+
+            const operationIndicator = statusBarProvider.startOperation(operationId, `Load Schema: ${connectionId}`, {
+                message: 'Loading database schema...',
+                cancellable: true,
+                steps: operationSteps,
+                estimatedDuration: 15000 // 15 seconds estimated
+            });
+
+            // Step 1: Connect
+            statusBarProvider.updateOperationStep(operationId, 0, 'running', {
+                message: 'Connecting to database...'
+            });
 
             // Get connection and password directly
             const connection = this.connectionManager.getConnection(connectionId);
@@ -57,6 +80,12 @@ export class SchemaManager {
             if (!password) {
                 throw new Error('Password not found for connection');
             }
+
+            // Step 2: Query
+            statusBarProvider.updateOperationStep(operationId, 0, 'completed');
+            statusBarProvider.updateOperationStep(operationId, 1, 'running', {
+                message: 'Querying schema objects...'
+            });
 
             // Create .NET connection info
             const dotNetConnection: DotNetConnectionInfo = {
@@ -73,8 +102,17 @@ export class SchemaManager {
             // Get objects via .NET service
             const dotNetObjects = await this.dotNetService.browseSchema(dotNetConnection, schemaFilter || undefined);
 
+            // Step 3: Process
+            statusBarProvider.updateOperationStep(operationId, 1, 'completed');
+            statusBarProvider.updateOperationStep(operationId, 2, 'running', {
+                message: 'Processing objects...'
+            });
+
             if (!dotNetObjects || dotNetObjects.length === 0) {
                 Logger.warn('No objects found in schema', 'getDatabaseObjects', { connectionId });
+                statusBarProvider.updateOperation(operationId, 'completed', {
+                    message: 'Schema loaded (0 objects)'
+                });
                 return [];
             }
 
@@ -87,6 +125,12 @@ export class SchemaManager {
                 database: dotNetObj.database
             }));
 
+            // Complete operation
+            statusBarProvider.updateOperationStep(operationId, 2, 'completed');
+            statusBarProvider.updateOperation(operationId, 'completed', {
+                message: `Schema loaded (${objects.length} objects)`
+            });
+
             Logger.info('Database objects retrieved', 'getDatabaseObjects', {
                 connectionId,
                 objectCount: objects.length
@@ -94,6 +138,12 @@ export class SchemaManager {
 
             return objects;
         } catch (error) {
+            // Mark operation as failed
+            const statusBarProvider = ExtensionInitializer.getStatusBarProvider();
+            statusBarProvider.updateOperation(operationId, 'failed', {
+                message: `Schema load failed: ${(error as Error).message}`
+            });
+
             Logger.error('Failed to get database objects', error as Error);
             throw error;
         }

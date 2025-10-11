@@ -86,6 +86,13 @@ export class EnhancedStatusBarProvider {
         return EnhancedStatusBarProvider.instance;
     }
 
+    static getCurrentInstance(): EnhancedStatusBarProvider {
+        if (!EnhancedStatusBarProvider.instance) {
+            throw new Error('EnhancedStatusBarProvider not initialized. Call getInstance() first.');
+        }
+        return EnhancedStatusBarProvider.instance;
+    }
+
     private loadConfig(): StatusBarConfig {
         const vscodeConfig = vscode.workspace.getConfiguration('postgresql.statusBar');
         return {
@@ -443,9 +450,6 @@ export class EnhancedStatusBarProvider {
         }
     }
 
-    /**
-     * Start an operation indicator with enhanced progress tracking
-     */
     startOperation(
         id: string,
         name: string,
@@ -486,9 +490,6 @@ export class EnhancedStatusBarProvider {
         return indicator;
     }
 
-    /**
-     * Update operation with step progress
-     */
     updateOperationStep(
         id: string,
         stepIndex: number,
@@ -525,9 +526,6 @@ export class EnhancedStatusBarProvider {
         this.updateOperationIndicators();
     }
 
-    /**
-     * Cancel an operation
-     */
     cancelOperation(id: string): boolean {
         const indicator = this.operationIndicators.get(id);
         if (!indicator || !indicator.cancellable || !indicator.cancellationToken) {
@@ -547,24 +545,16 @@ export class EnhancedStatusBarProvider {
         }
     }
 
-    /**
-     * Get operation details
-     */
     getOperation(id: string): OperationIndicator | undefined {
         return this.operationIndicators.get(id);
     }
 
-    /**
-     * Get all active operations
-     */
     getActiveOperations(): OperationIndicator[] {
         return Array.from(this.operationIndicators.values())
             .filter(op => op.status === 'running' || op.status === 'pending');
     }
 
-    /**
-     * Update an operation indicator
-     */
+
     updateOperation(
         id: string,
         status: OperationIndicator['status'],
@@ -868,10 +858,6 @@ export class EnhancedStatusBarProvider {
             </html>
         `;
     }
-
-    /**
-     * Dispose of the provider
-     */
     dispose(): void {
         if (this.updateTimer) {
             clearInterval(this.updateTimer);

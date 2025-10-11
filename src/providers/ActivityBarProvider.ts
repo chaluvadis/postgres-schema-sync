@@ -28,19 +28,12 @@ export class ActivityBarProvider {
 
     updateActivityBar(): void {
         const connections = this.connectionManager.getConnections();
-
         // Set connected count context for activity bar badge
         const connectedCount = connections.filter(c => c.status === 'Connected').length;
         if (connectedCount > 0) {
             vscode.commands.executeCommand('setContext', 'postgresql:connectedCount', connectedCount);
         }
-
         // Update welcome view context based on total connections
         this.updateWelcomeView();
-    }
-
-    dispose(): void {
-        // No resources to dispose - this provider only manages VS Code context
-        Logger.info('Activity Bar provider disposed');
     }
 }

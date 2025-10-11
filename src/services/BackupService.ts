@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
 
 export interface BackupJob {
@@ -152,125 +153,188 @@ export class BackupService {
 
             Logger.info('Backup job started', 'executeBackupJob', { jobId });
 
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Backing up: ${job.name}`,
-                cancellable: true
-            }, async (progress, token) => {
-                try {
-                    // Get connection and validate
-                    const connection = this.connectionManager.getConnection(job.connectionId);
-                    if (!connection) {
-                        throw new Error(`Connection ${job.connectionId} not found`);
-                    }
+            // Start operation tracking in status bar
+            const statusBarProvider = ExtensionInitializer.getStatusBarProvider();
+            const operationSteps = [
+                { id: 'prepare', name: 'Preparing backup', status: 'pending' as const },
+                { id: 'pre-script', name: 'Running pre-backup script', status: 'pending' as const },
+                { id: 'backup', name: 'Creating backup', status: 'pending' as const },
+                { id: 'post-script', name: 'Running post-backup script', status: 'pending' as const },
+                { id: 'verify', name: 'Verifying backup', status: 'pending' as const }
+            ];
 
-                    const password = await this.connectionManager.getConnectionPassword(job.connectionId);
-                    if (!password) {
-                        throw new Error('Connection password not found');
-                    }
-
-                    // Create .NET connection info
-                    const dotNetConnection = {
-                        id: connection.id,
-                        name: connection.name,
-                        host: connection.host,
-                        port: connection.port,
-                        database: connection.database,
-                        username: connection.username,
-                        password: password,
-                        createdDate: new Date().toISOString()
-                    };
-
-                    progress.report({ increment: 0, message: 'Preparing backup...' });
-
-                    // Execute pre-backup script if specified
-                    if (job.options.preBackupScript) {
-                        progress.report({ increment: 5, message: 'Running pre-backup script...' });
-
-                        try {
-                            await this.dotNetService.executeQuery(
-                                dotNetConnection,
-                                job.options.preBackupScript,
-                                { timeout: 60 }
-                            );
-                        } catch (error) {
-                            Logger.warn('Pre-backup script failed, continuing with backup');
-                        }
-                    }
-
-                    if (token.isCancellationRequested) {
-                        job.status = 'cancelled';
-                        return;
-                    }
-
-                    progress.report({ increment: 10, message: 'Creating backup...' });
-
-                    // Execute backup via .NET service (simplified implementation)
-                    const backupResult = await this.performBackup(dotNetConnection, job, token);
-
-                    progress.report({ increment: 80, message: 'Backup completed...' });
-
-                    if (token.isCancellationRequested) {
-                        job.status = 'cancelled';
-                        return;
-                    }
-
-                    // Execute post-backup script if specified
-                    if (job.options.postBackupScript) {
-                        progress.report({ increment: 95, message: 'Running post-backup script...' });
-
-                        try {
-                            await this.dotNetService.executeQuery(
-                                dotNetConnection,
-                                job.options.postBackupScript,
-                                { timeout: 60 }
-                            );
-                        } catch (error) {
-                            Logger.warn('Post-backup script failed');
-                        }
-                    }
-
-                    progress.report({ increment: 100, message: 'Backup completed' });
-
-                    // Update job with results
-                    job.status = 'completed';
-                    job.progress = 100;
-                    job.filePath = backupResult.filePath;
-                    job.fileSize = backupResult.fileSize;
-                    job.checksum = backupResult.checksum;
-                    job.completedAt = new Date();
-
-                    this.backupJobs.set(jobId, job);
-                    this.backupHistory.unshift(job);
-                    this.activeBackups.delete(jobId);
-
-                    // Show success message
-                    vscode.window.showInformationMessage(
-                        `Backup completed: ${job.fileSize} at ${job.filePath}`,
-                        'Open Folder'
-                    ).then(selection => {
-                        if (selection === 'Open Folder') {
-                            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(job.filePath!));
-                        }
-                    });
-
-                    Logger.info('Backup job completed', 'executeBackupJob', {
-                        jobId,
-                        filePath: job.filePath,
-                        fileSize: job.fileSize
-                    });
-
-                } catch (error) {
-                    job.status = 'failed';
-                    job.error = (error as Error).message;
-                    job.completedAt = new Date();
-                    this.backupJobs.set(jobId, job);
-                    this.activeBackups.delete(jobId);
-
-                    Logger.error('Backup job failed', error as Error);
-                    throw error;
-                }
+            const operationIndicator = statusBarProvider.startOperation(`backup-${jobId}`, `Backup: ${job.name}`, {
+                message: 'Starting backup process...',
+                cancellable: true,
+                steps: operationSteps,
+                estimatedDuration: 120000 // 2 minutes estimated
             });
+
+            try {
+                // Check for cancellation
+                if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
+                    job.status = 'cancelled';
+                    statusBarProvider.updateOperation(`backup-${jobId}`, 'cancelled');
+                    return;
+                }
+
+                // Step 1: Prepare
+                statusBarProvider.updateOperationStep(`backup-${jobId}`, 0, 'running', {
+                    message: 'Preparing backup...'
+                });
+
+                // Get connection and validate
+                const connection = this.connectionManager.getConnection(job.connectionId);
+                if (!connection) {
+                    throw new Error(`Connection ${job.connectionId} not found`);
+                }
+
+                const password = await this.connectionManager.getConnectionPassword(job.connectionId);
+                if (!password) {
+                    throw new Error('Connection password not found');
+                }
+
+                // Create .NET connection info
+                const dotNetConnection = {
+                    id: connection.id,
+                    name: connection.name,
+                    host: connection.host,
+                    port: connection.port,
+                    database: connection.database,
+                    username: connection.username,
+                    password: password,
+                    createdDate: new Date().toISOString()
+                };
+
+                // Step 2: Execute pre-backup script if specified
+                if (job.options.preBackupScript) {
+                    statusBarProvider.updateOperationStep(`backup-${jobId}`, 1, 'running', {
+                        message: 'Running pre-backup script...'
+                    });
+
+                    try {
+                        await this.dotNetService.executeQuery(
+                            dotNetConnection,
+                            job.options.preBackupScript,
+                            { timeout: 60 }
+                        );
+                        statusBarProvider.updateOperationStep(`backup-${jobId}`, 1, 'completed');
+                    } catch (error) {
+                        Logger.warn('Pre-backup script failed, continuing with backup');
+                        statusBarProvider.updateOperationStep(`backup-${jobId}`, 1, 'failed');
+                    }
+                } else {
+                    statusBarProvider.updateOperationStep(`backup-${jobId}`, 1, 'completed');
+                }
+
+                // Check for cancellation
+                if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
+                    job.status = 'cancelled';
+                    statusBarProvider.updateOperation(`backup-${jobId}`, 'cancelled');
+                    return;
+                }
+
+                // Step 3: Create backup
+                statusBarProvider.updateOperationStep(`backup-${jobId}`, 2, 'running', {
+                    message: 'Creating backup...'
+                });
+
+                // Execute backup via .NET service (simplified implementation)
+                const backupResult = await this.performBackup(dotNetConnection, job, operationIndicator.cancellationToken);
+
+                statusBarProvider.updateOperationStep(`backup-${jobId}`, 2, 'completed');
+
+                // Check for cancellation
+                if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
+                    job.status = 'cancelled';
+                    statusBarProvider.updateOperation(`backup-${jobId}`, 'cancelled');
+                    return;
+                }
+
+                // Step 4: Execute post-backup script if specified
+                if (job.options.postBackupScript) {
+                    statusBarProvider.updateOperationStep(`backup-${jobId}`, 3, 'running', {
+                        message: 'Running post-backup script...'
+                    });
+
+                    try {
+                        await this.dotNetService.executeQuery(
+                            dotNetConnection,
+                            job.options.postBackupScript,
+                            { timeout: 60 }
+                        );
+                        statusBarProvider.updateOperationStep(`backup-${jobId}`, 3, 'completed');
+                    } catch (error) {
+                        Logger.warn('Post-backup script failed');
+                        statusBarProvider.updateOperationStep(`backup-${jobId}`, 3, 'failed');
+                    }
+                } else {
+                    statusBarProvider.updateOperationStep(`backup-${jobId}`, 3, 'completed');
+                }
+
+                // Step 5: Verify backup if requested
+                if (job.options.verifyBackup) {
+                    statusBarProvider.updateOperationStep(`backup-${jobId}`, 4, 'running', {
+                        message: 'Verifying backup...'
+                    });
+
+                    const isValid = await this.verifyBackup(backupResult.filePath, job.backupType);
+                    if (!isValid) {
+                        throw new Error('Backup verification failed');
+                    }
+                    statusBarProvider.updateOperationStep(`backup-${jobId}`, 4, 'completed');
+                } else {
+                    statusBarProvider.updateOperationStep(`backup-${jobId}`, 4, 'completed');
+                }
+
+                // Update job with results
+                job.status = 'completed';
+                job.progress = 100;
+                job.filePath = backupResult.filePath;
+                job.fileSize = backupResult.fileSize;
+                job.checksum = backupResult.checksum;
+                job.completedAt = new Date();
+
+                this.backupJobs.set(jobId, job);
+                this.backupHistory.unshift(job);
+                this.activeBackups.delete(jobId);
+
+                // Complete the operation
+                statusBarProvider.updateOperation(`backup-${jobId}`, 'completed', {
+                    message: `Backup completed: ${job.fileSize}`
+                });
+
+                // Show success message
+                vscode.window.showInformationMessage(
+                    `Backup completed: ${job.fileSize} at ${job.filePath}`,
+                    'Open Folder'
+                ).then(selection => {
+                    if (selection === 'Open Folder') {
+                        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(job.filePath!));
+                    }
+                });
+
+                Logger.info('Backup job completed', 'executeBackupJob', {
+                    jobId,
+                    filePath: job.filePath,
+                    fileSize: job.fileSize
+                });
+
+            } catch (error) {
+                job.status = 'failed';
+                job.error = (error as Error).message;
+                job.completedAt = new Date();
+                this.backupJobs.set(jobId, job);
+                this.activeBackups.delete(jobId);
+
+                // Mark operation as failed
+                statusBarProvider.updateOperation(`backup-${jobId}`, 'failed', {
+                    message: `Backup failed: ${(error as Error).message}`
+                });
+
+                Logger.error('Backup job failed', error as Error);
+                throw error;
+            }
 
         } catch (error) {
             Logger.error('Failed to execute backup job', error as Error);

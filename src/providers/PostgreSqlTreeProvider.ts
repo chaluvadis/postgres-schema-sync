@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ConnectionManager, DatabaseConnection } from '@/managers/ConnectionManager';
 import { SchemaManager, DatabaseObject } from '@/managers/SchemaManager';
 import { Logger } from '@/utils/Logger';
+import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 
 export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | void> = new vscode.EventEmitter<TreeItem | undefined | void>();
@@ -18,9 +19,78 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
     }
 
     refresh(): void {
-        Logger.debug('Refreshing tree provider');
-        this.connections = this.connectionManager.getConnections();
-        this._onDidChangeTreeData.fire();
+        const operationId = `tree-refresh-${Date.now()}`;
+
+        try {
+            Logger.debug('Refreshing tree provider');
+
+            // Start operation tracking for tree refresh
+            const statusBarProvider = ExtensionInitializer.getStatusBarProvider();
+            const operationSteps = [
+                { id: 'connections', name: 'Loading connections', status: 'pending' as const },
+                { id: 'schemas', name: 'Loading schemas', status: 'pending' as const },
+                { id: 'complete', name: 'Completing refresh', status: 'pending' as const }
+            ];
+
+            const operationIndicator = statusBarProvider.startOperation(operationId, 'Refresh Explorer', {
+                message: 'Refreshing PostgreSQL explorer...',
+                cancellable: true,
+                steps: operationSteps,
+                estimatedDuration: 10000 // 10 seconds estimated
+            });
+
+            // Step 1: Load connections
+            statusBarProvider.updateOperationStep(operationId, 0, 'running', {
+                message: 'Loading connections...'
+            });
+
+            this.connections = this.connectionManager.getConnections();
+
+            // Step 2: Load schemas for all connections
+            statusBarProvider.updateOperationStep(operationId, 0, 'completed');
+            statusBarProvider.updateOperationStep(operationId, 1, 'running', {
+                message: 'Loading schemas...'
+            });
+
+            // Load schema objects for all connections (this could be long-running)
+            const loadPromises = this.connections.map(async (connection) => {
+                try {
+                    const objects = await this.schemaManager.getDatabaseObjects(connection.id);
+                    this.schemaObjects.set(connection.id, objects);
+                } catch (error) {
+                    Logger.warn('Failed to load schema for connection', 'refresh', {
+                        connectionId: connection.id,
+                        error: (error as Error).message
+                    });
+                }
+            });
+
+            // Wait for all schema loading to complete
+            Promise.all(loadPromises).then(() => {
+                // Step 3: Complete
+                statusBarProvider.updateOperationStep(operationId, 1, 'completed');
+                statusBarProvider.updateOperationStep(operationId, 2, 'running', {
+                    message: 'Completing refresh...'
+                });
+
+                this._onDidChangeTreeData.fire();
+
+                statusBarProvider.updateOperationStep(operationId, 2, 'completed');
+                statusBarProvider.updateOperation(operationId, 'completed', {
+                    message: `Explorer refreshed (${this.connections.length} connections)`
+                });
+            }).catch((error) => {
+                statusBarProvider.updateOperation(operationId, 'failed', {
+                    message: `Refresh failed: ${(error as Error).message}`
+                });
+                throw error;
+            });
+
+        } catch (error) {
+            Logger.error('Failed to refresh tree provider', error as Error);
+            this._onDidChangeTreeData.fire();
+            throw error;
+        }
     }
 
     getTreeItem(element: TreeItem): vscode.TreeItem {

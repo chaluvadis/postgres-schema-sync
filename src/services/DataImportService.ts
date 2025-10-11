@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
 
 export interface ImportJob {
@@ -830,17 +831,31 @@ export class DataImportService {
 
             Logger.info('Import job started', 'executeImportJob', { jobId });
 
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Importing: ${job.name}`,
-                cancellable: true
-            }, async (progress, token) => {
-                try {
-                    // Validate import before execution
-                    progress.report({ increment: 30, message: 'Validating data...' });
+            // Start operation tracking in status bar
+            const statusBarProvider = ExtensionInitializer.getStatusBarProvider();
+            const operationSteps = [
+                { id: 'validate', name: 'Validating data', status: 'pending' as const },
+                { id: 'import', name: 'Importing data', status: 'pending' as const },
+                { id: 'finalize', name: 'Finalizing import', status: 'pending' as const }
+            ];
 
-                    if (token.isCancellationRequested) {
+            const operationIndicator = statusBarProvider.startOperation(`import-${jobId}`, `Import: ${job.name}`, {
+                message: 'Starting import process...',
+                cancellable: true,
+                steps: operationSteps,
+                estimatedDuration: 90000 // 1.5 minutes estimated
+            });
+
+            try {
+                    // Step 1: Validate data
+                    statusBarProvider.updateOperationStep(`import-${jobId}`, 0, 'running', {
+                        message: 'Validating data...'
+                    });
+
+                    // Check for cancellation
+                    if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
                         job.status = 'cancelled';
+                        statusBarProvider.updateOperation(`import-${jobId}`, 'cancelled');
                         return;
                     }
 
@@ -849,24 +864,38 @@ export class DataImportService {
                         job.status = 'failed';
                         job.errors.push(...validationResult.errors);
                         job.warnings.push(...validationResult.warnings);
+                        statusBarProvider.updateOperation(`import-${jobId}`, 'failed', {
+                            message: `Validation failed: ${validationResult.errors.length} errors found`
+                        });
                         throw new Error(`Validation failed: ${validationResult.errors.length} errors found`);
                     }
+
+                    statusBarProvider.updateOperationStep(`import-${jobId}`, 0, 'completed');
+
+                    // Step 2: Import data
+                    statusBarProvider.updateOperationStep(`import-${jobId}`, 1, 'running', {
+                        message: 'Importing data...'
+                    });
 
                     job.status = 'importing';
                     job.progress = 50;
                     this.importJobs.set(jobId, job);
 
-                    progress.report({ increment: 50, message: 'Importing data...' });
-
-                    if (token.isCancellationRequested) {
+                    // Check for cancellation
+                    if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
                         job.status = 'cancelled';
+                        statusBarProvider.updateOperation(`import-${jobId}`, 'cancelled');
                         return;
                     }
 
                     // Execute import via .NET service
-                    const result = await this.performImport(job, columnMapping, token);
+                    const result = await this.performImport(job, columnMapping, operationIndicator.cancellationToken?.token);
 
-                    progress.report({ increment: 90, message: 'Finalizing import...' });
+                    // Step 3: Finalize
+                    statusBarProvider.updateOperationStep(`import-${jobId}`, 1, 'completed');
+                    statusBarProvider.updateOperationStep(`import-${jobId}`, 2, 'running', {
+                        message: 'Finalizing import...'
+                    });
 
                     // Update job with results
                     job.status = 'completed';
@@ -880,7 +909,11 @@ export class DataImportService {
                     this.importHistory.unshift(job);
                     this.activeImports.delete(jobId);
 
-                    progress.report({ increment: 100, message: 'Import completed' });
+                    // Complete the operation
+                    statusBarProvider.updateOperationStep(`import-${jobId}`, 2, 'completed');
+                    statusBarProvider.updateOperation(`import-${jobId}`, 'completed', {
+                        message: `Import completed: ${job.importedRows} rows`
+                    });
 
                     // Show success message
                     vscode.window.showInformationMessage(
@@ -900,22 +933,26 @@ export class DataImportService {
                         errorRows: job.errorRows
                     });
 
-                } catch (error) {
-                    job.status = 'failed';
-                    job.errors.push({
-                        rowNumber: 0,
-                        errorType: 'format',
-                        message: (error as Error).message,
-                        severity: 'error'
-                    });
-                    job.completedAt = new Date();
-                    this.importJobs.set(jobId, job);
-                    this.activeImports.delete(jobId);
+            } catch (error) {
+                job.status = 'failed';
+                job.errors.push({
+                    rowNumber: 0,
+                    errorType: 'format',
+                    message: (error as Error).message,
+                    severity: 'error'
+                });
+                job.completedAt = new Date();
+                this.importJobs.set(jobId, job);
+                this.activeImports.delete(jobId);
 
-                    Logger.error('Import job failed', error as Error);
-                    throw error;
-                }
-            });
+                // Mark operation as failed
+                statusBarProvider.updateOperation(`import-${jobId}`, 'failed', {
+                    message: `Import failed: ${(error as Error).message}`
+                });
+
+                Logger.error('Import job failed', error as Error);
+                throw error;
+            }
 
         } catch (error) {
             Logger.error('Failed to execute import job', error as Error);
@@ -1352,7 +1389,6 @@ export class DataImportService {
         `;
     }
 
-    // Template Management
     async createImportTemplate(templateData: Omit<ImportTemplate, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>): Promise<ImportTemplate> {
         try {
             const template: ImportTemplate = {
