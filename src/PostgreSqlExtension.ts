@@ -42,7 +42,6 @@ export class PostgreSqlExtension {
         this.settingsView = new SettingsView();
         this.treeProvider = treeProvider;
     }
-
     async addConnection(): Promise<void> {
         try {
             Logger.info('Adding new database connection');
@@ -58,7 +57,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, ErrorHandler.createContext('AddConnection'));
         }
     }
-
     async editConnection(connection: any): Promise<void> {
         try {
             Logger.info('Editing database connection', connection);
@@ -78,7 +76,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, ErrorHandler.createContext('EditConnection'));
         }
     }
-
     async removeConnection(connection: any): Promise<void> {
         try {
             Logger.info('Removing database connection', connection);
@@ -270,15 +267,6 @@ export class PostgreSqlExtension {
                 return;
             }
 
-            try {
-                if (!this.migrationManager) {
-                    throw new Error('Migration manager not available');
-                }
-            } catch (error) {
-                ErrorHandler.handleError(error, ErrorHandler.createContext('SchemaComparisonServiceCheck'));
-                return;
-            }
-
             await vscode.window.withProgress(
                 {
                     title: 'Comparing Schemas',
@@ -289,152 +277,85 @@ export class PostgreSqlExtension {
                     progress.report({ increment: 0, message: 'Analyzing source schema...' });
 
                     try {
-                        let comparison;
-                        try {
-                            let sourceConnection;
-                            try {
-                                sourceConnection = this.connectionManager.getConnection(source.id);
-                            } catch (error) {
-                                ErrorHandler.handleError(error, ErrorHandler.createContext('GetSourceConnection', { connectionId: source.id }));
-                                throw new Error(`Source connection not accessible: ${(error as Error).message}`);
+                        // Use SchemaManager for schema comparison instead of manual .NET calls
+                        const comparisonResult = await this.schemaManager.compareSchemas(
+                            source.id,
+                            target.id,
+                            {
+                                mode: 'strict',
+                                ignoreSchemas: ['information_schema', 'pg_catalog'],
+                                includeSystemObjects: false
                             }
+                        );
 
-                            let targetConnection;
-                            try {
-                                targetConnection = this.connectionManager.getConnection(target.id);
-                            } catch (error) {
-                                ErrorHandler.handleError(error, ErrorHandler.createContext('GetTargetConnection', { connectionId: target.id }));
-                                throw new Error(`Target connection not accessible: ${(error as Error).message}`);
-                            }
+                        progress.report({ increment: 50, message: 'Preparing comparison results...' });
 
-                            if (!sourceConnection || !targetConnection) {
-                                throw new Error('Source or target connection not found');
-                            }
+                        // Get connection details for display
+                        const sourceConnection = this.connectionManager.getConnection(source.id);
+                        const targetConnection = this.connectionManager.getConnection(target.id);
 
-                            progress.report({ increment: 25, message: 'Analyzing target schema...' });
+                        if (!sourceConnection || !targetConnection) {
+                            throw new Error('Source or target connection not found');
+                        }
 
-                            let sourcePassword: string | undefined;
-                            try {
-                                sourcePassword = await this.connectionManager.getConnectionPassword(source.id);
-                            } catch (error) {
-                                ErrorHandler.handleError(error, ErrorHandler.createContext('GetSourcePassword', { connectionId: source.id }));
-                                throw new Error(`Failed to retrieve source connection password: ${(error as Error).message}`);
-                            }
+                        // Get passwords for the comparison data
+                        const sourcePassword = await this.connectionManager.getConnectionPassword(source.id);
+                        const targetPassword = await this.connectionManager.getConnectionPassword(target.id);
 
-                            let targetPassword: string | undefined;
-                            try {
-                                targetPassword = await this.connectionManager.getConnectionPassword(target.id);
-                            } catch (error) {
-                                ErrorHandler.handleError(error, ErrorHandler.createContext('GetTargetPassword', { connectionId: target.id }));
-                                throw new Error(`Failed to retrieve target connection password: ${(error as Error).message}`);
-                            }
-
-                            if (!sourcePassword || !targetPassword) {
-                                throw new Error('Passwords not found for connections');
-                            }
-
-                            const dotNetSourceConnection = {
+                        const comparisonData: SchemaComparisonData = {
+                            id: comparisonResult.comparisonId,
+                            sourceConnection: {
                                 id: sourceConnection.id,
                                 name: sourceConnection.name,
                                 host: sourceConnection.host,
                                 port: sourceConnection.port,
                                 database: sourceConnection.database,
                                 username: sourceConnection.username,
-                                password: sourcePassword,
+                                password: sourcePassword || '',
                                 createdDate: new Date().toISOString()
-                            };
-
-                            const dotNetTargetConnection = {
+                            },
+                            targetConnection: {
                                 id: targetConnection.id,
                                 name: targetConnection.name,
                                 host: targetConnection.host,
                                 port: targetConnection.port,
                                 database: targetConnection.database,
                                 username: targetConnection.username,
-                                password: targetPassword,
+                                password: targetPassword || '',
                                 createdDate: new Date().toISOString()
-                            };
+                            },
+                            differences: comparisonResult.differences.map(diff => ({
+                                id: `${diff.type}-${diff.objectType}-${diff.objectName}-${diff.schema}`,
+                                type: diff.type,
+                                objectType: diff.objectType,
+                                objectName: diff.objectName,
+                                schema: diff.schema,
+                                sourceDefinition: diff.sourceDefinition,
+                                targetDefinition: diff.targetDefinition,
+                                differenceDetails: diff.differenceDetails,
+                                severity: 'medium' // Default severity
+                            })),
+                            comparisonOptions: {
+                                mode: comparisonResult.comparisonMode,
+                                ignoreSchemas: ['information_schema', 'pg_catalog'],
+                                includeSystemObjects: false,
+                                caseSensitive: true
+                            },
+                            createdAt: comparisonResult.createdAt.toISOString(),
+                            executionTime: `${comparisonResult.executionTime}ms`
+                        };
 
-                            progress.report({ increment: 50, message: 'Comparing schemas...' });
+                        progress.report({ increment: 100, message: 'Schema comparison completed' });
 
-                            try {
-                                comparison = await ExtensionInitializer.getDotNetService().compareSchemas(
-                                    dotNetSourceConnection,
-                                    dotNetTargetConnection,
-                                    { mode: 'strict' }
-                                );
-                            } catch (error) {
-                                ErrorHandler.handleError(error, ErrorHandler.createContext('DotNetSchemaComparison', {
-                                    sourceConnection: sourceConnection.name,
-                                    targetConnection: targetConnection.name
-                                }));
-                                throw new Error(`Schema comparison failed: ${(error as Error).message}`);
-                            }
-
-                            progress.report({ increment: 100, message: 'Schema comparison completed' });
-
-                            const comparisonData: SchemaComparisonData = {
-                                id: comparison.id,
-                                sourceConnection: {
-                                    id: sourceConnection.id,
-                                    name: sourceConnection.name,
-                                    host: sourceConnection.host,
-                                    port: sourceConnection.port,
-                                    database: sourceConnection.database,
-                                    username: sourceConnection.username,
-                                    password: sourcePassword,
-                                    createdDate: new Date().toISOString()
-                                },
-                                targetConnection: {
-                                    id: targetConnection.id,
-                                    name: targetConnection.name,
-                                    host: targetConnection.host,
-                                    port: targetConnection.port,
-                                    database: targetConnection.database,
-                                    username: targetConnection.username,
-                                    password: targetPassword,
-                                    createdDate: new Date().toISOString()
-                                },
-                                differences: comparison.differences.map(diff => ({
-                                    id: `${diff.type}-${diff.objectType}-${diff.objectName}-${diff.schema}`,
-                                    type: diff.type,
-                                    objectType: diff.objectType,
-                                    objectName: diff.objectName,
-                                    schema: diff.schema,
-                                    sourceDefinition: diff.sourceDefinition,
-                                    targetDefinition: diff.targetDefinition,
-                                    differenceDetails: diff.differenceDetails,
-                                    severity: 'medium' // Default severity
-                                })),
-                                comparisonOptions: {
-                                    mode: 'strict',
-                                    ignoreSchemas: ['information_schema', 'pg_catalog'],
-                                    includeSystemObjects: false,
-                                    caseSensitive: true
-                                },
-                                createdAt: comparison.createdAt,
-                                executionTime: comparison.executionTime
-                            };
-
-                            try {
-                                await this.schemaComparisonView.showComparison(comparisonData);
-                            } catch (error) {
-                                Logger.error('Failed to display comparison results', error as Error);
-                                ErrorHandler.handleError(error, ErrorHandler.createContext('ShowComparisonResults', {
-                                    comparisonId: comparison.id,
-                                    differenceCount: comparison.differences.length
-                                }));
-                                throw new Error(`Failed to display comparison results: ${(error as Error).message}`);
-                            }
-                        } catch (comparisonError) {
-                            const error = comparisonError as Error;
-                            Logger.error('Schema comparison failed', error);
-                            ErrorHandler.handleError(error, ErrorHandler.createContext('SchemaComparisonExecution', {
-                                sourceId: source.id,
-                                targetId: target.id,
-                                error: error.message
+                        try {
+                            await this.schemaComparisonView.showComparison(comparisonData);
+                        } catch (error) {
+                            Logger.error('Failed to display comparison results', error as Error);
+                            ErrorHandler.handleError(error, ErrorHandler.createContext('ShowComparisonResults', {
+                                comparisonId: comparisonResult.comparisonId,
+                                differenceCount: comparisonResult.differences.length
                             }));
-                            throw error;
+                            throw new Error(`Failed to display comparison results: ${(error as Error).message}`);
                         }
 
                     } catch (comparisonError) {
@@ -588,9 +509,8 @@ export class PostgreSqlExtension {
                                 Logger.info('Attempting automatic rollback after migration failure');
 
                                 try {
-                                    // This would call a dedicated rollback method in MigrationManager
-                                    // For now, we'll use the existing execute method with rollback script
-                                    const rollbackSuccess = await this.migrationManager.executeMigration(migration.id);
+                                    // Use the dedicated rollback method in MigrationManager
+                                    const rollbackSuccess = await this.migrationManager.rollbackMigration(migration.id);
 
                                     if (rollbackSuccess) {
                                         Logger.info('Automatic rollback completed successfully');
@@ -837,10 +757,6 @@ export class PostgreSqlExtension {
             );
         }
     }
-
-
-
-
     private async generateObjectDetailsHtml(databaseObject: any, details: any): Promise<string> {
         return `
             <!DOCTYPE html>

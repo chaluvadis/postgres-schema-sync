@@ -48,7 +48,7 @@ export class ConnectionManager {
     private connections: Map<string, DatabaseConnection> = new Map();
     private connectionPools: Map<string, ConnectionPool> = new Map();
     private connectionHealth: Map<string, ConnectionHealth> = new Map();
-    private activeConnections: Map<string, Set<string>> = new Map(); // connectionId -> Set of active connection instances
+    private activeConnectionInstances: Map<string, Set<string>> = new Map(); // connectionId -> Set of active connection instances
     private reconnectionTimers: Map<string, NodeJS.Timeout> = new Map();
     private healthCheckInterval?: NodeJS.Timeout;
     private secrets: vscode.SecretStorage | undefined;
@@ -62,10 +62,6 @@ export class ConnectionManager {
         this.loadConnections();
         this.secrets = context.secrets;
         this.startHealthMonitoring();
-    }
-
-    setActivityBarProvider(provider: ActivityBarProvider): void {
-        this.activityBarProvider = provider;
     }
 
     async addConnection(connectionInfo: Omit<DatabaseConnection, 'id'>): Promise<void> {
@@ -101,7 +97,6 @@ export class ConnectionManager {
             throw error;
         }
     }
-
     async updateConnection(id: string, connectionInfo: Omit<DatabaseConnection, 'id'>): Promise<void> {
         try {
             Logger.info(`Updating connection: ${id}`);
@@ -143,7 +138,6 @@ export class ConnectionManager {
             throw error;
         }
     }
-
     async removeConnection(id: string): Promise<void> {
         try {
             Logger.info(`Removing connection: ${id}`);
@@ -166,7 +160,6 @@ export class ConnectionManager {
             throw error;
         }
     }
-
     async testConnection(id: string): Promise<boolean> {
         try {
             Logger.info(`Testing connection: ${id}`);
@@ -289,7 +282,6 @@ export class ConnectionManager {
             return false;
         }
     }
-
     private validateConnectionInfo(connection: DatabaseConnection): boolean {
         return !!(
             connection.host &&
@@ -303,7 +295,6 @@ export class ConnectionManager {
             connection.username.length > 0
         );
     }
-
     async testConnectionData(connectionData: Omit<DatabaseConnection, 'id'> & { password: string; }): Promise<boolean> {
         try {
             Logger.info(`Testing connection data: ${connectionData.name}`);
@@ -333,14 +324,12 @@ export class ConnectionManager {
             return false;
         }
     }
-
     getConnections(): DatabaseConnection[] {
         return Array.from(this.connections.values()).map(conn => ({
             ...conn,
             password: ''
         }));
     }
-
     getConnection(id: string): DatabaseConnection | undefined {
         const connection = this.connections.get(id);
         if (connection) {
@@ -351,19 +340,15 @@ export class ConnectionManager {
         }
         return undefined;
     }
-
     async getConnectionPassword(id: string): Promise<string | undefined> {
         if (this.secrets) {
             return await this.secrets.get(`connection_${id}_password`);
         }
         return undefined;
     }
-
-
     private generateId(): string {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+        return crypto.randomUUID();
     }
-
     private async loadConnections(): Promise<void> {
         try {
             const connectionsData = this.context.globalState.get<string>('postgresql.connections', '[]');
@@ -383,7 +368,6 @@ export class ConnectionManager {
             this.connections.clear();
         }
     }
-
     private async saveConnections(): Promise<void> {
         try {
             const connectionsArray = Array.from(this.connections.values()).map(conn => ({
@@ -398,7 +382,6 @@ export class ConnectionManager {
             throw error;
         }
     }
-
     async dispose(): Promise<void> {
         try {
             Logger.info('Disposing ConnectionManager');
@@ -415,7 +398,7 @@ export class ConnectionManager {
             }
 
             // Close all active connections
-            for (const [connectionId, activeConnectionIds] of this.activeConnections) {
+            for (const [connectionId, activeConnectionIds] of this.activeConnectionInstances) {
                 for (const activeConnectionId of activeConnectionIds) {
                     try {
                         await this.closeConnection(connectionId, activeConnectionId);
@@ -427,176 +410,30 @@ export class ConnectionManager {
 
             this.connections.clear();
             this.connectionPools.clear();
-            this.connectionHealth.clear();
-            this.activeConnections.clear();
+            this.activeConnectionInstances.clear();
 
             Logger.info('ConnectionManager disposed');
         } catch (error) {
             Logger.error(`Disposal error: ${(error as Error).message}`);
         }
     }
-
-    // Connection Pooling Methods
-    async getPooledConnection(connectionId: string): Promise<string> {
-        try {
-            const connection = this.connections.get(connectionId);
-            if (!connection) {
-                throw new Error(`Connection ${connectionId} not found`);
-            }
-
-            // Initialize pool if not exists
-            if (!this.connectionPools.has(connectionId)) {
-                this.initializeConnectionPool(connectionId);
-            }
-
-            const pool = this.connectionPools.get(connectionId)!;
-
-            // Check if we can create a new connection
-            if (pool.totalConnections < (connection.maxConnections || 5)) {
-                const activeConnectionId = await this.createPooledConnection(connectionId);
-                pool.activeConnections++;
-                pool.totalConnections++;
-                pool.lastActivity = new Date();
-                this.connectionPools.set(connectionId, pool);
-
-                return activeConnectionId;
-            }
-
-            // Wait for an available connection or timeout
-            return await this.waitForAvailableConnection(connectionId);
-
-        } catch (error) {
-            Logger.error('Failed to get pooled connection', error as Error);
-            throw error;
-        }
-    }
-
-    private async createPooledConnection(connectionId: string): Promise<string> {
-        const activeConnectionId = `${connectionId}_pool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-        // Initialize active connections set if not exists
-        if (!this.activeConnections.has(connectionId)) {
-            this.activeConnections.set(connectionId, new Set());
-        }
-
-        this.activeConnections.get(connectionId)!.add(activeConnectionId);
-
-        Logger.debug('Created pooled connection', 'createPooledConnection', {
-            connectionId,
-            activeConnectionId
-        });
-
-        return activeConnectionId;
-    }
-
-    private async waitForAvailableConnection(connectionId: string, timeout: number = 30000): Promise<string> {
-        return new Promise((resolve, reject) => {
-            const startTime = Date.now();
-
-            const checkAvailability = () => {
-                const pool = this.connectionPools.get(connectionId);
-                if (!pool) {
-                    reject(new Error(`Connection pool not found for ${connectionId}`));
-                    return;
-                }
-
-                if (pool.totalConnections < (this.connections.get(connectionId)?.maxConnections || 5)) {
-                    this.createPooledConnection(connectionId).then(resolve).catch(reject);
-                    return;
-                }
-
-                if (Date.now() - startTime > timeout) {
-                    reject(new Error(`Timeout waiting for available connection: ${connectionId}`));
-                    return;
-                }
-
-                setTimeout(checkAvailability, 100);
-            };
-
-            checkAvailability();
-        });
-    }
-
     async releasePooledConnection(connectionId: string, activeConnectionId: string): Promise<void> {
         try {
-            const pool = this.connectionPools.get(connectionId);
-            if (pool) {
-                pool.activeConnections = Math.max(0, pool.activeConnections - 1);
-                pool.lastActivity = new Date();
-                this.connectionPools.set(connectionId, pool);
-            }
-
             // Remove from active connections
-            const activeSet = this.activeConnections.get(connectionId);
+            const activeSet = this.activeConnectionInstances.get(connectionId);
             if (activeSet) {
                 activeSet.delete(activeConnectionId);
             }
 
-            Logger.debug('Released pooled connection', 'releasePooledConnection', {
+            Logger.debug('Released connection', 'releasePooledConnection', {
                 connectionId,
                 activeConnectionId
             });
 
         } catch (error) {
-            Logger.error('Failed to release pooled connection', error as Error);
+            Logger.error('Failed to release connection', error as Error);
         }
     }
-
-    private initializeConnectionPool(connectionId: string): void {
-        const connection = this.connections.get(connectionId);
-        if (!connection) return;
-
-        const pool: ConnectionPool = {
-            connectionId,
-            activeConnections: 0,
-            idleConnections: 0,
-            totalConnections: 0,
-            maxConnections: connection.maxConnections || 5,
-            createdAt: new Date(),
-            lastActivity: new Date()
-        };
-
-        this.connectionPools.set(connectionId, pool);
-        this.activeConnections.set(connectionId, new Set());
-    }
-
-    // Automatic Reconnection Logic
-    async handleConnectionFailure(connectionId: string, error: Error): Promise<void> {
-        try {
-            const connection = this.connections.get(connectionId);
-            if (!connection) return;
-
-            // Update connection status and error info
-            connection.status = 'Error';
-            connection.lastError = error.message;
-            connection.connectionAttempts = (connection.connectionAttempts || 0) + 1;
-            this.connections.set(connectionId, connection);
-
-            // Update health status
-            const health = this.connectionHealth.get(connectionId);
-            if (health) {
-                health.status = 'unhealthy';
-                health.consecutiveFailures++;
-                health.lastChecked = new Date();
-                this.connectionHealth.set(connectionId, health);
-            }
-
-            // Check if auto-reconnect is enabled
-            if (connection.autoReconnect && (connection.connectionAttempts || 0) < (connection.maxReconnectAttempts || 3)) {
-                await this.scheduleReconnection(connectionId);
-            }
-
-            Logger.warn('Connection failure handled', 'handleConnectionFailure', {
-                connectionId,
-                attempts: connection.connectionAttempts,
-                autoReconnect: connection.autoReconnect
-            });
-
-        } catch (handlerError) {
-            Logger.error('Error handling connection failure', handlerError as Error);
-        }
-    }
-
     private async scheduleReconnection(connectionId: string): Promise<void> {
         try {
             const connection = this.connections.get(connectionId);
@@ -630,7 +467,6 @@ export class ConnectionManager {
             Logger.error('Failed to schedule reconnection', error as Error);
         }
     }
-
     private async attemptReconnection(connectionId: string): Promise<void> {
         try {
             Logger.info(`Attempting reconnection: ${connectionId}`);
@@ -704,8 +540,6 @@ export class ConnectionManager {
             Logger.error('Reconnection attempt error', error as Error);
         }
     }
-
-    // Health Monitoring
     private startHealthMonitoring(): void {
         // Check connection health every 30 seconds
         this.healthCheckInterval = setInterval(async () => {
@@ -714,7 +548,6 @@ export class ConnectionManager {
 
         Logger.info('Connection health monitoring started');
     }
-
     private async performHealthChecks(): Promise<void> {
         try {
             for (const [connectionId, connection] of this.connections) {
@@ -755,8 +588,6 @@ export class ConnectionManager {
             Logger.error('Error during health checks', error as Error);
         }
     }
-
-    // Enhanced Connection Management
     async closeConnection(connectionId: string, activeConnectionId?: string): Promise<void> {
         try {
             if (activeConnectionId) {
@@ -764,7 +595,7 @@ export class ConnectionManager {
                 await this.releasePooledConnection(connectionId, activeConnectionId);
             } else {
                 // Close all connections for this connection ID
-                const activeSet = this.activeConnections.get(connectionId);
+                const activeSet = this.activeConnectionInstances.get(connectionId);
                 if (activeSet) {
                     for (const id of activeSet) {
                         await this.releasePooledConnection(connectionId, id);
@@ -791,65 +622,5 @@ export class ConnectionManager {
         } catch (error) {
             Logger.error('Failed to close connection', error as Error);
         }
-    }
-
-    // Connection Pool Management
-    getConnectionPoolInfo(connectionId: string): ConnectionPool | undefined {
-        return this.connectionPools.get(connectionId);
-    }
-
-    getConnectionHealth(connectionId: string): ConnectionHealth | undefined {
-        return this.connectionHealth.get(connectionId);
-    }
-
-    getAllConnectionHealth(): Map<string, ConnectionHealth> {
-        return new Map(this.connectionHealth);
-    }
-
-    // Utility Methods
-    private async closeAllConnections(): Promise<void> {
-        const closePromises: Promise<void>[] = [];
-
-        for (const [connectionId] of this.connections) {
-            closePromises.push(this.closeConnection(connectionId));
-        }
-
-        await Promise.allSettled(closePromises);
-    }
-
-    getConnectionStatistics(): {
-        totalConnections: number;
-        activeConnections: number;
-        unhealthyConnections: number;
-        pooledConnections: number;
-        autoReconnectEnabled: number;
-    } {
-        let activeConnections = 0;
-        let unhealthyConnections = 0;
-        let pooledConnections = 0;
-        let autoReconnectEnabled = 0;
-
-        for (const [connectionId, connection] of this.connections) {
-            if (connection.status === 'Connected') {
-                activeConnections++;
-            }
-            if (connection.status === 'Error') {
-                unhealthyConnections++;
-            }
-            if (connection.isPooled) {
-                pooledConnections++;
-            }
-            if (connection.autoReconnect) {
-                autoReconnectEnabled++;
-            }
-        }
-
-        return {
-            totalConnections: this.connections.size,
-            activeConnections,
-            unhealthyConnections,
-            pooledConnections,
-            autoReconnectEnabled
-        };
     }
 }

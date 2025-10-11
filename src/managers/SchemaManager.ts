@@ -367,14 +367,10 @@ export class SchemaManager {
         if (source.sizeInBytes !== target.sizeInBytes) {
             details.push(`Size differs: ${source.sizeInBytes} vs ${target.sizeInBytes} bytes`);
         }
-
         return details;
     }
-
-
-
     private generateId(): string {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+        return crypto.randomUUID();
     }
 
     async dispose(): Promise<void> {

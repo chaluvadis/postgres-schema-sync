@@ -1,6 +1,9 @@
 import { ConnectionManager } from './ConnectionManager';
 import { Logger } from '@/utils/Logger';
-import { DotNetIntegrationService, DotNetConnectionInfo, DotNetSchemaComparison, DotNetMigrationScript } from '@/services/DotNetIntegrationService';
+import {
+    DotNetIntegrationService, DotNetConnectionInfo,
+    DotNetSchemaComparison, DotNetMigrationScript
+} from '@/services/DotNetIntegrationService';
 
 export interface MigrationScript {
     id: string;
@@ -20,26 +23,6 @@ export interface MigrationScript {
     canRollback: boolean;
 }
 
-export interface MigrationExecutionOptions {
-    dryRun?: boolean;
-    batchSize?: number;
-    continueOnError?: boolean;
-    generateRollback?: boolean;
-    parallelExecution?: boolean;
-}
-
-export interface MigrationExecutionResult {
-    migrationId: string;
-    success: boolean;
-    executionTime: number;
-    operationsExecuted: number;
-    operationsSkipped: number;
-    errors: string[];
-    warnings: string[];
-    rollbackExecuted?: boolean;
-    rollbackReason?: string;
-}
-
 export class MigrationManager {
     private connectionManager: ConnectionManager;
     private dotNetService: DotNetIntegrationService;
@@ -48,7 +31,6 @@ export class MigrationManager {
         this.connectionManager = connectionManager;
         this.dotNetService = DotNetIntegrationService.getInstance();
     }
-
     async generateMigration(sourceConnectionId: string, targetConnectionId: string): Promise<MigrationScript> {
         try {
             Logger.info('Generating migration', 'generateMigration', { sourceConnectionId, targetConnectionId });
@@ -152,7 +134,6 @@ export class MigrationManager {
             throw error;
         }
     }
-
     async executeMigration(migrationId: string): Promise<boolean> {
         let migrationSuccess = false;
 
@@ -250,145 +231,6 @@ export class MigrationManager {
             return false;
         }
     }
-
-
-    async executeMigrationWithOptions(
-        migrationId: string,
-        options: MigrationExecutionOptions = {}
-    ): Promise<MigrationExecutionResult> {
-        const startTime = Date.now();
-        let operationsExecuted = 0;
-        let operationsSkipped = 0;
-        const errors: string[] = [];
-        const warnings: string[] = [];
-        let rollbackExecuted = false;
-        let rollbackReason = '';
-
-        try {
-            Logger.info('Executing migration with options', 'executeMigrationWithOptions', { migrationId, options });
-
-            const migration = this.migrations.get(migrationId);
-            if (!migration) {
-                throw new Error(`Migration ${migrationId} not found`);
-            }
-
-            if (!migration.canExecute) {
-                throw new Error(`Migration ${migrationId} cannot be executed`);
-            }
-
-            // Update status to running
-            migration.status = 'running';
-            this.migrations.set(migrationId, migration);
-
-            // Get target connection
-            const targetConnection = this.connectionManager.getConnection(migration.targetConnection);
-            if (!targetConnection) {
-                throw new Error('Target connection not found');
-            }
-
-            const targetPassword = await this.connectionManager.getConnectionPassword(migration.targetConnection);
-            if (!targetPassword) {
-                throw new Error('Target connection password not found');
-            }
-
-            // Convert to .NET format
-            const dotNetTargetConnection: DotNetConnectionInfo = {
-                id: targetConnection.id,
-                name: targetConnection.name,
-                host: targetConnection.host,
-                port: targetConnection.port,
-                database: targetConnection.database,
-                username: targetConnection.username,
-                password: targetPassword
-            };
-
-            const dotNetMigration: DotNetMigrationScript = {
-                id: migration.id,
-                comparison: {} as DotNetSchemaComparison,
-                selectedDifferences: [],
-                sqlScript: migration.sqlScript,
-                rollbackScript: migration.rollbackScript,
-                type: 'Schema',
-                isDryRun: options.dryRun || false,
-                status: migration.status,
-                createdAt: migration.createdAt.toISOString()
-            };
-
-            // Execute via .NET service
-            const result = await this.dotNetService.executeMigration(dotNetMigration, dotNetTargetConnection);
-
-            if (!result) {
-                throw new Error('Migration execution returned null');
-            }
-
-            operationsExecuted = result.operationsExecuted;
-            errors.push(...result.errors);
-            warnings.push(...result.warnings);
-
-            // Update migration status
-            migration.status = result.status === 'Completed' ? 'completed' : 'failed';
-            migration.executionTime = parseInt(result.executionTime) || 0;
-            migration.executionLog = `Operations: ${operationsExecuted}, Errors: ${errors.length}, Warnings: ${warnings.length}`;
-            this.migrations.set(migrationId, migration);
-
-            const success = result.status === 'Completed';
-
-            if (!success && migration.canRollback && !options.dryRun) {
-                Logger.info('Migration failed, attempting rollback', 'executeMigrationWithOptions', { migrationId });
-                rollbackReason = 'Migration execution failed';
-
-                try {
-                    await this.rollbackMigration(migrationId);
-                    rollbackExecuted = true;
-                } catch (rollbackError) {
-                    Logger.error('Rollback also failed', rollbackError as Error);
-                    errors.push(`Rollback failed: ${(rollbackError as Error).message}`);
-                }
-            }
-
-            const executionTime = Date.now() - startTime;
-
-            Logger.info('Migration execution completed', 'executeMigrationWithOptions', {
-                migrationId,
-                success,
-                executionTime,
-                operationsExecuted,
-                rollbackExecuted
-            });
-
-            return {
-                migrationId,
-                success,
-                executionTime,
-                operationsExecuted,
-                operationsSkipped,
-                errors,
-                warnings,
-                rollbackExecuted,
-                rollbackReason
-            };
-
-        } catch (error) {
-            const executionTime = Date.now() - startTime;
-            const errorMessage = (error as Error).message;
-            errors.push(errorMessage);
-
-            Logger.error('Migration execution failed', error as Error);
-
-            return {
-                migrationId,
-                success: false,
-                executionTime,
-                operationsExecuted,
-                operationsSkipped,
-                errors,
-                warnings,
-                rollbackExecuted,
-                rollbackReason: errorMessage
-            };
-        }
-    }
-
     async rollbackMigration(migrationId: string): Promise<boolean> {
         try {
             Logger.info('Rolling back migration', 'rollbackMigration', { migrationId });
@@ -457,7 +299,6 @@ export class MigrationManager {
             throw error;
         }
     }
-
     private assessMigrationRisk(sqlScript: string): 'Low' | 'Medium' | 'High' {
         const script = sqlScript.toUpperCase();
         const highRiskOps = ['DROP TABLE', 'DROP SCHEMA', 'TRUNCATE', 'DELETE FROM'];
@@ -471,7 +312,6 @@ export class MigrationManager {
         }
         return 'Low';
     }
-
     private analyzeMigrationWarnings(sqlScript: string): string[] {
         const warnings: string[] = [];
         const script = sqlScript.toUpperCase();

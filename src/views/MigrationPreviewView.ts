@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
 import { DotNetMigrationScript, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
-
 export interface MigrationPreviewData {
     id: string;
     migrationScript: DotNetMigrationScript;
@@ -58,7 +57,14 @@ export class MigrationPreviewView {
             Logger.info('Opening migration preview view');
 
             if (migrationScript && targetConnection) {
-                this.previewData = await this.generatePreviewData(migrationScript, targetConnection);
+                await this.generatePreview(migrationScript, targetConnection, {
+                    dryRun: true,
+                    stopOnError: true,
+                    transactionMode: 'all_or_nothing',
+                    backupBeforeExecution: true,
+                    parallelExecution: false,
+                    maxExecutionTime: 300
+                });
             }
 
             this.panel = vscode.window.createWebviewPanel(
@@ -189,13 +195,19 @@ export class MigrationPreviewView {
         };
     }
 
+    private generateUniqueId(prefix: string): string {
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(2, 8);
+        return `${prefix}-${timestamp}-${random}`;
+    }
+
     private parseExecutionPlan(sqlScript: string): ExecutionStep[] {
         const steps: ExecutionStep[] = [];
         const sqlStatements = sqlScript.split(';').filter(stmt => stmt.trim().length > 0);
 
         // Backup step
         steps.push({
-            id: 'backup-1',
+            id: this.generateUniqueId('backup'),
             order: 1,
             type: 'backup',
             description: 'Create database backup before migration',
@@ -234,7 +246,7 @@ export class MigrationPreviewView {
 
         // Verification step
         steps.push({
-            id: 'verification-1',
+            id: this.generateUniqueId('verification'),
             order: steps.length + 1,
             type: 'verification',
             description: 'Verify migration completed successfully',
@@ -673,7 +685,7 @@ export class MigrationPreviewView {
                                 </div>
                                 <div>
                                     <div style="font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 5px;">Rollback Complexity</div>
-                                    <div style="font-size: 18px; font-weight: bold;">${data.riskAssessment.rollbackComplexity.toUpperCase()}</div>
+                                    <div style="font-size: 18px; font-weight: bold; color: ${data.riskAssessment.rollbackComplexity === 'simple' ? 'var(--vscode-gitDecoration-addedResourceForeground)' : data.riskAssessment.rollbackComplexity === 'moderate' ? 'var(--vscode-gitDecoration-renamedResourceForeground)' : 'var(--vscode-gitDecoration-deletedResourceForeground)'};">${data.riskAssessment.rollbackComplexity.toUpperCase()}</div>
                                 </div>
                                 <div>
                                     <div style="font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 5px;">Data Loss Risk</div>
@@ -745,10 +757,12 @@ export class MigrationPreviewView {
                 <div class="footer">
                     <div class="info">
                         Target: ${data.targetConnection.name} • ${data.executionPlan.length} steps • ${data.previewOptions.dryRun ? 'Dry Run' : 'Live Execution'}
+                        ${data.migrationScript.rollbackScript && data.migrationScript.rollbackScript.trim().length > 0 ? '• ✅ Rollback Available' : '• ❌ No Rollback'}
                     </div>
                     <div class="actions">
                         <button class="btn btn-secondary" onclick="exportPreview()">Export</button>
                         <button class="btn btn-primary" onclick="proceedWithMigration()">Execute Migration</button>
+                        ${data.migrationScript.rollbackScript && data.migrationScript.rollbackScript.trim().length > 0 ? `<button class="btn btn-danger" onclick="rollbackMigration()">Rollback Migration</button>` : ''}
                     </div>
                 </div>
 
@@ -786,6 +800,13 @@ export class MigrationPreviewView {
                         vscode.postMessage({
                             command: 'proceedWithMigration',
                             previewData: ${JSON.stringify(data)}
+                        });
+                    }
+
+                    function rollbackMigration() {
+                        vscode.postMessage({
+                            command: 'rollbackMigration',
+                            migrationScript: ${JSON.stringify(data.migrationScript)}
                         });
                     }
                 </script>
@@ -877,6 +898,9 @@ export class MigrationPreviewView {
             case 'proceedWithMigration':
                 await this.proceedWithMigration(message.previewData);
                 break;
+            case 'rollbackMigration':
+                await this.rollbackMigration(message.migrationScript);
+                break;
             case 'generateNewMigration':
                 await vscode.commands.executeCommand('postgresql.generateMigration');
                 break;
@@ -939,6 +963,26 @@ export class MigrationPreviewView {
         } catch (error) {
             Logger.error('Failed to proceed with migration', error as Error, 'proceedWithMigration');
             vscode.window.showErrorMessage('Failed to execute migration');
+        }
+    }
+
+    private async rollbackMigration(migrationScript: DotNetMigrationScript): Promise<void> {
+        try {
+            // Show confirmation dialog for rollback
+            const confirmed = await vscode.window.showWarningMessage(
+                `Are you sure you want to rollback this migration?\n\nMigration: ${migrationScript.id}\nThis action cannot be undone!`,
+                'Rollback Migration',
+                'Cancel'
+            );
+
+            if (confirmed !== 'Rollback Migration') {
+                return;
+            }
+
+            await vscode.commands.executeCommand('postgresql.rollbackMigration', migrationScript);
+        } catch (error) {
+            Logger.error('Failed to initiate rollback', error as Error, 'rollbackMigration');
+            vscode.window.showErrorMessage('Failed to rollback migration');
         }
     }
 
