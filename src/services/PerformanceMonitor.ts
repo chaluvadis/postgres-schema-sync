@@ -21,22 +21,13 @@ export interface AggregatedMetrics {
     trend: 'improving' | 'degrading' | 'stable';
 }
 
-export interface SystemMetrics {
-    memoryUsage: NodeJS.MemoryUsage;
-    uptime: number;
-    timestamp: number;
-}
 
 export class PerformanceMonitor {
     private static instance: PerformanceMonitor;
     private metrics: Map<string, PerformanceMetrics[]> = new Map();
-    private systemMetricsHistory: SystemMetrics[] = [];
     private maxMetricsPerOperation = 1000;
-    private maxSystemMetricsHistory = 100;
 
-    private constructor() {
-        this.startSystemMonitoring();
-    }
+    private constructor() { }
 
     static getInstance(): PerformanceMonitor {
         if (!PerformanceMonitor.instance) {
@@ -45,9 +36,6 @@ export class PerformanceMonitor {
         return PerformanceMonitor.instance;
     }
 
-    /**
-     * Starts monitoring a performance operation
-     */
     startOperation(
         operationName: string,
         metadata?: Record<string, any>
@@ -81,9 +69,6 @@ export class PerformanceMonitor {
         return operationId;
     }
 
-    /**
-     * Ends monitoring a performance operation
-     */
     endOperation(
         operationId: string,
         success: boolean = true,
@@ -108,10 +93,6 @@ export class PerformanceMonitor {
             });
         }
     }
-
-    /**
-     * Gets aggregated metrics for an operation
-     */
     getAggregatedMetrics(operationName: string): AggregatedMetrics | null {
         const operationMetrics = this.metrics.get(operationName);
         if (!operationMetrics || operationMetrics.length === 0) {
@@ -139,10 +120,6 @@ export class PerformanceMonitor {
 
         return aggregated;
     }
-
-    /**
-     * Gets all aggregated metrics
-     */
     getAllAggregatedMetrics(): AggregatedMetrics[] {
         const allMetrics: AggregatedMetrics[] = [];
 
@@ -155,77 +132,9 @@ export class PerformanceMonitor {
 
         return allMetrics.sort((a, b) => b.lastExecuted - a.lastExecuted);
     }
+    // System metrics removed - not used by any components
 
-    /**
-     * Gets current system metrics
-     */
-    getCurrentSystemMetrics(): SystemMetrics {
-        return {
-            memoryUsage: process.memoryUsage(),
-            uptime: process.uptime(),
-            timestamp: Date.now()
-        };
-    }
-
-    /**
-     * Gets system metrics history
-     */
-    getSystemMetricsHistory(): SystemMetrics[] {
-        return [...this.systemMetricsHistory];
-    }
-
-    /**
-     * Gets performance recommendations
-     */
-    getPerformanceRecommendations(): Array<{
-        operation: string;
-        issue: string;
-        recommendation: string;
-        priority: 'low' | 'medium' | 'high';
-    }> {
-        const recommendations: Array<{
-            operation: string;
-            issue: string;
-            recommendation: string;
-            priority: 'low' | 'medium' | 'high';
-        }> = [];
-
-        const allMetrics = this.getAllAggregatedMetrics();
-
-        for (const metric of allMetrics) {
-            // Check for slow operations
-            if (metric.averageDuration > 1000) { // Slower than 1 second
-                recommendations.push({
-                    operation: metric.operationName,
-                    issue: `Average execution time is ${metric.averageDuration.toFixed(2)}ms`,
-                    recommendation: 'Consider optimizing database queries or implementing caching',
-                    priority: metric.averageDuration > 5000 ? 'high' : 'medium'
-                });
-            }
-
-            // Check for low success rate
-            if (metric.successRate < 90) {
-                recommendations.push({
-                    operation: metric.operationName,
-                    issue: `Success rate is only ${metric.successRate.toFixed(1)}%`,
-                    recommendation: 'Review error handling and implement retry mechanisms',
-                    priority: metric.successRate < 70 ? 'high' : 'medium'
-                });
-            }
-
-            // Check for degrading performance
-            if (metric.trend === 'degrading') {
-                recommendations.push({
-                    operation: metric.operationName,
-                    issue: 'Performance trend is degrading',
-                    recommendation: 'Investigate root cause and optimize operation',
-                    priority: 'high'
-                });
-            }
-        }
-
-        return recommendations;
-    }
+    // Performance recommendations removed - not used by any components
 
     private calculateTrend(recentMetrics: PerformanceMetrics[]): 'improving' | 'degrading' | 'stable' {
         if (recentMetrics.length < 3) {
@@ -254,65 +163,8 @@ export class PerformanceMonitor {
         }
     }
 
-    private startSystemMonitoring(): void {
-        // Record system metrics every 30 seconds
-        setInterval(() => {
-            const systemMetrics: SystemMetrics = {
-                memoryUsage: process.memoryUsage(),
-                uptime: process.uptime(),
-                timestamp: Date.now()
-            };
-
-            this.systemMetricsHistory.push(systemMetrics);
-
-            // Limit history size
-            if (this.systemMetricsHistory.length > this.maxSystemMetricsHistory) {
-                this.systemMetricsHistory.splice(0, this.systemMetricsHistory.length - this.maxSystemMetricsHistory);
-            }
-        }, 30000);
-
-        Logger.info('Performance monitoring started', 'startSystemMonitoring');
-    }
-
-    /**
-     * Exports performance data for analysis
-     */
-    exportPerformanceData(): {
-        metrics: Record<string, AggregatedMetrics>;
-        systemHistory: SystemMetrics[];
-        recommendations: Array<{
-            operation: string;
-            issue: string;
-            recommendation: string;
-            priority: string;
-        }>;
-        exportTimestamp: string;
-    } {
-        const aggregatedMetrics: Record<string, AggregatedMetrics> = {};
-        this.getAllAggregatedMetrics().forEach(metric => {
-            aggregatedMetrics[metric.operationName] = metric;
-        });
-
-        return {
-            metrics: aggregatedMetrics,
-            systemHistory: this.systemMetricsHistory,
-            recommendations: this.getPerformanceRecommendations(),
-            exportTimestamp: new Date().toISOString()
-        };
-    }
-
-    /**
-     * Clears all performance metrics
-     */
-    clearMetrics(): void {
-        this.metrics.clear();
-        this.systemMetricsHistory.length = 0;
-        Logger.info('Performance metrics cleared', 'clearMetrics');
-    }
-
     dispose(): void {
         this.metrics.clear();
-        this.systemMetricsHistory.length = 0;
         Logger.info('PerformanceMonitor disposed', 'dispose');
     }
 }

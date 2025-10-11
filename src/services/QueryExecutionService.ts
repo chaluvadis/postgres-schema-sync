@@ -141,7 +141,7 @@ export class QueryExecutionService {
     async getIntelliSense(
         connectionId: string,
         _query: string,
-        position: { line: number; column: number }
+        position: { line: number; column: number; }
     ): Promise<IntelliSenseSuggestion[]> {
         try {
             Logger.debug('Getting IntelliSense suggestions', 'getIntelliSense', {
@@ -289,10 +289,5 @@ export class QueryExecutionService {
         });
 
         return JSON.stringify(data, null, 2);
-    }
-
-
-    dispose(): void {
-        // Cleanup if needed
     }
 }

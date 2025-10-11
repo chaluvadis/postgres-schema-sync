@@ -19,12 +19,8 @@ import { QueryEditorView } from '@/views/QueryEditorView';
 import { TeamCollaborationService } from '@/services/TeamCollaborationService';
 import { PerformanceMonitorService } from '@/services/PerformanceMonitorService';
 import { PerformanceAlertSystem } from '@/services/PerformanceAlertSystem';
-import { SchemaDocumentationService } from '@/services/SchemaDocumentationService';
 import { DataImportService } from '@/services/DataImportService';
-import { BackupService } from '@/services/BackupService';
 import { RecoveryService } from '@/services/RecoveryService';
-import { DataValidationService } from '@/services/DataValidationService';
-import { MigrationValidationService } from '@/services/MigrationValidationService';
 import { QueryAnalyticsView } from '@/views/QueryAnalyticsView';
 import { TeamQueryLibraryView } from '@/views/TeamQueryLibraryView';
 import { ImportWizardView } from '@/views/ImportWizardView';
@@ -52,12 +48,8 @@ export interface ExtensionComponents {
     teamCollaborationService?: TeamCollaborationService;
     performanceMonitorService?: PerformanceMonitorService;
     performanceAlertSystem?: PerformanceAlertSystem;
-    schemaDocumentationService?: SchemaDocumentationService;
     dataImportService?: DataImportService;
-    backupService?: BackupService;
     recoveryService?: RecoveryService;
-    dataValidationService?: DataValidationService;
-    migrationValidationService?: MigrationValidationService;
     importWizardView?: ImportWizardView;
     importManagementView?: ImportManagementView;
     queryAnalyticsView?: QueryAnalyticsView;
@@ -135,12 +127,8 @@ export class ExtensionInitializer {
             const teamCollaborationService = new TeamCollaborationService(context);
             const performanceMonitorService = PerformanceMonitorService.getInstance();
             const performanceAlertSystem = PerformanceAlertSystem.getInstance(context, performanceMonitorService);
-            const schemaDocumentationService = new SchemaDocumentationService(context);
             const dataImportService = new DataImportService(context, coreComponents.connectionManager);
-            const backupService = new BackupService(context, coreComponents.connectionManager);
             const recoveryService = new RecoveryService(context, coreComponents.connectionManager);
-            const dataValidationService = new DataValidationService(context, coreComponents.connectionManager);
-            const migrationValidationService = new MigrationValidationService(coreComponents.connectionManager);
             const importWizardView = coreComponents.dataImportService ?
                 new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
             const importManagementView = coreComponents.dataImportService ?
@@ -166,12 +154,8 @@ export class ExtensionInitializer {
                 teamCollaborationService,
                 performanceMonitorService,
                 performanceAlertSystem,
-                schemaDocumentationService,
                 dataImportService,
-                backupService,
                 recoveryService,
-                dataValidationService,
-                migrationValidationService,
                 importWizardView,
                 importManagementView,
                 queryAnalyticsView,

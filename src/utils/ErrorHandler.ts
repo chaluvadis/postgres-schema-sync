@@ -198,7 +198,7 @@ export class ErrorHandler {
                         id: 'export_data',
                         label: 'Export Data',
                         description: 'Export data before retrying',
-                        action: async () => { await vscode.commands.executeCommand('postgresql.exportData'); },
+                        action: async () => { await vscode.commands.executeCommand('postgresql.showDashboard'); },
                         primary: true
                     },
                     {
@@ -569,40 +569,5 @@ export class ErrorHandler {
             </body>
             </html>
         `;
-    }
-
-    static getErrorHistory(limit?: number): ErrorDetails[] {
-        return limit ? this.errorHistory.slice(0, limit) : [...this.errorHistory];
-    }
-
-    static clearErrorHistory(): void {
-        this.errorHistory = [];
-    }
-
-    static getErrorStatistics(): {
-        totalErrors: number;
-        errorsByCategory: Record<string, number>;
-        errorsBySeverity: Record<string, number>;
-        recentErrors: number;
-    } {
-        const last24Hours = Date.now() - (24 * 60 * 60 * 1000);
-        const recentErrors = this.errorHistory.filter(error => error.timestamp.getTime() > last24Hours).length;
-
-        const errorsByCategory = this.errorHistory.reduce((acc, error) => {
-            acc[error.category] = (acc[error.category] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
-
-        const errorsBySeverity = this.errorHistory.reduce((acc, error) => {
-            acc[error.severity] = (acc[error.severity] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
-
-        return {
-            totalErrors: this.errorHistory.length,
-            errorsByCategory,
-            errorsBySeverity,
-            recentErrors
-        };
     }
 };

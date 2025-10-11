@@ -847,91 +847,91 @@ export class DataImportService {
             });
 
             try {
-                    // Step 1: Validate data
-                    statusBarProvider.updateOperationStep(`import-${jobId}`, 0, 'running', {
-                        message: 'Validating data...'
-                    });
+                // Step 1: Validate data
+                statusBarProvider.updateOperationStep(`import-${jobId}`, 0, 'running', {
+                    message: 'Validating data...'
+                });
 
-                    // Check for cancellation
-                    if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
-                        job.status = 'cancelled';
-                        statusBarProvider.updateOperation(`import-${jobId}`, 'cancelled');
-                        return;
+                // Check for cancellation
+                if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
+                    job.status = 'cancelled';
+                    statusBarProvider.updateOperation(`import-${jobId}`, 'cancelled');
+                    return;
+                }
+
+                const validationResult = await this.validateImportData(job, columnMapping);
+                if (!validationResult.valid) {
+                    job.status = 'failed';
+                    job.errors.push(...validationResult.errors);
+                    job.warnings.push(...validationResult.warnings);
+                    statusBarProvider.updateOperation(`import-${jobId}`, 'failed', {
+                        message: `Validation failed: ${validationResult.errors.length} errors found`
+                    });
+                    throw new Error(`Validation failed: ${validationResult.errors.length} errors found`);
+                }
+
+                statusBarProvider.updateOperationStep(`import-${jobId}`, 0, 'completed');
+
+                // Step 2: Import data
+                statusBarProvider.updateOperationStep(`import-${jobId}`, 1, 'running', {
+                    message: 'Importing data...'
+                });
+
+                job.status = 'importing';
+                job.progress = 50;
+                this.importJobs.set(jobId, job);
+
+                // Check for cancellation
+                if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
+                    job.status = 'cancelled';
+                    statusBarProvider.updateOperation(`import-${jobId}`, 'cancelled');
+                    return;
+                }
+
+                // Execute import via .NET service
+                const result = await this.performImport(job, columnMapping, operationIndicator.cancellationToken?.token);
+
+                // Step 3: Finalize
+                statusBarProvider.updateOperationStep(`import-${jobId}`, 1, 'completed');
+                statusBarProvider.updateOperationStep(`import-${jobId}`, 2, 'running', {
+                    message: 'Finalizing import...'
+                });
+
+                // Update job with results
+                job.status = 'completed';
+                job.progress = 100;
+                job.importedRows = result.importedRows;
+                job.skippedRows = result.skippedRows;
+                job.errorRows = result.errorRows;
+                job.completedAt = new Date();
+
+                this.importJobs.set(jobId, job);
+                this.importHistory.unshift(job);
+                this.activeImports.delete(jobId);
+
+                // Complete the operation
+                statusBarProvider.updateOperationStep(`import-${jobId}`, 2, 'completed');
+                statusBarProvider.updateOperation(`import-${jobId}`, 'completed', {
+                    message: `Import completed: ${job.importedRows} rows`
+                });
+
+                // Show success message
+                vscode.window.showInformationMessage(
+                    `Import completed: ${job.importedRows} rows imported, ${job.errorRows} errors`,
+                    'View Details', 'View Errors'
+                ).then(selection => {
+                    if (selection === 'View Details') {
+                        this.showImportDetails(jobId);
+                    } else if (selection === 'View Errors' && job.errors.length > 0) {
+                        this.showImportErrors(jobId);
                     }
+                });
 
-                    const validationResult = await this.validateImportData(job, columnMapping);
-                    if (!validationResult.valid) {
-                        job.status = 'failed';
-                        job.errors.push(...validationResult.errors);
-                        job.warnings.push(...validationResult.warnings);
-                        statusBarProvider.updateOperation(`import-${jobId}`, 'failed', {
-                            message: `Validation failed: ${validationResult.errors.length} errors found`
-                        });
-                        throw new Error(`Validation failed: ${validationResult.errors.length} errors found`);
-                    }
-
-                    statusBarProvider.updateOperationStep(`import-${jobId}`, 0, 'completed');
-
-                    // Step 2: Import data
-                    statusBarProvider.updateOperationStep(`import-${jobId}`, 1, 'running', {
-                        message: 'Importing data...'
-                    });
-
-                    job.status = 'importing';
-                    job.progress = 50;
-                    this.importJobs.set(jobId, job);
-
-                    // Check for cancellation
-                    if (operationIndicator.cancellationToken?.token.isCancellationRequested) {
-                        job.status = 'cancelled';
-                        statusBarProvider.updateOperation(`import-${jobId}`, 'cancelled');
-                        return;
-                    }
-
-                    // Execute import via .NET service
-                    const result = await this.performImport(job, columnMapping, operationIndicator.cancellationToken?.token);
-
-                    // Step 3: Finalize
-                    statusBarProvider.updateOperationStep(`import-${jobId}`, 1, 'completed');
-                    statusBarProvider.updateOperationStep(`import-${jobId}`, 2, 'running', {
-                        message: 'Finalizing import...'
-                    });
-
-                    // Update job with results
-                    job.status = 'completed';
-                    job.progress = 100;
-                    job.importedRows = result.importedRows;
-                    job.skippedRows = result.skippedRows;
-                    job.errorRows = result.errorRows;
-                    job.completedAt = new Date();
-
-                    this.importJobs.set(jobId, job);
-                    this.importHistory.unshift(job);
-                    this.activeImports.delete(jobId);
-
-                    // Complete the operation
-                    statusBarProvider.updateOperationStep(`import-${jobId}`, 2, 'completed');
-                    statusBarProvider.updateOperation(`import-${jobId}`, 'completed', {
-                        message: `Import completed: ${job.importedRows} rows`
-                    });
-
-                    // Show success message
-                    vscode.window.showInformationMessage(
-                        `Import completed: ${job.importedRows} rows imported, ${job.errorRows} errors`,
-                        'View Details', 'View Errors'
-                    ).then(selection => {
-                        if (selection === 'View Details') {
-                            this.showImportDetails(jobId);
-                        } else if (selection === 'View Errors' && job.errors.length > 0) {
-                            this.showImportErrors(jobId);
-                        }
-                    });
-
-                    Logger.info('Import job completed', 'executeImportJob', {
-                        jobId,
-                        importedRows: job.importedRows,
-                        errorRows: job.errorRows
-                    });
+                Logger.info('Import job completed', 'executeImportJob', {
+                    jobId,
+                    importedRows: job.importedRows,
+                    errorRows: job.errorRows
+                });
 
             } catch (error) {
                 job.status = 'failed';
@@ -1467,7 +1467,7 @@ export class DataImportService {
 
     // Utility Methods
     private generateId(): string {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+        return crypto.randomUUID();
     }
 
     getActiveImports(): string[] {
@@ -1480,7 +1480,7 @@ export class DataImportService {
         failedJobs: number;
         totalRowsImported: number;
         averageImportTime: number;
-        popularFormats: { format: string; count: number }[];
+        popularFormats: { format: string; count: number; }[];
     } {
         const jobs = this.importHistory;
         const completedJobs = jobs.filter(job => job.status === 'completed');

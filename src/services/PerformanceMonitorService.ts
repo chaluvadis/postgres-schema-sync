@@ -144,7 +144,7 @@ export interface PerformanceReport {
 export interface PerformanceTrend {
     metric: string;
     period: string;
-    values: { timestamp: Date; value: number }[];
+    values: { timestamp: Date; value: number; }[];
     trend: 'Improving' | 'Degrading' | 'Stable';
     changePercent: number;
 }
@@ -159,8 +159,6 @@ export class PerformanceMonitorService {
     private monitoringInterval?: NodeJS.Timeout;
     private readonly MAX_METRICS_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
     private readonly SLOW_QUERY_THRESHOLD = 5000; // 5 seconds
-    private readonly HIGH_CPU_THRESHOLD = 80; // 80%
-    private readonly LOW_MEMORY_THRESHOLD = 20; // 20%
 
     private constructor() {
         this.loadPerformanceData();
@@ -173,48 +171,9 @@ export class PerformanceMonitorService {
         return PerformanceMonitorService.instance;
     }
 
-    // Query Performance Tracking
-    recordQueryMetrics(metrics: Omit<QueryPerformanceMetrics, 'id' | 'timestamp'>): string {
-        try {
-            const id = this.generateId();
-            const queryMetric: QueryPerformanceMetrics = {
-                ...metrics,
-                id,
-                timestamp: new Date()
-            };
-
-            // Store metrics by connection
-            if (!this.queryMetrics.has(metrics.connectionId)) {
-                this.queryMetrics.set(metrics.connectionId, []);
-            }
-
-            this.queryMetrics.get(metrics.connectionId)!.push(queryMetric);
-
-            // Check for slow query alert
-            if (queryMetric.executionTime > this.SLOW_QUERY_THRESHOLD) {
-                this.createSlowQueryAlert(queryMetric);
-            }
-
-            // Analyze for recommendations
-            this.analyzeQueryForRecommendations(queryMetric);
-
-            Logger.debug('Query metrics recorded', 'recordQueryMetrics', {
-                queryId: id,
-                executionTime: queryMetric.executionTime,
-                connectionId: metrics.connectionId
-            });
-
-            return id;
-
-        } catch (error) {
-            Logger.error('Failed to record query metrics', error as Error);
-            throw error;
-        }
-    }
-
     getQueryMetrics(
         connectionId?: string,
-        timeRange?: { start: Date; end: Date },
+        timeRange?: { start: Date; end: Date; },
         limit?: number
     ): QueryPerformanceMetrics[] {
         try {
@@ -309,41 +268,6 @@ export class PerformanceMonitorService {
             totalRowsReturned: metrics.reduce((sum, m) => sum + m.rowsReturned, 0)
         };
     }
-
-    // Database Performance Monitoring
-    recordDatabaseMetrics(metrics: DatabasePerformanceMetrics): void {
-        try {
-            if (!this.databaseMetrics.has(metrics.connectionId)) {
-                this.databaseMetrics.set(metrics.connectionId, []);
-            }
-
-            this.databaseMetrics.get(metrics.connectionId)!.push(metrics);
-
-            // Check for performance alerts
-            this.checkPerformanceThresholds(metrics);
-
-            Logger.debug('Database metrics recorded', 'recordDatabaseMetrics', {
-                connectionId: metrics.connectionId,
-                activeConnections: metrics.activeConnections,
-                queriesPerSecond: metrics.queriesPerSecond
-            });
-
-        } catch (error) {
-            Logger.error('Failed to record database metrics', error as Error);
-        }
-    }
-
-    getDatabaseMetrics(
-        connectionId: string,
-        hours: number = 24
-    ): DatabasePerformanceMetrics[] {
-        const metrics = this.databaseMetrics.get(connectionId) || [];
-        const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
-
-        return metrics.filter(metric => metric.timestamp >= cutoffTime);
-    }
-
-    // Alert System
     private createSlowQueryAlert(queryMetric: QueryPerformanceMetrics): void {
         const alert: PerformanceAlert = {
             id: this.generateId(),
@@ -366,55 +290,6 @@ export class PerformanceMonitorService {
         this.notifyAlert(alert);
     }
 
-    private checkPerformanceThresholds(metrics: DatabasePerformanceMetrics): void {
-        // Check CPU usage
-        if (metrics.queriesPerSecond > this.HIGH_CPU_THRESHOLD) {
-            this.createAlert({
-                type: 'HighCPU',
-                severity: 'High',
-                title: 'High Query Load',
-                description: `Queries per second (${metrics.queriesPerSecond}) exceeds threshold`,
-                connectionId: metrics.connectionId,
-                metrics
-            });
-        }
-
-        // Check for deadlocks
-        if (metrics.deadlocks > 0) {
-            this.createAlert({
-                type: 'Deadlock',
-                severity: 'Critical',
-                title: 'Database Deadlock Detected',
-                description: `${metrics.deadlocks} deadlock(s) detected`,
-                connectionId: metrics.connectionId,
-                metrics
-            });
-        }
-
-        // Check buffer hit ratio
-        if (metrics.bufferHitRatio < 90) {
-            this.createAlert({
-                type: 'IndexInefficiency',
-                severity: 'Medium',
-                title: 'Low Buffer Hit Ratio',
-                description: `Buffer hit ratio (${metrics.bufferHitRatio}%) is below optimal threshold`,
-                connectionId: metrics.connectionId,
-                metrics
-            });
-        }
-    }
-
-    private createAlert(alertData: Omit<PerformanceAlert, 'id' | 'timestamp' | 'resolved'>): void {
-        const alert: PerformanceAlert = {
-            ...alertData,
-            id: this.generateId(),
-            timestamp: new Date(),
-            resolved: false
-        };
-
-        this.alerts.set(alert.id, alert);
-        this.notifyAlert(alert);
-    }
 
     private notifyAlert(alert: PerformanceAlert): void {
         Logger.warn('Performance alert triggered', 'notifyAlert', {
@@ -629,8 +504,8 @@ export class PerformanceMonitorService {
         });
 
         // Calculate average execution time per hour
-        const executionTimeTrend: { timestamp: Date; value: number }[] = [];
-        const queriesPerHourTrend: { timestamp: Date; value: number }[] = [];
+        const executionTimeTrend: { timestamp: Date; value: number; }[] = [];
+        const queriesPerHourTrend: { timestamp: Date; value: number; }[] = [];
 
         for (let hour = 0; hour < 24; hour++) {
             const hourMetrics = hourlyGroups.get(hour) || [];
@@ -662,7 +537,7 @@ export class PerformanceMonitorService {
         ];
     }
 
-    private calculateTrend(values: { timestamp: Date; value: number }[]): 'Improving' | 'Degrading' | 'Stable' {
+    private calculateTrend(values: { timestamp: Date; value: number; }[]): 'Improving' | 'Degrading' | 'Stable' {
         if (values.length < 2) return 'Stable';
 
         const firstHalf = values.slice(0, Math.floor(values.length / 2));
@@ -678,7 +553,7 @@ export class PerformanceMonitorService {
         return 'Stable';
     }
 
-    private calculateChangePercent(values: { timestamp: Date; value: number }[]): number {
+    private calculateChangePercent(values: { timestamp: Date; value: number; }[]): number {
         if (values.length < 2) return 0;
 
         const first = values[0].value;

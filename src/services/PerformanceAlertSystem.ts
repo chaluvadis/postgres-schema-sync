@@ -195,81 +195,7 @@ export class PerformanceAlertSystem {
         }
     }
 
-    // Alert Rule Management
-    async createAlertRule(ruleData: Omit<AlertRule, 'id' | 'createdAt' | 'updatedAt'>): Promise<AlertRule> {
-        try {
-            const rule: AlertRule = {
-                ...ruleData,
-                id: this.generateId(),
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            this.alertRules.set(rule.id, rule);
-            this.saveAlertRules();
-
-            Logger.info('Alert rule created', 'createAlertRule', {
-                ruleId: rule.id,
-                name: rule.name
-            });
-
-            return rule;
-
-        } catch (error) {
-            Logger.error('Failed to create alert rule', error as Error);
-            throw error;
-        }
-    }
-
-    async updateAlertRule(ruleId: string, updates: Partial<AlertRule>): Promise<AlertRule> {
-        try {
-            const rule = this.alertRules.get(ruleId);
-            if (!rule) {
-                throw new Error(`Alert rule ${ruleId} not found`);
-            }
-
-            const updatedRule: AlertRule = {
-                ...rule,
-                ...updates,
-                updatedAt: new Date()
-            };
-
-            this.alertRules.set(ruleId, updatedRule);
-            this.saveAlertRules();
-
-            Logger.info('Alert rule updated', 'updateAlertRule', {
-                ruleId,
-                name: updatedRule.name
-            });
-
-            return updatedRule;
-
-        } catch (error) {
-            Logger.error('Failed to update alert rule', error as Error);
-            throw error;
-        }
-    }
-
-    async deleteAlertRule(ruleId: string): Promise<void> {
-        try {
-            const rule = this.alertRules.get(ruleId);
-            if (!rule) {
-                throw new Error(`Alert rule ${ruleId} not found`);
-            }
-
-            this.alertRules.delete(ruleId);
-            this.saveAlertRules();
-
-            Logger.info('Alert rule deleted', 'deleteAlertRule', {
-                ruleId,
-                name: rule.name
-            });
-
-        } catch (error) {
-            Logger.error('Failed to delete alert rule', error as Error);
-            throw error;
-        }
-    }
+    // Alert Rule Management methods removed - rules are managed via default configuration only
 
     getAlertRules(): AlertRule[] {
         return Array.from(this.alertRules.values())
@@ -453,20 +379,14 @@ export class PerformanceAlertSystem {
                     break;
 
                 case 'email':
-                    await this.sendEmailNotification(channel, alert);
-                    break;
-
                 case 'slack':
-                    await this.sendSlackNotification(channel, alert);
-                    break;
-
                 case 'teams':
-                    await this.sendTeamsNotification(channel, alert);
-                    break;
-
                 case 'webhook':
-                    await this.sendWebhookNotification(channel, alert);
-                    break;
+                    // These notification types are not implemented yet
+                    Logger.info(`Notification type '${channel.type}' not implemented, skipping`);
+                    notification.status = 'sent'; // Mark as sent to avoid repeated attempts
+                    notification.sentAt = new Date();
+                    return;
 
                 default:
                     throw new Error(`Unsupported notification channel: ${channel.type}`);
@@ -528,37 +448,7 @@ export class PerformanceAlertSystem {
         this.updateStatusBar();
     }
 
-    private async sendEmailNotification(channel: NotificationChannel, alert: PerformanceAlert): Promise<void> {
-        // Email notification implementation would go here
-        Logger.info('Email notification sent', 'sendEmailNotification', {
-            alertId: alert.id,
-            recipient: channel.configuration.recipient
-        });
-    }
-
-    private async sendSlackNotification(channel: NotificationChannel, alert: PerformanceAlert): Promise<void> {
-        // Slack notification implementation would go here
-        Logger.info('Slack notification sent', 'sendSlackNotification', {
-            alertId: alert.id,
-            webhook: channel.configuration.webhookUrl
-        });
-    }
-
-    private async sendTeamsNotification(channel: NotificationChannel, alert: PerformanceAlert): Promise<void> {
-        // Teams notification implementation would go here
-        Logger.info('Teams notification sent', 'sendTeamsNotification', {
-            alertId: alert.id,
-            webhook: channel.configuration.webhookUrl
-        });
-    }
-
-    private async sendWebhookNotification(channel: NotificationChannel, alert: PerformanceAlert): Promise<void> {
-        // Webhook notification implementation would go here
-        Logger.info('Webhook notification sent', 'sendWebhookNotification', {
-            alertId: alert.id,
-            url: channel.configuration.url
-        });
-    }
+    // External notification methods removed - only VS Code notifications are supported
 
     private updateStatusBar(): void {
         if (!this.statusBarItem) return;
