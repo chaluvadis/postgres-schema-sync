@@ -794,6 +794,23 @@ export class MigrationValidationService {
         );
 
         panel.webview.html = this.generateValidationHtml(result);
+
+        // Handle messages from webview
+        panel.webview.onDidReceiveMessage(async (message) => {
+            switch (message.command) {
+                case 'proceedWithMigration':
+                    vscode.commands.executeCommand('postgresql.executeMigration');
+                    panel.dispose();
+                    break;
+                case 'editMigrationScript':
+                    // Open migration script in editor for editing
+                    vscode.window.showInformationMessage('Edit migration script functionality coming soon');
+                    break;
+                case 'exportValidationReport':
+                    await this.exportValidationReport(result);
+                    break;
+            }
+        });
     }
 
     private generateValidationHtml(result: ValidationResult): string {
@@ -808,72 +825,209 @@ export class MigrationValidationService {
                     body { font-family: var(--vscode-font-family); padding: 20px; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
                     .header { background: var(--vscode-textBlockQuote-background); padding: 15px; border-radius: 4px; margin-bottom: 20px; }
                     .status { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
+                    .status.passed { color: var(--vscode-charts-green); }
+                    .status.warning { color: var(--vscode-charts-yellow); }
+                    .status.failed { color: var(--vscode-errorForeground); }
                     .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }
                     .summary-card { background: var(--vscode-editor-background); padding: 15px; border-radius: 4px; text-align: center; border: 1px solid var(--vscode-panel-border); }
                     .summary-number { font-size: 24px; font-weight: bold; }
+                    .summary-number.passed { color: var(--vscode-charts-green); }
+                    .summary-number.warning { color: var(--vscode-charts-yellow); }
+                    .summary-number.failed { color: var(--vscode-errorForeground); }
                     .issues-section { background: var(--vscode-editor-background); border: 1px solid var(--vscode-panel-border); border-radius: 4px; margin: 20px 0; }
                     .section-header { background: var(--vscode-titleBar-activeBackground); padding: 12px 15px; border-bottom: 1px solid var(--vscode-panel-border); font-weight: bold; }
                     .issue-item { padding: 10px 15px; border-bottom: 1px solid var(--vscode-panel-border); }
                     .issue-item:last-child { border-bottom: none; }
                     .issue-severity { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
-                    .severity-critical { background: var(--vscode-gitDecoration-deletedResourceForeground); }
-                    .severity-high { background: var(--vscode-gitDecoration-modifiedResourceForeground); }
-                    .severity-medium { background: var(--vscode-gitDecoration-renamedResourceForeground); }
+                    .severity-critical { background: var(--vscode-errorForeground); color: white; }
+                    .severity-high { background: var(--vscode-gitDecoration-modifiedResourceForeground); color: white; }
+                    .severity-medium { background: var(--vscode-gitDecoration-renamedResourceForeground); color: white; }
                     .severity-low { background: var(--vscode-panel-border); }
+                    .issue-message { margin: 5px 0; }
+                    .issue-suggestion { font-size: 12px; color: var(--vscode-descriptionForeground); margin-top: 5px; }
                     .recommendations { background: var(--vscode-textBlockQuote-background); padding: 15px; border-radius: 4px; margin-top: 20px; }
+                    .recommendation-item { margin-bottom: 8px; padding-left: 20px; position: relative; }
+                    .recommendation-item:before { content: "💡"; position: absolute; left: 0; }
+                    .details-section { background: var(--vscode-editor-background); border: 1px solid var(--vscode-panel-border); border-radius: 4px; margin: 20px 0; }
+                    .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 15px; }
+                    .detail-item { background: var(--vscode-textBlockQuote-background); padding: 10px; border-radius: 4px; }
+                    .detail-label { font-weight: bold; font-size: 12px; text-transform: uppercase; color: var(--vscode-descriptionForeground); }
+                    .detail-value { margin-top: 5px; }
+                    .progress-bar { width: 100%; height: 8px; background: var(--vscode-progressBar-background); border-radius: 4px; margin: 10px 0; }
+                    .progress-fill { height: 100%; background: var(--vscode-progressBar-foreground); border-radius: 4px; transition: width 0.3s; }
+                    .risk-indicator { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+                    .risk-high { background: var(--vscode-errorForeground); color: white; }
+                    .risk-medium { background: var(--vscode-gitDecoration-modifiedResourceForeground); color: white; }
+                    .risk-low { background: var(--vscode-charts-green); color: white; }
                 </style>
             </head>
             <body>
                 <div class="header">
-                    <div class="status">${result.status === 'passed' ? '✅' : result.status === 'warning' ? '⚠️' : '❌'} Validation ${result.status}</div>
+                    <div class="status ${result.status}">${result.status === 'passed' ? '✅' : result.status === 'warning' ? '⚠️' : '❌'} Migration Validation ${result.status.toUpperCase()}</div>
                     <div>Completed in ${result.executionTime}ms • ${result.summary.totalChecks} checks performed</div>
                 </div>
 
                 <div class="summary">
                     <div class="summary-card">
-                        <div class="summary-number" style="color: var(--vscode-gitDecoration-addedResourceForeground);">${result.summary.passedChecks}</div>
+                        <div class="summary-number passed">${result.summary.passedChecks}</div>
                         <div>Passed</div>
                     </div>
                     <div class="summary-card">
-                        <div class="summary-number" style="color: var(--vscode-gitDecoration-renamedResourceForeground);">${result.summary.warningChecks}</div>
+                        <div class="summary-number warning">${result.summary.warningChecks}</div>
                         <div>Warnings</div>
                     </div>
                     <div class="summary-card">
-                        <div class="summary-number" style="color: var(--vscode-gitDecoration-deletedResourceForeground);">${result.summary.failedChecks}</div>
+                        <div class="summary-number failed">${result.summary.failedChecks}</div>
                         <div>Failed</div>
                     </div>
                     <div class="summary-card">
-                        <div class="summary-number">${result.summary.criticalIssues}</div>
+                        <div class="summary-number ${result.summary.criticalIssues > 0 ? 'failed' : ''}">${result.summary.criticalIssues}</div>
                         <div>Critical</div>
+                    </div>
+                </div>
+
+                <!-- Risk Assessment -->
+                <div class="details-section">
+                    <div class="section-header">Risk Assessment</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Data Loss Risk</div>
+                            <div class="detail-value">
+                                <span class="risk-indicator ${result.summary.dataLossRisk ? 'risk-high' : 'risk-low'}">
+                                    ${result.summary.dataLossRisk ? 'High Risk' : 'Low Risk'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Breaking Changes</div>
+                            <div class="detail-value">
+                                <span class="risk-indicator ${result.summary.breakingChanges ? 'risk-medium' : 'risk-low'}">
+                                    ${result.summary.breakingChanges ? 'Possible' : 'None Detected'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Performance Impact</div>
+                            <div class="detail-value">
+                                <span class="risk-indicator ${result.details.performanceImpact.cpuImpact === 'high' ? 'risk-high' : result.details.performanceImpact.cpuImpact === 'medium' ? 'risk-medium' : 'risk-low'}">
+                                    ${result.details.performanceImpact.cpuImpact.toUpperCase()}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Estimated Duration</div>
+                            <div class="detail-value">${Math.round(result.details.performanceImpact.estimatedDuration / 60)} minutes</div>
+                        </div>
                     </div>
                 </div>
 
                 ${Object.keys(issuesByCategory).length > 0 ? `
                     <div class="issues-section">
-                        <div class="section-header">Issues Found</div>
+                        <div class="section-header">Issues Found (${result.issues.length})</div>
                         ${Object.entries(issuesByCategory).map(([category, categoryIssues]) => `
                             <div class="category-section">
-                                <h4>${category}</h4>
+                                <h4>${this.getCategoryDisplayName(category)} (${categoryIssues.length})</h4>
                                 ${categoryIssues.map(issue => `
                                     <div class="issue-item">
-                                        <div class="issue-severity severity-${issue.severity}">${issue.severity}</div>
+                                        <div class="issue-severity severity-${issue.severity}">${issue.severity.toUpperCase()}</div>
                                         <div class="issue-message">${issue.message}</div>
+                                        ${issue.objectName ? `<div class="issue-object">📄 ${issue.objectType}: ${issue.objectName}</div>` : ''}
                                         ${issue.suggestion ? `<div class="issue-suggestion">💡 ${issue.suggestion}</div>` : ''}
+                                        ${issue.lineNumber ? `<div class="issue-location">Line ${issue.lineNumber}${issue.columnNumber ? `, Column ${issue.columnNumber}` : ''}</div>` : ''}
                                     </div>
                                 `).join('')}
                             </div>
                         `).join('')}
                     </div>
-                ` : ''}
+                ` : `
+                    <div class="issues-section">
+                        <div class="section-header">✅ No Issues Found</div>
+                        <div style="padding: 20px; text-align: center; color: var(--vscode-charts-green);">
+                            All validation checks passed successfully!
+                        </div>
+                    </div>
+                `}
+
+                <!-- Detailed Analysis -->
+                <div class="details-section">
+                    <div class="section-header">Detailed Analysis</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="detail-label">Syntax Validation</div>
+                            <div class="detail-value">
+                                ${result.details.syntaxValidation.valid ? '✅ Valid' : '❌ Invalid'}
+                                ${result.details.syntaxValidation.errors.length > 0 ? `<br><span style="color: var(--vscode-errorForeground);">${result.details.syntaxValidation.errors.length} errors</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Dependencies</div>
+                            <div class="detail-value">
+                                ${result.details.dependencyAnalysis.affectedObjects.length} objects affected
+                                ${result.details.dependencyAnalysis.brokenDependencies.length > 0 ? `<br><span style="color: var(--vscode-errorForeground);">${result.details.dependencyAnalysis.brokenDependencies.length} broken</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Data Impact</div>
+                            <div class="detail-value">
+                                ${result.details.dataImpactAnalysis.tablesAffected} tables affected
+                                ${result.details.dataImpactAnalysis.dataLossPotential ? '<br><span class="risk-indicator risk-high">Data Loss Risk</span>' : ''}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Permissions</div>
+                            <div class="detail-value">
+                                ${result.details.permissionAnalysis.requiredPermissions.length} permissions required
+                                ${result.details.permissionAnalysis.missingPermissions.length > 0 ? `<br><span style="color: var(--vscode-errorForeground);">${result.details.permissionAnalysis.missingPermissions.length} missing</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 ${result.recommendations.length > 0 ? `
                     <div class="recommendations">
-                        <h3>Recommendations</h3>
-                        <ul>
-                            ${result.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-                        </ul>
+                        <h3>Recommendations (${result.recommendations.length})</h3>
+                        <div>
+                            ${result.recommendations.map(rec => `<div class="recommendation-item">${rec}</div>`).join('')}
+                        </div>
                     </div>
                 ` : ''}
+
+                <!-- Action Buttons -->
+                <div style="margin-top: 30px; padding: 20px; text-align: center; border-top: 1px solid var(--vscode-panel-border);">
+                    <button onclick="proceedWithMigration()" style="margin-right: 10px; padding: 10px 20px; background: var(--vscode-charts-green); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        ${result.status === 'passed' ? '✅ Proceed with Migration' : '⚠️ Proceed Anyway'}
+                    </button>
+                    <button onclick="editMigrationScript()" style="margin-right: 10px; padding: 10px 20px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid var(--vscode-button-border); border-radius: 4px; cursor: pointer;">
+                        Edit Script
+                    </button>
+                    <button onclick="exportReport()" style="padding: 10px 20px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: 1px solid var(--vscode-button-border); border-radius: 4px; cursor: pointer;">
+                        Export Report
+                    </button>
+                </div>
+
+                <script>
+                    const vscode = acquireVsCodeApi();
+
+                    function proceedWithMigration() {
+                        vscode.postMessage({
+                            command: 'proceedWithMigration',
+                            validationId: '${result.validationId}'
+                        });
+                    }
+
+                    function editMigrationScript() {
+                        vscode.postMessage({
+                            command: 'editMigrationScript'
+                        });
+                    }
+
+                    function exportReport() {
+                        vscode.postMessage({
+                            command: 'exportValidationReport',
+                            validationId: '${result.validationId}'
+                        });
+                    }
+                </script>
             </body>
             </html>
         `;
@@ -887,6 +1041,18 @@ export class MigrationValidationService {
             acc[issue.category].push(issue);
             return acc;
         }, {} as Record<string, ValidationIssue[]>);
+    }
+
+    private getCategoryDisplayName(category: string): string {
+        const displayNames: Record<string, string> = {
+            'data_loss': 'Data Loss',
+            'dependency': 'Dependencies',
+            'permission': 'Permissions',
+            'syntax': 'Syntax',
+            'performance': 'Performance',
+            'security': 'Security'
+        };
+        return displayNames[category] || category.charAt(0).toUpperCase() + category.slice(1);
     }
 
     private async exportValidationReport(result: ValidationResult): Promise<void> {

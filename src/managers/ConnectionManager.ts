@@ -12,12 +12,45 @@ export interface DatabaseConnection {
     database: string;
     username: string;
     password: string;
-    status?: 'Connected' | 'Disconnected' | 'Error';
+    status?: 'Connected' | 'Disconnected' | 'Error' | 'Connecting' | 'Reconnecting';
+    lastConnected?: Date;
+    connectionAttempts?: number;
+    lastError?: string;
+    isPooled?: boolean;
+    poolSize?: number;
+    maxConnections?: number;
+    autoReconnect?: boolean;
+    reconnectDelay?: number;
+    maxReconnectAttempts?: number;
+}
+
+export interface ConnectionPool {
+    connectionId: string;
+    activeConnections: number;
+    idleConnections: number;
+    totalConnections: number;
+    maxConnections: number;
+    createdAt: Date;
+    lastActivity: Date;
+}
+
+export interface ConnectionHealth {
+    connectionId: string;
+    status: 'healthy' | 'degraded' | 'unhealthy';
+    responseTime: number;
+    lastChecked: Date;
+    consecutiveFailures: number;
+    isAutoReconnecting: boolean;
 }
 
 export class ConnectionManager {
     private context: vscode.ExtensionContext;
     private connections: Map<string, DatabaseConnection> = new Map();
+    private connectionPools: Map<string, ConnectionPool> = new Map();
+    private connectionHealth: Map<string, ConnectionHealth> = new Map();
+    private activeConnections: Map<string, Set<string>> = new Map(); // connectionId -> Set of active connection instances
+    private reconnectionTimers: Map<string, NodeJS.Timeout> = new Map();
+    private healthCheckInterval?: NodeJS.Timeout;
     private secrets: vscode.SecretStorage | undefined;
     private dotNetService: DotNetIntegrationService;
     private activityBarProvider?: ActivityBarProvider | undefined;
@@ -28,6 +61,7 @@ export class ConnectionManager {
         this.activityBarProvider = activityBarProvider;
         this.loadConnections();
         this.secrets = context.secrets;
+        this.startHealthMonitoring();
     }
 
     setActivityBarProvider(provider: ActivityBarProvider): void {
@@ -368,10 +402,454 @@ export class ConnectionManager {
     async dispose(): Promise<void> {
         try {
             Logger.info('Disposing ConnectionManager');
+
+            // Clear reconnection timers
+            for (const timer of this.reconnectionTimers.values()) {
+                clearTimeout(timer);
+            }
+            this.reconnectionTimers.clear();
+
+            // Stop health monitoring
+            if (this.healthCheckInterval) {
+                clearInterval(this.healthCheckInterval);
+            }
+
+            // Close all active connections
+            for (const [connectionId, activeConnectionIds] of this.activeConnections) {
+                for (const activeConnectionId of activeConnectionIds) {
+                    try {
+                        await this.closeConnection(connectionId, activeConnectionId);
+                    } catch (error) {
+                        Logger.warn(`Error closing connection ${activeConnectionId}`, 'dispose');
+                    }
+                }
+            }
+
             this.connections.clear();
+            this.connectionPools.clear();
+            this.connectionHealth.clear();
+            this.activeConnections.clear();
+
             Logger.info('ConnectionManager disposed');
         } catch (error) {
             Logger.error(`Disposal error: ${(error as Error).message}`);
         }
+    }
+
+    // Connection Pooling Methods
+    async getPooledConnection(connectionId: string): Promise<string> {
+        try {
+            const connection = this.connections.get(connectionId);
+            if (!connection) {
+                throw new Error(`Connection ${connectionId} not found`);
+            }
+
+            // Initialize pool if not exists
+            if (!this.connectionPools.has(connectionId)) {
+                this.initializeConnectionPool(connectionId);
+            }
+
+            const pool = this.connectionPools.get(connectionId)!;
+
+            // Check if we can create a new connection
+            if (pool.totalConnections < (connection.maxConnections || 5)) {
+                const activeConnectionId = await this.createPooledConnection(connectionId);
+                pool.activeConnections++;
+                pool.totalConnections++;
+                pool.lastActivity = new Date();
+                this.connectionPools.set(connectionId, pool);
+
+                return activeConnectionId;
+            }
+
+            // Wait for an available connection or timeout
+            return await this.waitForAvailableConnection(connectionId);
+
+        } catch (error) {
+            Logger.error('Failed to get pooled connection', error as Error);
+            throw error;
+        }
+    }
+
+    private async createPooledConnection(connectionId: string): Promise<string> {
+        const activeConnectionId = `${connectionId}_pool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Initialize active connections set if not exists
+        if (!this.activeConnections.has(connectionId)) {
+            this.activeConnections.set(connectionId, new Set());
+        }
+
+        this.activeConnections.get(connectionId)!.add(activeConnectionId);
+
+        Logger.debug('Created pooled connection', 'createPooledConnection', {
+            connectionId,
+            activeConnectionId
+        });
+
+        return activeConnectionId;
+    }
+
+    private async waitForAvailableConnection(connectionId: string, timeout: number = 30000): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+
+            const checkAvailability = () => {
+                const pool = this.connectionPools.get(connectionId);
+                if (!pool) {
+                    reject(new Error(`Connection pool not found for ${connectionId}`));
+                    return;
+                }
+
+                if (pool.totalConnections < (this.connections.get(connectionId)?.maxConnections || 5)) {
+                    this.createPooledConnection(connectionId).then(resolve).catch(reject);
+                    return;
+                }
+
+                if (Date.now() - startTime > timeout) {
+                    reject(new Error(`Timeout waiting for available connection: ${connectionId}`));
+                    return;
+                }
+
+                setTimeout(checkAvailability, 100);
+            };
+
+            checkAvailability();
+        });
+    }
+
+    async releasePooledConnection(connectionId: string, activeConnectionId: string): Promise<void> {
+        try {
+            const pool = this.connectionPools.get(connectionId);
+            if (pool) {
+                pool.activeConnections = Math.max(0, pool.activeConnections - 1);
+                pool.lastActivity = new Date();
+                this.connectionPools.set(connectionId, pool);
+            }
+
+            // Remove from active connections
+            const activeSet = this.activeConnections.get(connectionId);
+            if (activeSet) {
+                activeSet.delete(activeConnectionId);
+            }
+
+            Logger.debug('Released pooled connection', 'releasePooledConnection', {
+                connectionId,
+                activeConnectionId
+            });
+
+        } catch (error) {
+            Logger.error('Failed to release pooled connection', error as Error);
+        }
+    }
+
+    private initializeConnectionPool(connectionId: string): void {
+        const connection = this.connections.get(connectionId);
+        if (!connection) return;
+
+        const pool: ConnectionPool = {
+            connectionId,
+            activeConnections: 0,
+            idleConnections: 0,
+            totalConnections: 0,
+            maxConnections: connection.maxConnections || 5,
+            createdAt: new Date(),
+            lastActivity: new Date()
+        };
+
+        this.connectionPools.set(connectionId, pool);
+        this.activeConnections.set(connectionId, new Set());
+    }
+
+    // Automatic Reconnection Logic
+    async handleConnectionFailure(connectionId: string, error: Error): Promise<void> {
+        try {
+            const connection = this.connections.get(connectionId);
+            if (!connection) return;
+
+            // Update connection status and error info
+            connection.status = 'Error';
+            connection.lastError = error.message;
+            connection.connectionAttempts = (connection.connectionAttempts || 0) + 1;
+            this.connections.set(connectionId, connection);
+
+            // Update health status
+            const health = this.connectionHealth.get(connectionId);
+            if (health) {
+                health.status = 'unhealthy';
+                health.consecutiveFailures++;
+                health.lastChecked = new Date();
+                this.connectionHealth.set(connectionId, health);
+            }
+
+            // Check if auto-reconnect is enabled
+            if (connection.autoReconnect && (connection.connectionAttempts || 0) < (connection.maxReconnectAttempts || 3)) {
+                await this.scheduleReconnection(connectionId);
+            }
+
+            Logger.warn('Connection failure handled', 'handleConnectionFailure', {
+                connectionId,
+                attempts: connection.connectionAttempts,
+                autoReconnect: connection.autoReconnect
+            });
+
+        } catch (handlerError) {
+            Logger.error('Error handling connection failure', handlerError as Error);
+        }
+    }
+
+    private async scheduleReconnection(connectionId: string): Promise<void> {
+        try {
+            const connection = this.connections.get(connectionId);
+            if (!connection) return;
+
+            // Clear existing reconnection timer
+            const existingTimer = this.reconnectionTimers.get(connectionId);
+            if (existingTimer) {
+                clearTimeout(existingTimer);
+            }
+
+            connection.status = 'Reconnecting';
+            this.connections.set(connectionId, connection);
+
+            const delay = (connection.reconnectDelay || 5) * 1000; // Convert to milliseconds
+
+            Logger.info(`Scheduling reconnection for ${connectionId} in ${delay}ms`);
+
+            const timer = setTimeout(async () => {
+                try {
+                    this.reconnectionTimers.delete(connectionId);
+                    await this.attemptReconnection(connectionId);
+                } catch (error) {
+                    Logger.error('Reconnection attempt failed', error as Error);
+                }
+            }, delay);
+
+            this.reconnectionTimers.set(connectionId, timer);
+
+        } catch (error) {
+            Logger.error('Failed to schedule reconnection', error as Error);
+        }
+    }
+
+    private async attemptReconnection(connectionId: string): Promise<void> {
+        try {
+            Logger.info(`Attempting reconnection: ${connectionId}`);
+
+            const connection = this.connections.get(connectionId);
+            if (!connection) return;
+
+            connection.status = 'Connecting';
+            this.connections.set(connectionId, connection);
+
+            // Test the connection
+            const success = await this.testConnection(connectionId);
+
+            if (success) {
+                connection.status = 'Connected';
+                connection.lastConnected = new Date();
+                connection.connectionAttempts = 0;
+                connection.lastError = undefined;
+                this.connections.set(connectionId, connection);
+
+                // Update health status
+                const health = this.connectionHealth.get(connectionId);
+                if (health) {
+                    health.status = 'healthy';
+                    health.consecutiveFailures = 0;
+                    health.lastChecked = new Date();
+                    this.connectionHealth.set(connectionId, health);
+                }
+
+                Logger.info(`Reconnection successful: ${connectionId}`);
+
+                vscode.window.showInformationMessage(
+                    `Connection "${connection.name}" reconnected successfully`,
+                    'Test Connection', 'View Details'
+                ).then(selection => {
+                    if (selection === 'Test Connection') {
+                        this.testConnection(connectionId);
+                    } else if (selection === 'View Details') {
+                        Logger.showOutputChannel();
+                    }
+                });
+
+            } else {
+                // Reconnection failed, schedule another attempt if within limits
+                if ((connection.connectionAttempts || 0) < (connection.maxReconnectAttempts || 3)) {
+                    await this.scheduleReconnection(connectionId);
+                } else {
+                    connection.status = 'Error';
+                    this.connections.set(connectionId, connection);
+
+                    Logger.error(`Max reconnection attempts reached for ${connectionId}`);
+
+                    vscode.window.showErrorMessage(
+                        `Connection "${connection.name}" failed to reconnect after ${connection.maxReconnectAttempts} attempts`,
+                        'Edit Connection', 'View Logs', 'Disable Auto-reconnect'
+                    ).then(selection => {
+                        if (selection === 'Edit Connection') {
+                            vscode.commands.executeCommand('postgresql.editConnection', connection);
+                        } else if (selection === 'View Logs') {
+                            Logger.showOutputChannel();
+                        } else if (selection === 'Disable Auto-reconnect') {
+                            connection.autoReconnect = false;
+                            this.connections.set(connectionId, connection);
+                            this.saveConnections();
+                        }
+                    });
+                }
+            }
+
+        } catch (error) {
+            Logger.error('Reconnection attempt error', error as Error);
+        }
+    }
+
+    // Health Monitoring
+    private startHealthMonitoring(): void {
+        // Check connection health every 30 seconds
+        this.healthCheckInterval = setInterval(async () => {
+            await this.performHealthChecks();
+        }, 30000);
+
+        Logger.info('Connection health monitoring started');
+    }
+
+    private async performHealthChecks(): Promise<void> {
+        try {
+            for (const [connectionId, connection] of this.connections) {
+                if (connection.status === 'Connected') {
+                    try {
+                        const startTime = Date.now();
+                        const isHealthy = await this.testConnection(connectionId);
+                        const responseTime = Date.now() - startTime;
+
+                        // Update health status
+                        const health = this.connectionHealth.get(connectionId) || {
+                            connectionId,
+                            status: 'healthy' as const,
+                            responseTime: 0,
+                            lastChecked: new Date(),
+                            consecutiveFailures: 0,
+                            isAutoReconnecting: false
+                        };
+
+                        if (isHealthy) {
+                            health.status = responseTime < 1000 ? 'healthy' : 'degraded';
+                            health.responseTime = responseTime;
+                            health.consecutiveFailures = 0;
+                        } else {
+                            health.status = 'unhealthy';
+                            health.consecutiveFailures++;
+                        }
+
+                        health.lastChecked = new Date();
+                        this.connectionHealth.set(connectionId, health);
+
+                    } catch (error) {
+                        Logger.warn(`Health check failed for ${connectionId}`, 'performHealthChecks');
+                    }
+                }
+            }
+        } catch (error) {
+            Logger.error('Error during health checks', error as Error);
+        }
+    }
+
+    // Enhanced Connection Management
+    async closeConnection(connectionId: string, activeConnectionId?: string): Promise<void> {
+        try {
+            if (activeConnectionId) {
+                // Close specific pooled connection
+                await this.releasePooledConnection(connectionId, activeConnectionId);
+            } else {
+                // Close all connections for this connection ID
+                const activeSet = this.activeConnections.get(connectionId);
+                if (activeSet) {
+                    for (const id of activeSet) {
+                        await this.releasePooledConnection(connectionId, id);
+                    }
+                }
+
+                // Clear reconnection timer
+                const timer = this.reconnectionTimers.get(connectionId);
+                if (timer) {
+                    clearTimeout(timer);
+                    this.reconnectionTimers.delete(connectionId);
+                }
+
+                // Update connection status
+                const connection = this.connections.get(connectionId);
+                if (connection) {
+                    connection.status = 'Disconnected';
+                    this.connections.set(connectionId, connection);
+                }
+            }
+
+            Logger.info('Connection closed', 'closeConnection', { connectionId, activeConnectionId });
+
+        } catch (error) {
+            Logger.error('Failed to close connection', error as Error);
+        }
+    }
+
+    // Connection Pool Management
+    getConnectionPoolInfo(connectionId: string): ConnectionPool | undefined {
+        return this.connectionPools.get(connectionId);
+    }
+
+    getConnectionHealth(connectionId: string): ConnectionHealth | undefined {
+        return this.connectionHealth.get(connectionId);
+    }
+
+    getAllConnectionHealth(): Map<string, ConnectionHealth> {
+        return new Map(this.connectionHealth);
+    }
+
+    // Utility Methods
+    private async closeAllConnections(): Promise<void> {
+        const closePromises: Promise<void>[] = [];
+
+        for (const [connectionId] of this.connections) {
+            closePromises.push(this.closeConnection(connectionId));
+        }
+
+        await Promise.allSettled(closePromises);
+    }
+
+    getConnectionStatistics(): {
+        totalConnections: number;
+        activeConnections: number;
+        unhealthyConnections: number;
+        pooledConnections: number;
+        autoReconnectEnabled: number;
+    } {
+        let activeConnections = 0;
+        let unhealthyConnections = 0;
+        let pooledConnections = 0;
+        let autoReconnectEnabled = 0;
+
+        for (const [connectionId, connection] of this.connections) {
+            if (connection.status === 'Connected') {
+                activeConnections++;
+            }
+            if (connection.status === 'Error') {
+                unhealthyConnections++;
+            }
+            if (connection.isPooled) {
+                pooledConnections++;
+            }
+            if (connection.autoReconnect) {
+                autoReconnectEnabled++;
+            }
+        }
+
+        return {
+            totalConnections: this.connections.size,
+            activeConnections,
+            unhealthyConnections,
+            pooledConnections,
+            autoReconnectEnabled
+        };
     }
 }

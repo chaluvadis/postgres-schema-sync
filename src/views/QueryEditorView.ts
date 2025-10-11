@@ -209,7 +209,7 @@ export class QueryEditorView {
                 queryLength: query.length
             });
 
-            // Show progress
+            // Show progress with cancellation support
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: 'Executing Query',
@@ -218,19 +218,18 @@ export class QueryEditorView {
                 progress.report({ increment: 0, message: 'Executing query...' });
 
                 try {
-                    if (!tab.connectionId) {
-                        vscode.window.showErrorMessage('Please select a database connection for this query tab');
-                        return;
-                    }
-
                     const result = await this.queryExecutionService.executeQuery(
-                        tab.connectionId,
+                        tab.connectionId!,
                         query,
-                        { timeout: 30000, maxRows: 1000 },
+                        {
+                            timeout: 30000,
+                            maxRows: 1000,
+                            includeExecutionPlan: true
+                        },
                         token
                     );
 
-                    progress.report({ increment: 100, message: 'Query executed successfully' });
+                    progress.report({ increment: 50, message: 'Processing results...' });
 
                     // Update tab with execution info
                     tab.lastExecuted = new Date();
@@ -240,8 +239,26 @@ export class QueryEditorView {
                     // Add to history
                     this.addToHistory(query);
 
+                    progress.report({ increment: 100, message: `Query completed (${result.rowCount} rows)` });
+
                     // Update webview
                     await this.updateWebviewContent();
+
+                    // Show success message with row count
+                    vscode.window.showInformationMessage(
+                        `Query executed successfully: ${result.rowCount} rows returned in ${result.executionTime}ms`,
+                        'View Results', 'Export Results'
+                    ).then(selection => {
+                        if (selection === 'View Results') {
+                            // Results are already shown in the webview
+                        } else if (selection === 'Export Results') {
+                            this.webviewPanel?.webview.postMessage({
+                                command: 'exportResults',
+                                resultId: result.id,
+                                format: 'csv'
+                            });
+                        }
+                    });
 
                     Logger.info('Query executed successfully', 'executeQuery', {
                         tabId,
@@ -271,13 +288,27 @@ export class QueryEditorView {
 
                     await this.updateWebviewContent();
 
+                    // Show error with recovery options
+                    vscode.window.showErrorMessage(
+                        `Query execution failed: ${(error as Error).message}`,
+                        'Retry', 'View Logs', 'Edit Connection'
+                    ).then(selection => {
+                        if (selection === 'Retry') {
+                            this.executeQuery(query, tabId);
+                        } else if (selection === 'View Logs') {
+                            Logger.showOutputChannel();
+                        } else if (selection === 'Edit Connection') {
+                            vscode.commands.executeCommand('postgresql.editConnection');
+                        }
+                    });
+
                     throw error;
                 }
             });
 
         } catch (error) {
             Logger.error('Failed to execute query', error as Error);
-            vscode.window.showErrorMessage(`Query execution failed: ${(error as Error).message}`);
+            // Error message already shown above
         }
     }
 
@@ -358,19 +389,45 @@ export class QueryEditorView {
         if (!tab || !tab.connectionId) return;
 
         try {
+            // Get the current query up to cursor position for better context
+            const lines = tab.query.split('\n');
+            const currentLine = lines[position.line] || '';
+            const queryUpToCursor = currentLine.substring(0, position.column);
+
             const suggestions = await this.queryExecutionService.getIntelliSense(
                 tab.connectionId,
                 tab.query,
                 position
             );
 
+            // Filter suggestions based on current context
+            const filteredSuggestions = this.filterSuggestionsByContext(suggestions, queryUpToCursor);
+
             this.webviewPanel?.webview.postMessage({
                 command: 'intelliSenseResults',
-                suggestions
+                suggestions: filteredSuggestions,
+                position: position
             });
         } catch (error) {
             Logger.error('Failed to get IntelliSense', error as Error);
         }
+    }
+
+    private filterSuggestionsByContext(suggestions: any[], currentQuery: string): any[] {
+        const lastWord = currentQuery.split(/[\s,;()]+/).pop() || '';
+        const upperLastWord = lastWord.toUpperCase();
+
+        return suggestions.filter(suggestion => {
+            const upperLabel = suggestion.label.toUpperCase();
+
+            // If we're typing a word, filter suggestions that start with it
+            if (lastWord.length > 0) {
+                return upperLabel.startsWith(upperLastWord);
+            }
+
+            // Otherwise return all suggestions
+            return true;
+        });
     }
 
     private async exportResults(resultId: string, format: 'csv' | 'json' | 'excel'): Promise<void> {
@@ -457,6 +514,7 @@ export class QueryEditorView {
                         display: flex;
                         border-bottom: 1px solid var(--vscode-panel-border);
                         background: var(--vscode-tab-inactiveBackground);
+                        overflow-x: auto;
                     }
 
                     .tab {
@@ -467,6 +525,8 @@ export class QueryEditorView {
                         align-items: center;
                         gap: 5px;
                         font-size: 12px;
+                        white-space: nowrap;
+                        min-width: fit-content;
                     }
 
                     .tab.active {
@@ -483,6 +543,7 @@ export class QueryEditorView {
                         height: 16px;
                         cursor: pointer;
                         opacity: 0.7;
+                        margin-left: 5px;
                     }
 
                     .editor-container {
@@ -494,6 +555,7 @@ export class QueryEditorView {
                     .query-editor {
                         flex: 1;
                         padding: 10px;
+                        position: relative;
                     }
 
                     .query-textarea {
@@ -505,14 +567,59 @@ export class QueryEditorView {
                         border: 1px solid var(--vscode-input-border);
                         border-radius: 4px;
                         padding: 10px;
-                        font-family: 'Courier New', monospace;
+                        font-family: 'Courier New', 'Consolas', monospace;
                         font-size: 13px;
                         resize: vertical;
+                        line-height: 1.4;
                     }
 
                     .query-textarea:focus {
                         outline: none;
                         border-color: var(--vscode-focusBorder);
+                    }
+
+                    /* SQL Syntax Highlighting */
+                    .sql-keyword { color: var(--vscode-symbolIcon-keywordForeground); font-weight: bold; }
+                    .sql-function { color: var(--vscode-symbolIcon-functionForeground); }
+                    .sql-string { color: var(--vscode-symbolIcon-stringForeground); }
+                    .sql-number { color: var(--vscode-symbolIcon-numberForeground); }
+                    .sql-comment { color: var(--vscode-symbolIcon-commentForeground); font-style: italic; }
+                    .sql-operator { color: var(--vscode-symbolIcon-operatorForeground); }
+
+                    .autocomplete-container {
+                        position: absolute;
+                        background: var(--vscode-quickInput-background);
+                        border: 1px solid var(--vscode-quickInput-border);
+                        border-radius: 4px;
+                        max-height: 200px;
+                        overflow-y: auto;
+                        z-index: 1000;
+                        display: none;
+                    }
+
+                    .autocomplete-item {
+                        padding: 6px 12px;
+                        cursor: pointer;
+                        border-bottom: 1px solid var(--vscode-list-inactiveSelectionBackground);
+                    }
+
+                    .autocomplete-item:hover,
+                    .autocomplete-item.selected {
+                        background: var(--vscode-list-activeSelectionBackground);
+                        color: var(--vscode-list-activeSelectionForeground);
+                    }
+
+                    .autocomplete-item:last-child {
+                        border-bottom: none;
+                    }
+
+                    .autocomplete-label {
+                        font-weight: bold;
+                    }
+
+                    .autocomplete-detail {
+                        font-size: 11px;
+                        color: var(--vscode-descriptionForeground);
                     }
 
                     .results-container {
@@ -538,18 +645,28 @@ export class QueryEditorView {
                     table {
                         width: 100%;
                         border-collapse: collapse;
+                        font-size: 12px;
                     }
 
                     th, td {
-                        padding: 8px;
+                        padding: 6px 8px;
                         text-align: left;
                         border-bottom: 1px solid var(--vscode-list-inactiveSelectionBackground);
+                        max-width: 200px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
                     }
 
                     th {
                         background: var(--vscode-breadcrumb-background);
                         position: sticky;
                         top: 0;
+                        font-weight: bold;
+                    }
+
+                    tr:hover td {
+                        background: var(--vscode-list-hoverBackground);
                     }
 
                     .btn {
@@ -571,6 +688,11 @@ export class QueryEditorView {
                         color: var(--vscode-button-secondaryForeground);
                     }
 
+                    .btn-primary {
+                        background: var(--vscode-button-background);
+                        color: var(--vscode-button-foreground);
+                    }
+
                     .connection-selector {
                         padding: 4px 8px;
                         border: 1px solid var(--vscode-input-border);
@@ -585,6 +707,9 @@ export class QueryEditorView {
                         color: var(--vscode-statusBar-foreground);
                         font-size: 11px;
                         border-top: 1px solid var(--vscode-panel-border);
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
                     }
 
                     .error {
@@ -594,6 +719,29 @@ export class QueryEditorView {
                         margin: 10px;
                         border-radius: 4px;
                         border: 1px solid var(--vscode-inputValidation-errorBorder);
+                    }
+
+                    .success {
+                        color: var(--vscode-charts-green);
+                        background: var(--vscode-charts-background);
+                        padding: 10px;
+                        margin: 10px;
+                        border-radius: 4px;
+                        border: 1px solid var(--vscode-charts-green);
+                    }
+
+                    .loading {
+                        display: inline-block;
+                        width: 12px;
+                        height: 12px;
+                        border: 2px solid var(--vscode-progressBar-background);
+                        border-radius: 50%;
+                        border-top-color: var(--vscode-progressBar-foreground);
+                        animation: spin 1s ease-in-out infinite;
+                    }
+
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
                     }
                 </style>
             </head>
@@ -632,21 +780,26 @@ export class QueryEditorView {
                             <textarea
                                 class="query-textarea"
                                 id="queryTextarea"
-                                placeholder="Enter your SQL query here..."
+                                placeholder="Enter your SQL query here...&#10;&#10;Tips:&#10;- Use Ctrl+Enter (Cmd+Enter on Mac) to execute&#10;- Use Tab for autocomplete&#10;- Use Ctrl+Space for manual autocomplete"
                                 oninput="updateQuery()"
-                                onkeydown="handleKeyDown(event)">${activeTab.query}</textarea>
+                                onkeydown="handleKeyDown(event)"
+                                spellcheck="false">${activeTab.query}</textarea>
+
+                            <div id="autocompleteContainer" class="autocomplete-container"></div>
                         </div>
 
                         ${activeTab.executionResults?.length ? `
                             <div class="results-container">
                                 <div class="results-header">
                                     <div>
-                                        <strong>Results</strong>
+                                        <strong>Query Results</strong>
                                         (${activeTab.executionResults[0].rowCount} rows, ${activeTab.executionResults[0].executionTime}ms)
+                                        ${activeTab.executionResults[0].executionPlan ? '<span title="Execution plan available">📊</span>' : ''}
                                     </div>
                                     <div>
-                                        <button class="btn btn-secondary" onclick="exportResults('${activeTab.executionResults[0].id}', 'csv')">Export CSV</button>
-                                        <button class="btn btn-secondary" onclick="exportResults('${activeTab.executionResults[0].id}', 'json')">Export JSON</button>
+                                        <button class="btn btn-secondary" onclick="exportResults('${activeTab.executionResults[0].id}', 'csv')" title="Export as CSV">📄 CSV</button>
+                                        <button class="btn btn-secondary" onclick="exportResults('${activeTab.executionResults[0].id}', 'json')" title="Export as JSON">📋 JSON</button>
+                                        <button class="btn btn-secondary" onclick="exportResults('${activeTab.executionResults[0].id}', 'excel')" title="Export as Excel">📊 Excel</button>
                                     </div>
                                 </div>
                                 <div class="results-table">
@@ -656,7 +809,10 @@ export class QueryEditorView {
                         ` : ''}
                     ` : `
                         <div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">
-                            Select a tab to start editing queries
+                            <div style="margin-bottom: 20px;">Select a tab to start editing queries</div>
+                            <div style="font-size: 12px; opacity: 0.7;">
+                                💡 Tip: Use the toolbar buttons to execute queries, format SQL, and manage tabs
+                            </div>
                         </div>
                     `}
                 </div>
@@ -669,13 +825,19 @@ export class QueryEditorView {
                 <script>
                     const vscode = acquireVsCodeApi();
                     let activeTabId = '${activeTab?.id || ''}';
+                    let autocompleteVisible = false;
+                    let selectedAutocompleteIndex = -1;
+                    let autocompleteSuggestions = [];
 
                     function executeQuery() {
                         const query = document.getElementById('queryTextarea').value.trim();
                         if (!query) {
-                            vscode.postMessage({ command: 'showError', message: 'Please enter a query to execute' });
+                            showNotification('Please enter a query to execute', 'warning');
                             return;
                         }
+
+                        // Hide autocomplete if visible
+                        hideAutocomplete();
 
                         vscode.postMessage({
                             command: 'executeQuery',
@@ -691,17 +853,166 @@ export class QueryEditorView {
                             tabId: activeTabId,
                             query: query
                         });
+
+                        // Trigger autocomplete after a short delay
+                        setTimeout(() => {
+                            triggerAutocomplete();
+                        }, 300);
                     }
 
                     function handleKeyDown(event) {
+                        const textarea = document.getElementById('queryTextarea');
+
+                        if (autocompleteVisible) {
+                            switch (event.key) {
+                                case 'ArrowDown':
+                                    event.preventDefault();
+                                    selectNextAutocomplete();
+                                    return;
+                                case 'ArrowUp':
+                                    event.preventDefault();
+                                    selectPreviousAutocomplete();
+                                    return;
+                                case 'Enter':
+                                    if (selectedAutocompleteIndex >= 0) {
+                                        event.preventDefault();
+                                        applyAutocomplete();
+                                        return;
+                                    }
+                                    break;
+                                case 'Escape':
+                                    event.preventDefault();
+                                    hideAutocomplete();
+                                    return;
+                            }
+                        }
+
                         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                             event.preventDefault();
                             executeQuery();
                         }
+
+                        if (event.key === 'Tab' && !event.shiftKey) {
+                            event.preventDefault();
+                            if (autocompleteVisible && selectedAutocompleteIndex >= 0) {
+                                applyAutocomplete();
+                            } else {
+                                // Basic tab indentation
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const newQuery = query.substring(0, start) + '    ' + query.substring(end);
+                                textarea.value = newQuery;
+                                textarea.selectionStart = textarea.selectionEnd = start + 4;
+                                updateQuery();
+                            }
+                        }
+                    }
+
+                    function triggerAutocomplete() {
+                        const textarea = document.getElementById('queryTextarea');
+                        const cursorPosition = getCursorPosition(textarea);
+
+                        vscode.postMessage({
+                            command: 'getIntelliSense',
+                            tabId: activeTabId,
+                            position: cursorPosition
+                        });
+                    }
+
+                    function showAutocomplete(suggestions, position) {
+                        autocompleteSuggestions = suggestions;
+                        if (suggestions.length === 0) {
+                            hideAutocomplete();
+                            return;
+                        }
+
+                        const textarea = document.getElementById('queryTextarea');
+                        const container = document.getElementById('autocompleteContainer');
+                        const rect = textarea.getBoundingClientRect();
+
+                        // Calculate position for autocomplete popup
+                        const lineHeight = 20;
+                        const charWidth = 8;
+                        const x = position.column * charWidth;
+                        const y = position.line * lineHeight;
+
+                        container.innerHTML = suggestions.map((suggestion, index) =>
+                            \`<div class="autocomplete-item \${index === 0 ? 'selected' : ''}" onclick="selectAutocomplete(\${index})">
+                                <div class="autocomplete-label">\${suggestion.label}</div>
+                                <div class="autocomplete-detail">\${suggestion.detail || ''}</div>
+                            </div>\`
+                        ).join('');
+
+                        container.style.left = \`\${x}px\`;
+                        container.style.top = \`\${y + lineHeight}px\`;
+                        container.style.display = 'block';
+                        autocompleteVisible = true;
+                        selectedAutocompleteIndex = 0;
+                    }
+
+                    function hideAutocomplete() {
+                        document.getElementById('autocompleteContainer').style.display = 'none';
+                        autocompleteVisible = false;
+                        selectedAutocompleteIndex = -1;
+                    }
+
+                    function selectNextAutocomplete() {
+                        if (!autocompleteVisible) return;
+
+                        const items = document.querySelectorAll('.autocomplete-item');
+                        if (selectedAutocompleteIndex < items.length - 1) {
+                            items[selectedAutocompleteIndex].classList.remove('selected');
+                            selectedAutocompleteIndex++;
+                            items[selectedAutocompleteIndex].classList.add('selected');
+                        }
+                    }
+
+                    function selectPreviousAutocomplete() {
+                        if (!autocompleteVisible) return;
+
+                        const items = document.querySelectorAll('.autocomplete-item');
+                        if (selectedAutocompleteIndex > 0) {
+                            items[selectedAutocompleteIndex].classList.remove('selected');
+                            selectedAutocompleteIndex--;
+                            items[selectedAutocompleteIndex].classList.add('selected');
+                        }
+                    }
+
+                    function selectAutocomplete(index) {
+                        selectedAutocompleteIndex = index;
+                        applyAutocomplete();
+                    }
+
+                    function applyAutocomplete() {
+                        if (selectedAutocompleteIndex < 0 || !autocompleteSuggestions[selectedAutocompleteIndex]) return;
+
+                        const suggestion = autocompleteSuggestions[selectedAutocompleteIndex];
+                        const textarea = document.getElementById('queryTextarea');
+                        const start = textarea.selectionStart;
+                        const line = textarea.value.substring(0, start).split('\\n').pop();
+                        const wordMatch = line.match(/\\w*$/);
+                        const wordStart = wordMatch ? start - wordMatch[0].length : start;
+
+                        const newQuery = textarea.value.substring(0, wordStart) + suggestion.label + textarea.value.substring(start);
+                        textarea.value = newQuery;
+                        textarea.selectionStart = textarea.selectionEnd = wordStart + suggestion.label.length;
+                        updateQuery();
+                        hideAutocomplete();
+                    }
+
+                    function getCursorPosition(textarea) {
+                        const value = textarea.value;
+                        const start = textarea.selectionStart;
+                        const lines = value.substring(0, start).split('\\n');
+                        const line = lines.length - 1;
+                        const column = lines[lines.length - 1].length;
+
+                        return { line, column };
                     }
 
                     function switchTab(tabId) {
                         activeTabId = tabId;
+                        hideAutocomplete();
                         vscode.postMessage({
                             command: 'switchTab',
                             tabId: tabId
@@ -717,6 +1028,7 @@ export class QueryEditorView {
                     }
 
                     function newTab() {
+                        hideAutocomplete();
                         vscode.postMessage({ command: 'newTab' });
                     }
 
@@ -755,18 +1067,125 @@ export class QueryEditorView {
                         });
                     }
 
+                    function showNotification(message, type = 'info') {
+                        const notification = document.createElement('div');
+                        notification.className = \`notification \${type}\`;
+                        notification.textContent = message;
+                        notification.style.cssText = \`
+                            position: fixed;
+                            top: 20px;
+                            right: 20px;
+                            padding: 12px 16px;
+                            border-radius: 4px;
+                            z-index: 1001;
+                            font-size: 12px;
+                            max-width: 300px;
+                            word-wrap: break-word;
+                        \`;
+
+                        if (type === 'error') {
+                            notification.style.backgroundColor = 'var(--vscode-inputValidation-errorBackground)';
+                            notification.style.color = 'var(--vscode-errorForeground)';
+                            notification.style.border = '1px solid var(--vscode-inputValidation-errorBorder)';
+                        } else if (type === 'warning') {
+                            notification.style.backgroundColor = 'var(--vscode-inputValidation-warningBackground)';
+                            notification.style.color = 'var(--vscode-inputValidation-warningForeground)';
+                            notification.style.border = '1px solid var(--vscode-inputValidation-warningBorder)';
+                        } else {
+                            notification.style.backgroundColor = 'var(--vscode-charts-green)';
+                            notification.style.color = 'white';
+                        }
+
+                        document.body.appendChild(notification);
+
+                        setTimeout(() => {
+                            if (notification.parentNode) {
+                                notification.parentNode.removeChild(notification);
+                            }
+                        }, 3000);
+                    }
+
                     // Handle messages from extension
                     window.addEventListener('message', event => {
                         const message = event.data;
                         switch (message.command) {
+                            case 'intelliSenseResults':
+                                showAutocomplete(message.suggestions, message.position);
+                                break;
                             case 'queryExecuted':
-                                // Update results display
                                 location.reload();
                                 break;
                             case 'error':
-                                alert(message.message);
+                                showNotification(message.message, 'error');
+                                break;
+                            case 'warning':
+                                showNotification(message.message, 'warning');
+                                break;
+                            case 'info':
+                                showNotification(message.message, 'info');
                                 break;
                         }
+                    });
+
+                    // Auto-trigger autocomplete on typing
+                    let autocompleteTimer;
+                    document.getElementById('queryTextarea').addEventListener('input', () => {
+                        clearTimeout(autocompleteTimer);
+                        autocompleteTimer = setTimeout(triggerAutocomplete, 500);
+                    });
+
+                    // Hide autocomplete when clicking outside
+                    document.addEventListener('click', (event) => {
+                        if (!event.target.closest('.autocomplete-container') && !event.target.closest('.query-textarea')) {
+                            hideAutocomplete();
+                        }
+                    });
+
+                    // Table interaction functions
+                    function selectRow(rowIndex) {
+                        const rows = document.querySelectorAll('#resultsTable tbody tr');
+                        rows.forEach((row, index) => {
+                            if (index === rowIndex) {
+                                row.style.backgroundColor = 'var(--vscode-list-activeSelectionBackground)';
+                                row.style.color = 'var(--vscode-list-activeSelectionForeground)';
+                            } else {
+                                row.style.backgroundColor = '';
+                                row.style.color = '';
+                            }
+                        });
+                    }
+
+                    function sortTable(columnIndex) {
+                        // Basic sorting functionality - can be enhanced
+                        showNotification('Column sorting not yet implemented', 'info');
+                    }
+
+                    // Keyboard shortcuts for better productivity
+                    document.addEventListener('keydown', (event) => {
+                        // Ctrl+Shift+F to format query
+                        if (event.ctrlKey && event.shiftKey && event.key === 'F') {
+                            event.preventDefault();
+                            formatQuery();
+                        }
+
+                        // Ctrl+Shift+S to add to favorites
+                        if (event.ctrlKey && event.shiftKey && event.key === 'S') {
+                            event.preventDefault();
+                            addToFavorites();
+                        }
+
+                        // Ctrl+Shift+N for new tab
+                        if (event.ctrlKey && event.shiftKey && event.key === 'N') {
+                            event.preventDefault();
+                            newTab();
+                        }
+                    });
+
+                    // Show keyboard shortcuts on first load
+                    window.addEventListener('load', () => {
+                        setTimeout(() => {
+                            showNotification('💡 Tip: Use Ctrl+Enter to execute queries, Tab for autocomplete', 'info');
+                        }, 1000);
                     });
                 </script>
             </body>
@@ -776,29 +1195,70 @@ export class QueryEditorView {
 
     private generateResultsTable(result: QueryResult): string {
         if (result.error) {
-            return `<div class="error">${result.error}</div>`;
+            return `
+                <div class="error">
+                    <strong>Query Error:</strong><br>
+                    ${result.error}
+                </div>
+            `;
         }
 
         if (!result.columns.length || !result.rows.length) {
-            return '<div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">No data returned</div>';
+            return `
+                <div style="padding: 40px; text-align: center; color: var(--vscode-descriptionForeground);">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                    <div>No data returned</div>
+                    <div style="font-size: 12px; margin-top: 8px; opacity: 0.7;">
+                        The query executed successfully but didn't return any rows
+                    </div>
+                </div>
+            `;
         }
 
-        const headers = result.columns.map(col =>
-            `<th>${col.name} <span style="color: var(--vscode-descriptionForeground);">(${col.type})</span></th>`
+        const headers = result.columns.map((col, index) =>
+            `<th title="${col.type}" onclick="sortTable(${index})">
+                ${col.name}
+                <span style="color: var(--vscode-descriptionForeground); font-weight: normal;">(${col.type})</span>
+            </th>`
         ).join('');
 
-        const rows = result.rows.slice(0, 100).map(row =>
-            '<tr>' + row.map(cell =>
-                `<td>${cell !== null ? String(cell) : '<em>null</em>'}</td>`
-            ).join('') + '</tr>'
+        const rows = result.rows.slice(0, 500).map((row, rowIndex) =>
+            `<tr onclick="selectRow(${rowIndex})" style="cursor: pointer;">` +
+            row.map((cell, cellIndex) => {
+                const cellValue = cell !== null ? String(cell) : '<em style="opacity: 0.6;">null</em>';
+                const title = cell !== null ? cellValue : 'NULL value';
+
+                // Format different data types
+                let formattedValue = cellValue;
+                if (cell !== null) {
+                    if (typeof cell === 'boolean') {
+                        formattedValue = cell ? '✓' : '✗';
+                    } else if (cell instanceof Date) {
+                        formattedValue = cell.toLocaleString();
+                    } else if (typeof cell === 'number') {
+                        formattedValue = Number(cell).toLocaleString();
+                    } else if (cellValue.length > 50) {
+                        formattedValue = cellValue.substring(0, 50) + '...';
+                    }
+                }
+
+                return `<td title="${title.replace(/"/g, '"')}">${formattedValue}</td>`;
+            }).join('') + '</tr>'
         ).join('');
+
+        const totalRows = result.rowCount;
+        const displayedRows = Math.min(result.rows.length, 500);
 
         return `
-            <table>
+            <table id="resultsTable">
                 <thead><tr>${headers}</tr></thead>
                 <tbody>${rows}</tbody>
             </table>
-            ${result.rows.length > 100 ? `<div style="padding: 10px; text-align: center; color: var(--vscode-descriptionForeground);">Showing first 100 rows of ${result.rowCount} total</div>` : ''}
+            <div style="padding: 10px; text-align: center; color: var(--vscode-descriptionForeground); font-size: 11px; border-top: 1px solid var(--vscode-panel-border);">
+                Showing ${displayedRows.toLocaleString()} of ${totalRows.toLocaleString()} rows
+                ${totalRows > 500 ? ' (first 500 rows displayed)' : ''}
+                ${result.executionPlan ? `<span style="margin-left: 16px;">📊 Execution plan available</span>` : ''}
+            </div>
         `;
     }
 
