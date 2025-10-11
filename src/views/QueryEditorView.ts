@@ -1224,7 +1224,7 @@ export class QueryEditorView {
 
         const rows = result.rows.slice(0, 500).map((row, rowIndex) =>
             `<tr onclick="selectRow(${rowIndex})" style="cursor: pointer;">` +
-            row.map((cell, cellIndex) => {
+            row.map((cell) => {
                 const cellValue = cell !== null ? String(cell) : '<em style="opacity: 0.6;">null</em>';
                 const title = cell !== null ? cellValue : 'NULL value';
 
