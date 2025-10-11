@@ -9,3 +9,4 @@ test/
 **.d.ts.map
 src/**.js
 src/**.js.map
+.DS_Store
