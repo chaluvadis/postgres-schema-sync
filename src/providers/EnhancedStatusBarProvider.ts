@@ -243,6 +243,8 @@ export class EnhancedStatusBarProvider {
 
         const connections = this.connectionManager.getConnections();
         const connectedCount = connections.filter(c => c.status === 'Connected').length;
+        const errorCount = connections.filter(c => c.status === 'Error').length;
+        const connectingCount = connections.filter(c => c.status === 'Connecting').length;
         const totalCount = connections.length;
 
         let text = '';
@@ -251,19 +253,39 @@ export class EnhancedStatusBarProvider {
 
         if (totalCount === 0) {
             text = '$(database) No connections';
-            tooltip = 'No PostgreSQL connections configured';
+            tooltip = 'No PostgreSQL connections configured\nClick to add a connection';
         } else if (connectedCount === totalCount) {
             text = `$(check) PostgreSQL: ${connectedCount}/${totalCount}`;
-            tooltip = `${connectedCount} of ${totalCount} connections active`;
+            tooltip = `✅ All ${connectedCount} connections active\n📊 Database connectivity: 100%`;
             color = new vscode.ThemeColor('statusBarItem.activeBackground');
         } else if (connectedCount > 0) {
             text = `$(warning) PostgreSQL: ${connectedCount}/${totalCount}`;
-            tooltip = `${connectedCount} of ${totalCount} connections active`;
+            const successRate = Math.round((connectedCount / totalCount) * 100);
+            tooltip = `⚠️ ${connectedCount} of ${totalCount} connections active\n📊 Success rate: ${successRate}%\n❌ ${errorCount} connection errors`;
+            color = new vscode.ThemeColor('statusBarItem.warningBackground');
+        } else if (connectingCount > 0) {
+            text = `$(sync~spin) PostgreSQL: ${connectingCount} connecting`;
+            tooltip = `🔄 ${connectingCount} connection(s) in progress\n⏳ Attempting to establish connections`;
             color = new vscode.ThemeColor('statusBarItem.warningBackground');
         } else {
             text = `$(x) PostgreSQL: ${totalCount} disconnected`;
-            tooltip = 'All PostgreSQL connections inactive';
+            tooltip = `❌ All ${totalCount} connections inactive\n🔧 Check connection settings\n📋 Click to manage connections`;
             color = new vscode.ThemeColor('statusBarItem.errorBackground');
+        }
+
+        // Add detailed connection information to tooltip
+        if (totalCount > 0) {
+            tooltip += '\n\n📋 Connection Details:';
+            connections.slice(0, 5).forEach(conn => {
+                const statusIcon = conn.status === 'Connected' ? '✅' :
+                                 conn.status === 'Error' ? '❌' :
+                                 conn.status === 'Connecting' ? '🔄' : '⚫';
+                tooltip += `\n  ${statusIcon} ${conn.name} (${conn.host}:${conn.port})`;
+            });
+
+            if (connections.length > 5) {
+                tooltip += `\n  ... and ${connections.length - 5} more`;
+            }
         }
 
         item.text = text;

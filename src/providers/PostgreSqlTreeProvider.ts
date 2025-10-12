@@ -130,7 +130,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
                 new TreeItem(
                     'No PostgreSQL Connections',
                     'noConnections',
-                    'database',
+                    new vscode.ThemeIcon('database'),
                     vscode.TreeItemCollapsibleState.None,
                     {
                         command: 'postgresql.addConnection',
@@ -149,31 +149,66 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
 
         return this.connections.map(connection => {
             const isConnected = connection.status === 'Connected';
-            const statusColor = isConnected ?
-                new vscode.ThemeColor('debugIcon.startForeground') :
-                new vscode.ThemeColor('debugIcon.stopForeground');
+            const hasError = connection.status === 'Error';
+            const isConnecting = connection.status === 'Connecting';
+
+            // Enhanced status indicators
+            let icon: vscode.ThemeIcon;
+            let statusColor: vscode.ThemeColor | undefined;
+            let statusEmoji = '';
+
+            if (isConnected) {
+                icon = new vscode.ThemeIcon('debug-start');
+                statusColor = new vscode.ThemeColor('debugIcon.startForeground');
+                statusEmoji = '🟢';
+            } else if (hasError) {
+                icon = new vscode.ThemeIcon('error');
+                statusColor = new vscode.ThemeColor('debugIcon.stopForeground');
+                statusEmoji = '🔴';
+            } else if (isConnecting) {
+                icon = new vscode.ThemeIcon('sync~spin');
+                statusColor = new vscode.ThemeColor('debugIcon.pauseForeground');
+                statusEmoji = '🟡';
+            } else {
+                icon = new vscode.ThemeIcon('debug-breakpoint');
+                statusColor = new vscode.ThemeColor('debugIcon.stopForeground');
+                statusEmoji = '⚫';
+            }
+
+            // Enhanced tooltip with detailed connection information
+            const tooltip = [
+                `Connection: ${connection.name}`,
+                `Host: ${connection.host}:${connection.port}`,
+                `Database: ${connection.database}`,
+                `Status: ${connection.status}`,
+                ...(connection.lastConnected ? [`Last Connected: ${new Date(connection.lastConnected).toLocaleString()}`] : []),
+                ...(connection.lastError ? [`Error: ${connection.lastError}`] : [])
+            ].join('\n');
+
+            // Enhanced description with connection details
+            const description = `${connection.host}:${connection.port} • ${connection.database}`;
 
             const item = new TreeItem(
-                connection.name,
+                `${statusEmoji} ${connection.name}`,
                 'connection',
-                isConnected ? new vscode.ThemeIcon('debug-start') : new vscode.ThemeIcon('debug-breakpoint'),
+                icon,
                 vscode.TreeItemCollapsibleState.Collapsed,
                 {
                     command: 'postgresql.testConnection',
                     title: 'Test Connection',
                     arguments: [{ id: connection.id, name: connection.name }]
                 },
-                `${connection.host}:${connection.port}${isConnected ? ' (Connected)' : ' (Disconnected)'}`,
+                tooltip,
                 connection.id,
                 undefined,
                 undefined,
                 'connection',
-                isConnected ? 'Connected' : 'Disconnected',
+                description,
                 statusColor
             );
 
             // Add enhanced context menu for connections
-            item.contextValue = 'connection';
+            item.contextValue = `connection${isConnected ? '' : ' disconnected'}${hasError ? ' error' : ''}`;
 
             return item;
         });
@@ -238,18 +273,29 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
                     .map(([type, count]) => `${count} ${type}`)
                     .join(', ');
 
+                // Enhanced tooltip for schema
+                const connectionObj = this.connections.find(c => c.id === connectionId);
+                const tooltip = [
+                    `Schema: ${schemaName}`,
+                    `Total Objects: ${schemaObjects.length}`,
+                    `Connection: ${connectionObj?.name}`,
+                    ``,
+                    `Object Breakdown:`,
+                    ...Object.entries(objectCounts).map(([type, count]) => `  ${count} ${type}${count !== 1 ? 's' : ''}`)
+                ].join('\n');
+
                 return new TreeItem(
                     schemaName,
                     'schema',
                     new vscode.ThemeIcon('symbol-namespace'),
                     vscode.TreeItemCollapsibleState.Collapsed,
                     undefined,
-                    summary,
+                    tooltip,
                     connectionId,
                     schemaName,
                     undefined,
                     'schema',
-                    `${schemaObjects.length} objects`
+                    summary
                 );
             });
         } catch (error) {
@@ -277,7 +323,20 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
                     ? vscode.TreeItemCollapsibleState.Collapsed
                     : vscode.TreeItemCollapsibleState.None;
 
-                const description = obj.type;
+                // Enhanced tooltip for database objects
+                const tooltip = [
+                    `Object: ${obj.name}`,
+                    `Type: ${obj.type}`,
+                    `Schema: ${obj.schema}`,
+                    ...(obj.sizeInBytes ? [`Size: ${(obj.sizeInBytes / 1024).toFixed(2)} KB`] : []),
+                    ...(obj.modifiedAt ? [`Last Modified: ${new Date(obj.modifiedAt).toLocaleString()}`] : []),
+                    ...(obj.createdAt ? [`Created: ${new Date(obj.createdAt).toLocaleString()}`] : []),
+                    ...(obj.owner ? [`Owner: ${obj.owner}`] : [])
+                ].join('\n');
+
+                // Enhanced description with additional metadata
+                const sizeInfo = obj.sizeInBytes ? ` (${(obj.sizeInBytes / 1024).toFixed(1)} KB)` : '';
+                const description = obj.type + sizeInfo;
 
                 return new TreeItem(
                     obj.name,
@@ -289,7 +348,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
                         title: 'View Details',
                         arguments: [obj]
                     },
-                    `${obj.type}: ${obj.name}`,
+                    tooltip,
                     connectionId,
                     schemaName,
                     obj.name,

@@ -91,24 +91,59 @@ export class NotificationManager {
     private updateStatusBar(): void {
         const unreadCount = Array.from(this.notifications.values()).filter(n => !n.read).length;
         const errorCount = Array.from(this.notifications.values()).filter(n => n.type === 'error').length;
+        const warningCount = Array.from(this.notifications.values()).filter(n => n.type === 'warning').length;
+        const urgentCount = Array.from(this.notifications.values()).filter(n => n.priority === 'urgent').length;
 
         let statusText = '$(bell)';
         let tooltip = 'PostgreSQL Notifications';
+        let color: vscode.ThemeColor | undefined;
 
-        if (errorCount > 0) {
+        if (urgentCount > 0) {
+            statusText = `$(bell-dot) ${urgentCount} urgent`;
+            tooltip = `🚨 ${urgentCount} urgent notification${urgentCount > 1 ? 's' : ''} requiring immediate attention`;
+            color = new vscode.ThemeColor('statusBarItem.errorBackground');
+        } else if (errorCount > 0) {
             statusText = `$(error) ${errorCount} error${errorCount > 1 ? 's' : ''}`;
-            tooltip = `${errorCount} error notification${errorCount > 1 ? 's' : ''}`;
-            this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+            tooltip = `❌ ${errorCount} error notification${errorCount > 1 ? 's' : ''}\n⚠️ ${warningCount} warning${warningCount > 1 ? 's' : ''}`;
+            color = new vscode.ThemeColor('statusBarItem.errorBackground');
+        } else if (warningCount > 0) {
+            statusText = `$(warning) ${warningCount} warning${warningCount > 1 ? 's' : ''}`;
+            tooltip = `⚠️ ${warningCount} warning notification${warningCount > 1 ? 's' : ''}`;
+            color = new vscode.ThemeColor('statusBarItem.warningBackground');
         } else if (unreadCount > 0) {
             statusText = `$(bell-dot) ${unreadCount} unread`;
-            tooltip = `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`;
+            tooltip = `📬 ${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}\nClick to view details`;
         } else {
             statusText = '$(bell)';
-            tooltip = 'No unread notifications';
+            tooltip = '✅ No unread notifications\nAll caught up!';
+        }
+
+        // Add detailed breakdown to tooltip
+        if (unreadCount > 0) {
+            const stats = this.getStatistics();
+            tooltip += '\n\n📊 Breakdown:';
+            if (stats.byType.error > 0) tooltip += `\n  ❌ Errors: ${stats.byType.error}`;
+            if (stats.byType.warning > 0) tooltip += `\n  ⚠️ Warnings: ${stats.byType.warning}`;
+            if (stats.byType.success > 0) tooltip += `\n  ✅ Success: ${stats.byType.success}`;
+            if (stats.byType.info > 0) tooltip += `\n  ℹ️ Info: ${stats.byType.info}`;
+
+            // Show top categories
+            const topCategories = Object.entries(stats.byCategory)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 3);
+            if (topCategories.length > 0) {
+                tooltip += '\n\n📂 Top Categories:';
+                topCategories.forEach(([category, count]) => {
+                    tooltip += `\n  📁 ${category}: ${count}`;
+                });
+            }
         }
 
         this.statusBarItem.text = statusText;
         this.statusBarItem.tooltip = tooltip;
+        if (color) {
+            this.statusBarItem.backgroundColor = color;
+        }
         this.statusBarItem.show();
     }
 
