@@ -105,6 +105,111 @@ export interface DotNetQueryColumn {
     primaryKey?: boolean;
 }
 
+// Enhanced interfaces for pg-drive metadata extractors
+export interface DotNetMetadataExtractionOptions {
+    includeDependencies?: boolean;
+    includePermissions?: boolean;
+    includeStatistics?: boolean;
+    cancellationToken?: any;
+}
+
+export interface DotNetColumnMetadata {
+    name: string;
+    dataType: string;
+    isNullable: boolean;
+    defaultValue?: string;
+    isPrimaryKey: boolean;
+    isForeignKey: boolean;
+    references?: {
+        table: string;
+        column: string;
+        schema: string;
+    };
+    constraints: DotNetColumnConstraint[];
+    statistics?: {
+        distinctValues: number;
+        nullCount: number;
+        avgLength?: number;
+    };
+}
+
+export interface DotNetColumnConstraint {
+    name: string;
+    type: 'CHECK' | 'NOT NULL' | 'UNIQUE' | 'PRIMARY KEY' | 'FOREIGN KEY';
+    definition: string;
+    isEnabled: boolean;
+}
+
+export interface DotNetIndexMetadata {
+    name: string;
+    tableName: string;
+    schema: string;
+    isUnique: boolean;
+    isPartial: boolean;
+    isFunctional: boolean;
+    columnNames: string[];
+    includedColumns?: string[];
+    whereClause?: string;
+    definition: string;
+    statistics?: {
+        sizeInBytes: number;
+        indexScans: number;
+        tuplesRead: number;
+        tuplesFetched: number;
+    };
+}
+
+export interface DotNetConstraintMetadata {
+    name: string;
+    type: 'PRIMARY KEY' | 'FOREIGN KEY' | 'CHECK' | 'UNIQUE';
+    tableName: string;
+    schema: string;
+    isEnabled: boolean;
+    isDeferrable: boolean;
+    definition: string;
+    columns: string[];
+    referencedTable?: string;
+    referencedColumns?: string[];
+}
+
+export interface DotNetViewMetadata {
+    name: string;
+    schema: string;
+    definition: string;
+    isMaterialized: boolean;
+    columns: DotNetViewColumn[];
+    dependencies: DotNetViewDependency[];
+    statistics?: {
+        rowCount?: number;
+        sizeInBytes?: number;
+        lastRefresh?: string;
+    };
+}
+
+export interface DotNetViewColumn {
+    name: string;
+    dataType: string;
+    isNullable: boolean;
+    sourceExpression: string;
+}
+
+export interface DotNetViewDependency {
+    type: 'table' | 'view' | 'function';
+    name: string;
+    schema: string;
+}
+
+export interface DotNetMigrationProgressReport {
+    stage: string;
+    completedOperations: number;
+    totalOperations: number;
+    currentOperation: string;
+    percentage: number;
+    estimatedTimeRemaining?: string;
+    errors: string[];
+    warnings: string[];
+}
+
 export class DotNetIntegrationService {
     private static instance: DotNetIntegrationService;
     private isInitialized: boolean = false;
@@ -204,6 +309,122 @@ export class DotNetIntegrationService {
                         assemblyFile: dllPath,
                         typeName: 'PostgreSqlSchemaCompareSync.PostgreSqlSchemaCompareSync',
                         methodName: 'ExecuteQueryAsync'
+                    }),
+
+                    // Enhanced metadata extractors
+                    ExtractColumnMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.ColumnMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractIndexMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.IndexMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractConstraintMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.ConstraintMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractViewMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.ViewMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractFunctionMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.FunctionMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractTriggerMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.TriggerMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractSequenceMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.SequenceMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractMaterializedViewMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.MaterializedViewMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractPartitionMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.PartitionMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractCollationMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.CollationMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractForeignTableMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.ForeignTableMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractTypeMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.TypeMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractProcedureMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.ProcedureMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractRoleMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.RoleMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractTablespaceMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.TablespaceMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    ExtractExtensionMetadataAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Metadata.ExtensionMetadataExtractor',
+                        methodName: 'ExtractMetadataAsync'
+                    }),
+
+                    // Enhanced migration and comparison methods
+                    GenerateMigrationWithProgressAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Migration.MigrationScriptGenerator',
+                        methodName: 'GenerateMigrationWithProgressAsync'
+                    }),
+
+                    ExecuteMigrationWithProgressAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Migration.MigrationExecutor',
+                        methodName: 'ExecuteMigrationWithProgressAsync'
+                    }),
+
+                    CompareSchemasDetailedAsync: edge.func({
+                        assemblyFile: dllPath,
+                        typeName: 'PostgreSqlSchemaCompareSync.Core.Comparison.Schema.SchemaComparator',
+                        methodName: 'CompareSchemasDetailedAsync'
                     })
                 };
 
@@ -219,7 +440,30 @@ export class DotNetIntegrationService {
                     GenerateMigrationAsync: this.createMockDotNetFunction('GenerateMigrationAsync'),
                     ExecuteMigrationAsync: this.createMockDotNetFunction('ExecuteMigrationAsync'),
                     GetObjectDetailsAsync: this.createMockDotNetFunction('GetObjectDetailsAsync'),
-                    ExecuteQueryAsync: this.createMockDotNetFunction('ExecuteQueryAsync')
+                    ExecuteQueryAsync: this.createMockDotNetFunction('ExecuteQueryAsync'),
+
+                    // Enhanced metadata extractors - mock implementations
+                    ExtractColumnMetadataAsync: this.createMockDotNetFunction('ExtractColumnMetadataAsync'),
+                    ExtractIndexMetadataAsync: this.createMockDotNetFunction('ExtractIndexMetadataAsync'),
+                    ExtractConstraintMetadataAsync: this.createMockDotNetFunction('ExtractConstraintMetadataAsync'),
+                    ExtractViewMetadataAsync: this.createMockDotNetFunction('ExtractViewMetadataAsync'),
+                    ExtractFunctionMetadataAsync: this.createMockDotNetFunction('ExtractFunctionMetadataAsync'),
+                    ExtractTriggerMetadataAsync: this.createMockDotNetFunction('ExtractTriggerMetadataAsync'),
+                    ExtractSequenceMetadataAsync: this.createMockDotNetFunction('ExtractSequenceMetadataAsync'),
+                    ExtractMaterializedViewMetadataAsync: this.createMockDotNetFunction('ExtractMaterializedViewMetadataAsync'),
+                    ExtractPartitionMetadataAsync: this.createMockDotNetFunction('ExtractPartitionMetadataAsync'),
+                    ExtractCollationMetadataAsync: this.createMockDotNetFunction('ExtractCollationMetadataAsync'),
+                    ExtractForeignTableMetadataAsync: this.createMockDotNetFunction('ExtractForeignTableMetadataAsync'),
+                    ExtractTypeMetadataAsync: this.createMockDotNetFunction('ExtractTypeMetadataAsync'),
+                    ExtractProcedureMetadataAsync: this.createMockDotNetFunction('ExtractProcedureMetadataAsync'),
+                    ExtractRoleMetadataAsync: this.createMockDotNetFunction('ExtractRoleMetadataAsync'),
+                    ExtractTablespaceMetadataAsync: this.createMockDotNetFunction('ExtractTablespaceMetadataAsync'),
+                    ExtractExtensionMetadataAsync: this.createMockDotNetFunction('ExtractExtensionMetadataAsync'),
+
+                    // Enhanced migration and comparison methods - mock implementations
+                    GenerateMigrationWithProgressAsync: this.createMockDotNetFunction('GenerateMigrationWithProgressAsync'),
+                    ExecuteMigrationWithProgressAsync: this.createMockDotNetFunction('ExecuteMigrationWithProgressAsync'),
+                    CompareSchemasDetailedAsync: this.createMockDotNetFunction('CompareSchemasDetailedAsync')
                 };
 
                 Logger.info('.NET library functions initialized successfully (using mock implementation)');
@@ -347,6 +591,298 @@ export class DotNetIntegrationService {
                         executionPlan: 'DDL operation completed'
                     };
                 }
+
+            // Enhanced metadata extractor mock results
+            case 'ExtractColumnMetadataAsync':
+                return [
+                    {
+                        name: 'id',
+                        dataType: 'integer',
+                        isNullable: false,
+                        defaultValue: 'nextval(\'users_id_seq\'::regclass)',
+                        isPrimaryKey: true,
+                        isForeignKey: false,
+                        constraints: [
+                            {
+                                name: 'users_pkey',
+                                type: 'PRIMARY KEY',
+                                definition: 'PRIMARY KEY (id)',
+                                isEnabled: true
+                            }
+                        ],
+                        statistics: {
+                            distinctValues: 1000,
+                            nullCount: 0,
+                            avgLength: 4
+                        }
+                    },
+                    {
+                        name: 'name',
+                        dataType: 'varchar',
+                        isNullable: true,
+                        isPrimaryKey: false,
+                        isForeignKey: false,
+                        constraints: [],
+                        statistics: {
+                            distinctValues: 850,
+                            nullCount: 50,
+                            avgLength: 12
+                        }
+                    }
+                ];
+
+            case 'ExtractIndexMetadataAsync':
+                return [
+                    {
+                        name: 'users_pkey',
+                        tableName: 'users',
+                        schema: 'public',
+                        isUnique: true,
+                        isPartial: false,
+                        isFunctional: false,
+                        columnNames: ['id'],
+                        definition: 'CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)',
+                        statistics: {
+                            sizeInBytes: 24576,
+                            indexScans: 150,
+                            tuplesRead: 200,
+                            tuplesFetched: 180
+                        }
+                    }
+                ];
+
+            case 'ExtractConstraintMetadataAsync':
+                return [
+                    {
+                        name: 'users_pkey',
+                        type: 'PRIMARY KEY',
+                        tableName: 'users',
+                        schema: 'public',
+                        isEnabled: true,
+                        isDeferrable: false,
+                        definition: 'PRIMARY KEY (id)',
+                        columns: ['id']
+                    }
+                ];
+
+            case 'ExtractViewMetadataAsync':
+                return [
+                    {
+                        name: 'active_users',
+                        schema: 'public',
+                        definition: 'SELECT id, name FROM users WHERE active = true',
+                        isMaterialized: false,
+                        columns: [
+                            { name: 'id', dataType: 'integer', isNullable: false, sourceExpression: 'id' },
+                            { name: 'name', dataType: 'varchar', isNullable: true, sourceExpression: 'name' }
+                        ],
+                        dependencies: [
+                            { type: 'table', name: 'users', schema: 'public' }
+                        ]
+                    }
+                ];
+
+            case 'ExtractFunctionMetadataAsync':
+                return [
+                    {
+                        name: 'get_user_count',
+                        schema: 'public',
+                        definition: 'CREATE FUNCTION get_user_count() RETURNS integer AS $$ BEGIN RETURN (SELECT COUNT(*) FROM users); END; $$ LANGUAGE plpgsql',
+                        isMaterialized: false,
+                        columns: [
+                            { name: 'get_user_count', dataType: 'integer', isNullable: false, sourceExpression: 'get_user_count()' }
+                        ],
+                        dependencies: [
+                            { type: 'table', name: 'users', schema: 'public' }
+                        ]
+                    }
+                ];
+
+            case 'ExtractTriggerMetadataAsync':
+                return [
+                    {
+                        name: 'update_user_timestamp',
+                        tableName: 'users',
+                        schema: 'public',
+                        definition: 'CREATE TRIGGER update_user_timestamp BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_timestamp()',
+                        isEnabled: true
+                    }
+                ];
+
+            case 'ExtractSequenceMetadataAsync':
+                return [
+                    {
+                        name: 'users_id_seq',
+                        schema: 'public',
+                        definition: 'CREATE SEQUENCE users_id_seq INCREMENT 1 START 1',
+                        lastValue: 1000,
+                        isCalled: true
+                    }
+                ];
+
+            case 'ExtractMaterializedViewMetadataAsync':
+                return [
+                    {
+                        name: 'user_stats_mv',
+                        schema: 'public',
+                        definition: 'SELECT COUNT(*), AVG(LENGTH(name)) FROM users',
+                        isMaterialized: true,
+                        columns: [
+                            { name: 'count', dataType: 'bigint', isNullable: false, sourceExpression: 'COUNT(*)' },
+                            { name: 'avg_length', dataType: 'numeric', isNullable: true, sourceExpression: 'AVG(LENGTH(name))' }
+                        ],
+                        dependencies: [
+                            { type: 'table', name: 'users', schema: 'public' }
+                        ],
+                        statistics: {
+                            rowCount: 1,
+                            sizeInBytes: 8192,
+                            lastRefresh: new Date().toISOString()
+                        }
+                    }
+                ];
+
+            case 'ExtractPartitionMetadataAsync':
+                return [
+                    {
+                        name: 'sales_2024',
+                        tableName: 'sales',
+                        schema: 'public',
+                        partitionType: 'RANGE',
+                        partitionKey: 'sale_date',
+                        definition: 'CREATE TABLE sales_2024 PARTITION OF sales FOR VALUES FROM (\'2024-01-01\') TO (\'2025-01-01\')'
+                    }
+                ];
+
+            case 'ExtractCollationMetadataAsync':
+                return [
+                    {
+                        name: 'en_US',
+                        schema: 'pg_catalog',
+                        definition: 'en_US.utf8',
+                        characterSet: 'UTF-8',
+                        isDefault: false
+                    }
+                ];
+
+            case 'ExtractForeignTableMetadataAsync':
+                return [
+                    {
+                        name: 'remote_users',
+                        schema: 'public',
+                        definition: 'CREATE FOREIGN TABLE remote_users (id integer, name text) SERVER remote_server OPTIONS (table_name \'users\')',
+                        serverName: 'remote_server',
+                        options: { table_name: 'users' }
+                    }
+                ];
+
+            case 'ExtractTypeMetadataAsync':
+                return [
+                    {
+                        name: 'user_status',
+                        schema: 'public',
+                        definition: 'CREATE TYPE user_status AS ENUM (\'active\', \'inactive\', \'suspended\')',
+                        typeCategory: 'ENUM',
+                        isArray: false
+                    }
+                ];
+
+            case 'ExtractProcedureMetadataAsync':
+                return [
+                    {
+                        name: 'update_user_stats',
+                        schema: 'public',
+                        definition: 'CREATE PROCEDURE update_user_stats() AS $$ BEGIN UPDATE user_stats SET last_updated = NOW(); END; $$ LANGUAGE plpgsql',
+                        isProcedure: true
+                    }
+                ];
+
+            case 'ExtractRoleMetadataAsync':
+                return [
+                    {
+                        name: 'app_user',
+                        definition: 'CREATE ROLE app_user WITH LOGIN PASSWORD \'secret\'',
+                        isSuperuser: false,
+                        canCreateDb: false,
+                        canCreateRole: false,
+                        inherit: true,
+                        connectionLimit: -1
+                    }
+                ];
+
+            case 'ExtractTablespaceMetadataAsync':
+                return [
+                    {
+                        name: 'fast_ssd',
+                        definition: 'CREATE TABLESPACE fast_ssd OWNER postgres LOCATION \'/mnt/ssd/postgresql/data\'',
+                        location: '/mnt/ssd/postgresql/data',
+                        sizeInBytes: 1073741824
+                    }
+                ];
+
+            case 'ExtractExtensionMetadataAsync':
+                return [
+                    {
+                        name: 'uuid-ossp',
+                        schema: 'public',
+                        definition: 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public',
+                        version: '1.1',
+                        isEnabled: true
+                    }
+                ];
+
+            case 'GenerateMigrationWithProgressAsync':
+                return {
+                    id: 'migration-progress-1',
+                    comparison: args[0],
+                    selectedDifferences: args[0]?.differences || [],
+                    sqlScript: 'CREATE TABLE new_table (id SERIAL PRIMARY KEY);',
+                    rollbackScript: 'DROP TABLE IF EXISTS new_table;',
+                    type: 'schema_sync',
+                    isDryRun: true,
+                    status: 'generated',
+                    createdAt: new Date().toISOString(),
+                    progressCallback: args[1] // Progress callback for real-time updates
+                };
+
+            case 'ExecuteMigrationWithProgressAsync':
+                return {
+                    status: 'completed',
+                    executionTime: '200ms',
+                    operationsExecuted: 1,
+                    errors: [],
+                    warnings: [],
+                    progressCallback: args[2] // Progress callback for real-time updates
+                };
+
+            case 'CompareSchemasDetailedAsync':
+                return {
+                    id: 'comparison-detailed-1',
+                    sourceConnection: args[0],
+                    targetConnection: args[1],
+                    differences: [
+                        {
+                            type: 'Added',
+                            objectType: 'table',
+                            objectName: 'new_table',
+                            schema: 'public',
+                            differenceDetails: ['Table was added in target database'],
+                            detailedComparison: {
+                                columns: [],
+                                indexes: [],
+                                constraints: [],
+                                triggers: [],
+                                permissions: []
+                            }
+                        }
+                    ],
+                    executionTime: '150ms',
+                    createdAt: new Date().toISOString(),
+                    detailedMetadata: {
+                        sourceMetadata: args[0],
+                        targetMetadata: args[1]
+                    }
+                };
 
             default:
                 throw new Error(`Unknown method: ${methodName}`);
@@ -700,6 +1236,332 @@ export class DotNetIntegrationService {
         const initialized = await this.initialize();
         if (!initialized) {
             throw new Error('.NET integration service failed to initialize');
+        }
+    }
+
+    // Enhanced Metadata Extraction Methods
+
+    async extractColumnMetadata(
+        connectionInfo: DotNetConnectionInfo,
+        tableName: string,
+        schema: string,
+        options: DotNetMetadataExtractionOptions = {}
+    ): Promise<DotNetColumnMetadata[]> {
+        await this.ensureInitialized();
+
+        try {
+            Logger.debug('Extracting column metadata via .NET library', 'extractColumnMetadata', {
+                connectionId: connectionInfo.id,
+                tableName,
+                schema,
+                options
+            });
+
+            const metadata = await this.callDotNetMethod<DotNetColumnMetadata[]>(
+                'ExtractColumnMetadataAsync',
+                connectionInfo,
+                tableName,
+                schema,
+                options
+            );
+
+            Logger.info('Column metadata extraction completed', 'extractColumnMetadata', {
+                connectionId: connectionInfo.id,
+                tableName,
+                columnCount: metadata.length
+            });
+
+            return metadata;
+        } catch (error) {
+            Logger.error('Failed to extract column metadata via .NET library', error as Error);
+            throw error;
+        }
+    }
+
+    async extractIndexMetadata(
+        connectionInfo: DotNetConnectionInfo,
+        tableName?: string,
+        schema?: string,
+        options: DotNetMetadataExtractionOptions = {}
+    ): Promise<DotNetIndexMetadata[]> {
+        await this.ensureInitialized();
+
+        try {
+            Logger.debug('Extracting index metadata via .NET library', 'extractIndexMetadata', {
+                connectionId: connectionInfo.id,
+                tableName,
+                schema,
+                options
+            });
+
+            const metadata = await this.callDotNetMethod<DotNetIndexMetadata[]>(
+                'ExtractIndexMetadataAsync',
+                connectionInfo,
+                tableName || null,
+                schema || null,
+                options
+            );
+
+            Logger.info('Index metadata extraction completed', 'extractIndexMetadata', {
+                connectionId: connectionInfo.id,
+                indexCount: metadata.length
+            });
+
+            return metadata;
+        } catch (error) {
+            Logger.error('Failed to extract index metadata via .NET library', error as Error);
+            throw error;
+        }
+    }
+
+    async extractConstraintMetadata(
+        connectionInfo: DotNetConnectionInfo,
+        tableName?: string,
+        schema?: string,
+        options: DotNetMetadataExtractionOptions = {}
+    ): Promise<DotNetConstraintMetadata[]> {
+        await this.ensureInitialized();
+
+        try {
+            Logger.debug('Extracting constraint metadata via .NET library', 'extractConstraintMetadata', {
+                connectionId: connectionInfo.id,
+                tableName,
+                schema,
+                options
+            });
+
+            const metadata = await this.callDotNetMethod<DotNetConstraintMetadata[]>(
+                'ExtractConstraintMetadataAsync',
+                connectionInfo,
+                tableName || null,
+                schema || null,
+                options
+            );
+
+            Logger.info('Constraint metadata extraction completed', 'extractConstraintMetadata', {
+                connectionId: connectionInfo.id,
+                constraintCount: metadata.length
+            });
+
+            return metadata;
+        } catch (error) {
+            Logger.error('Failed to extract constraint metadata via .NET library', error as Error);
+            throw error;
+        }
+    }
+
+    async extractViewMetadata(
+        connectionInfo: DotNetConnectionInfo,
+        viewName?: string,
+        schema?: string,
+        options: DotNetMetadataExtractionOptions = {}
+    ): Promise<DotNetViewMetadata[]> {
+        await this.ensureInitialized();
+
+        try {
+            Logger.debug('Extracting view metadata via .NET library', 'extractViewMetadata', {
+                connectionId: connectionInfo.id,
+                viewName,
+                schema,
+                options
+            });
+
+            const metadata = await this.callDotNetMethod<DotNetViewMetadata[]>(
+                'ExtractViewMetadataAsync',
+                connectionInfo,
+                viewName || null,
+                schema || null,
+                options
+            );
+
+            Logger.info('View metadata extraction completed', 'extractViewMetadata', {
+                connectionId: connectionInfo.id,
+                viewCount: metadata.length
+            });
+
+            return metadata;
+        } catch (error) {
+            Logger.error('Failed to extract view metadata via .NET library', error as Error);
+            throw error;
+        }
+    }
+
+    async extractFunctionMetadata(
+        connectionInfo: DotNetConnectionInfo,
+        functionName?: string,
+        schema?: string,
+        options: DotNetMetadataExtractionOptions = {}
+    ): Promise<any[]> {
+        await this.ensureInitialized();
+
+        try {
+            Logger.debug('Extracting function metadata via .NET library', 'extractFunctionMetadata', {
+                connectionId: connectionInfo.id,
+                functionName,
+                schema,
+                options
+            });
+
+            const metadata = await this.callDotNetMethod<any[]>(
+                'ExtractFunctionMetadataAsync',
+                connectionInfo,
+                functionName || null,
+                schema || null,
+                options
+            );
+
+            Logger.info('Function metadata extraction completed', 'extractFunctionMetadata', {
+                connectionId: connectionInfo.id,
+                functionCount: metadata.length
+            });
+
+            return metadata;
+        } catch (error) {
+            Logger.error('Failed to extract function metadata via .NET library', error as Error);
+            throw error;
+        }
+    }
+
+    // Enhanced Migration Methods with Progress Support
+
+    async generateMigrationWithProgress(
+        comparison: DotNetSchemaComparison,
+        options: any,
+        progressCallback?: (progress: DotNetMigrationProgressReport) => void
+    ): Promise<DotNetMigrationScript> {
+        await this.ensureInitialized();
+
+        try {
+            Logger.debug('Generating migration with progress via .NET library', 'generateMigrationWithProgress', {
+                comparisonId: comparison.id,
+                hasProgressCallback: !!progressCallback
+            });
+
+            const migration = await this.callDotNetMethod<DotNetMigrationScript>(
+                'GenerateMigrationWithProgressAsync',
+                comparison,
+                options,
+                progressCallback || null
+            );
+
+            Logger.info('Migration generation with progress completed', 'generateMigrationWithProgress', {
+                migrationId: migration.id,
+                operationCount: migration.sqlScript ? migration.sqlScript.split('\n').length : 0
+            });
+
+            return migration;
+        } catch (error) {
+            Logger.error('Failed to generate migration with progress via .NET library', error as Error);
+            throw error;
+        }
+    }
+
+    async executeMigrationWithProgress(
+        migration: DotNetMigrationScript,
+        connection: DotNetConnectionInfo,
+        progressCallback?: (progress: DotNetMigrationProgressReport) => void
+    ): Promise<DotNetMigrationResult> {
+        await this.ensureInitialized();
+
+        try {
+            Logger.debug('Executing migration with progress via .NET library', 'executeMigrationWithProgress', {
+                migrationId: migration.id,
+                targetConnection: connection.id,
+                hasProgressCallback: !!progressCallback
+            });
+
+            const result = await this.callDotNetMethod<DotNetMigrationResult>(
+                'ExecuteMigrationWithProgressAsync',
+                migration,
+                connection,
+                progressCallback || null
+            );
+
+            Logger.info('Migration execution with progress completed', 'executeMigrationWithProgress', {
+                migrationId: migration.id,
+                status: result.status,
+                operationsExecuted: result.operationsExecuted
+            });
+
+            return result;
+        } catch (error) {
+            Logger.error('Failed to execute migration with progress via .NET library', error as Error);
+            throw error;
+        }
+    }
+
+    async compareSchemasDetailed(
+        sourceConnection: DotNetConnectionInfo,
+        targetConnection: DotNetConnectionInfo,
+        options: any
+    ): Promise<any> {
+        await this.ensureInitialized();
+
+        try {
+            Logger.debug('Comparing schemas in detail via .NET library', 'compareSchemasDetailed', {
+                sourceConnection: sourceConnection.id,
+                targetConnection: targetConnection.id
+            });
+
+            const comparison = await this.callDotNetMethod<any>(
+                'CompareSchemasDetailedAsync',
+                sourceConnection,
+                targetConnection,
+                options
+            );
+
+            Logger.info('Detailed schema comparison completed', 'compareSchemasDetailed', {
+                comparisonId: comparison.id,
+                differenceCount: comparison.differences.length
+            });
+
+            return comparison;
+        } catch (error) {
+            Logger.error('Failed to compare schemas in detail via .NET library', error as Error);
+            throw error;
+        }
+    }
+
+    // Enhanced Error Information Method
+    getEnhancedErrorInfo(error: any): {
+        type: string;
+        message: string;
+        methodName: string;
+        suggestion?: string;
+        originalError?: Error;
+    } {
+        if (error instanceof DotNetError) {
+            return {
+                type: error.type,
+                message: error.message,
+                methodName: error.methodName,
+                suggestion: this.getErrorSuggestion(error.type),
+                originalError: error.originalError
+            };
+        }
+
+        return {
+            type: 'UnknownError',
+            message: error.message || error.toString(),
+            methodName: 'Unknown',
+            suggestion: 'Please check your connection and try again.'
+        };
+    }
+
+    private getErrorSuggestion(errorType: string): string {
+        switch (errorType) {
+            case 'ConnectionError':
+                return 'Check your connection string, host availability, and authentication credentials.';
+            case 'PermissionError':
+                return 'Ensure the user has sufficient privileges for the requested operation.';
+            case 'SyntaxError':
+                return 'Review the SQL syntax and object definitions.';
+            case 'Timeout':
+                return 'The operation timed out. Try increasing the timeout or check system performance.';
+            case 'InvalidArguments':
+                return 'Check that all required parameters are provided and valid.';
+            default:
+                return 'Please check the logs for more detailed information.';
         }
     }
 
