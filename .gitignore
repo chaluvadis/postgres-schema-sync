@@ -1,0 +1,12 @@
+bin/
+obj/
+node_modules/
+out/
+docs/
+dist/
+test/
+**.d.ts
+**.d.ts.map
+src/**.js
+src/**.js.map
+.DS_Store

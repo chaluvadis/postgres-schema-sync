@@ -1,0 +1,1193 @@
+{
+  "type": "module",
+  "name": "postgresql-schema-sync",
+  "displayName": "PostgreSQL Schema Compare & Sync",
+  "description": "Advanced PostgreSQL schema comparison and synchronization extension for Visual Studio Code with enterprise-grade features",
+  "version": "0.0.1",
+  "publisher": "postgresql-schema-sync",
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.104.0",
+    "node": ">=22.0.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "postgresql",
+    "postgres",
+    "database",
+    "schema",
+    "comparison",
+    "synchronization",
+    "migration",
+    "sql"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "postgresqlExplorer",
+          "name": "PostgreSQL Explorer",
+          "icon": "$(database)",
+          "contextualTitle": "PostgreSQL Explorer"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "postgresql-team",
+          "title": "PostgreSQL Team",
+          "icon": "$(organization)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "postgresql.addConnection",
+        "title": "Add Connection",
+        "category": "PostgreSQL",
+        "icon": "$(add)"
+      },
+      {
+        "command": "postgresql.editConnection",
+        "title": "Edit Connection",
+        "category": "PostgreSQL",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "postgresql.removeConnection",
+        "title": "Remove Connection",
+        "category": "PostgreSQL",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "postgresql.testConnection",
+        "title": "Test Connection",
+        "category": "PostgreSQL",
+        "icon": "$(check)"
+      },
+      {
+        "command": "postgresql.refreshExplorer",
+        "title": "Refresh Explorer",
+        "category": "PostgreSQL",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "postgresql.browseSchema",
+        "title": "Browse Schema",
+        "category": "PostgreSQL",
+        "icon": "$(search)"
+      },
+      {
+        "command": "postgresql.compareSchemas",
+        "title": "Compare Schemas",
+        "category": "PostgreSQL",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "postgresql.generateMigration",
+        "title": "Generate Migration",
+        "category": "PostgreSQL",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "postgresql.executeMigration",
+        "title": "Execute Migration",
+        "category": "PostgreSQL",
+        "icon": "$(run)"
+      },
+      {
+        "command": "postgresql.previewMigration",
+        "title": "Preview Migration",
+        "category": "PostgreSQL",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "postgresql.rollbackMigration",
+        "title": "Rollback Migration",
+        "category": "PostgreSQL",
+        "icon": "$(undo)"
+      },
+      {
+        "command": "postgresql.viewObjectDetails",
+        "title": "View Object Details",
+        "category": "PostgreSQL",
+        "icon": "$(info)"
+      },
+      {
+        "command": "postgresql.showHelp",
+        "title": "Show Help",
+        "category": "PostgreSQL",
+        "icon": "$(question)"
+      },
+      {
+        "command": "postgresql.showLogs",
+        "title": "Show Logs",
+        "category": "PostgreSQL",
+        "icon": "$(output)"
+      },
+      {
+        "command": "postgresql.openSettings",
+        "title": "Open Settings",
+        "category": "PostgreSQL",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "postgresql.quickConnect",
+        "title": "Quick Connect",
+        "category": "PostgreSQL",
+        "icon": "$(add)"
+      },
+      {
+        "command": "postgresql.compareSelectedSchemas",
+        "title": "Compare Selected Schemas",
+        "category": "PostgreSQL",
+        "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "postgresql.runQuickMigration",
+        "title": "Quick Migration",
+        "category": "PostgreSQL",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "postgresql.expandTree",
+        "title": "Expand All",
+        "category": "PostgreSQL",
+        "icon": "$(expand-all)"
+      },
+      {
+        "command": "postgresql.collapseTree",
+        "title": "Collapse All",
+        "category": "PostgreSQL",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "postgresql.focusTree",
+        "title": "Focus Tree View",
+        "category": "PostgreSQL",
+        "icon": "$(focus-view)"
+      },
+      {
+        "command": "postgresql.manageConnections",
+        "title": "Manage Connections",
+        "category": "PostgreSQL",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "postgresql.compareObjects",
+        "title": "Compare Objects",
+        "category": "PostgreSQL",
+        "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "postgresql.previewAdvancedMigration",
+        "title": "Preview Advanced Migration",
+        "category": "PostgreSQL",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "postgresql.refreshEnhancedTree",
+        "title": "Refresh Enhanced Tree",
+        "category": "PostgreSQL",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "postgresql.searchTree",
+        "title": "Search Tree",
+        "category": "PostgreSQL",
+        "icon": "$(search)"
+      },
+      {
+        "command": "postgresql.startOperation",
+        "title": "Start Operation",
+        "category": "PostgreSQL",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "postgresql.updateOperation",
+        "title": "Update Operation",
+        "category": "PostgreSQL",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "postgresql.completeOperation",
+        "title": "Complete Operation",
+        "category": "PostgreSQL",
+        "icon": "$(check)"
+      },
+      {
+        "command": "postgresql.showNotification",
+        "title": "Show Notification",
+        "category": "PostgreSQL",
+        "icon": "$(bell)"
+      },
+      {
+        "command": "postgresql.exportNotifications",
+        "title": "Export Notifications",
+        "category": "PostgreSQL",
+        "icon": "$(export)"
+      },
+      {
+        "command": "postgresql.refreshConnection",
+        "title": "Refresh Connection",
+        "category": "PostgreSQL",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "postgresql.openQueryEditor",
+        "title": "Open Query Editor",
+        "category": "PostgreSQL",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "postgresql.executeQuery",
+        "title": "Execute Query",
+        "category": "PostgreSQL",
+        "icon": "$(run)"
+      },
+      {
+        "command": "postgresql.newQuery",
+        "title": "New Query",
+        "category": "PostgreSQL",
+        "icon": "$(add)"
+      },
+      {
+        "command": "postgresql.showQueryHistory",
+        "title": "Show Query History",
+        "category": "PostgreSQL",
+        "icon": "$(history)"
+      },
+      {
+        "command": "postgresql.showQueryFavorites",
+        "title": "Show Query Favorites",
+        "category": "PostgreSQL",
+        "icon": "$(star)"
+      },
+      {
+        "command": "postgresql.formatQuery",
+        "title": "Format Query",
+        "category": "PostgreSQL",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "postgresql.showTeamLibrary",
+        "title": "Team Query Library",
+        "category": "PostgreSQL",
+        "icon": "$(library)"
+      },
+      {
+        "command": "postgresql.showQueryAnalytics",
+        "title": "Query Performance Analytics",
+        "category": "PostgreSQL",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "postgresql.showPerformanceAlerts",
+        "title": "Performance Alerts",
+        "category": "PostgreSQL",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "postgresql.showSchemaDocumentation",
+        "title": "Schema Documentation",
+        "category": "PostgreSQL",
+        "icon": "$(book)"
+      },
+      {
+        "command": "postgresql.showEnhancedDashboard",
+        "title": "Enhanced Dashboard",
+        "category": "PostgreSQL",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "postgresql.showCollaborationStats",
+        "title": "Collaboration Statistics",
+        "category": "PostgreSQL",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "postgresql.exportData",
+        "title": "Export Data",
+        "category": "PostgreSQL",
+        "icon": "$(export)"
+      },
+      {
+        "command": "postgresql.importData",
+        "title": "Import Data",
+        "category": "PostgreSQL",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "postgresql.createBackup",
+        "title": "Create Backup",
+        "category": "PostgreSQL",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "postgresql.showBackups",
+        "title": "Backup History",
+        "category": "PostgreSQL",
+        "icon": "$(history)"
+      },
+      {
+        "command": "postgresql.showScheduledBackups",
+        "title": "Scheduled Backups",
+        "category": "PostgreSQL",
+        "icon": "$(clock)"
+      },
+      {
+        "command": "postgresql.validateData",
+        "title": "Validate Data",
+        "category": "PostgreSQL",
+        "icon": "$(check)"
+      },
+      {
+        "command": "postgresql.showDataQuality",
+        "title": "Data Quality Report",
+        "category": "PostgreSQL",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "postgresql.validateMigration",
+        "title": "Validate Migration",
+        "category": "PostgreSQL",
+        "icon": "$(check)"
+      },
+      {
+        "command": "postgresql.showValidationHistory",
+        "title": "Migration Validation History",
+        "category": "PostgreSQL",
+        "icon": "$(history)"
+      },
+      {
+        "command": "postgresql.importDataWizard",
+        "title": "Import Data with Wizard",
+        "category": "PostgreSQL",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "postgresql.showImportHistory",
+        "title": "Import History",
+        "category": "PostgreSQL",
+        "icon": "$(history)"
+      },
+      {
+        "command": "postgresql.startCollaborationSession",
+        "title": "Start Collaboration Session",
+        "category": "PostgreSQL",
+        "icon": "$(live-share)"
+      },
+      {
+        "command": "postgresql.joinCollaborationSession",
+        "title": "Join Collaboration Session",
+        "category": "PostgreSQL",
+        "icon": "$(person-add)"
+      },
+      {
+        "command": "postgresql.showActiveSessions",
+        "title": "Active Collaboration Sessions",
+        "category": "PostgreSQL",
+        "icon": "$(multiple-windows)"
+      },
+      {
+        "command": "postgresql.showSelectionInfo",
+        "title": "Show Selection Info",
+        "category": "PostgreSQL",
+        "icon": "$(info)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "postgresql.addConnection",
+          "when": "view == postgresqlExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "postgresql.refreshExplorer",
+          "when": "view == postgresqlExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "postgresql.expandTree",
+          "when": "view == postgresqlExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "postgresql.collapseTree",
+          "when": "view == postgresqlExplorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "postgresql.editConnection",
+          "when": "view == postgresqlExplorer && viewItem == connection",
+          "group": "inline"
+        },
+        {
+          "command": "postgresql.removeConnection",
+          "when": "view == postgresqlExplorer && viewItem == connection",
+          "group": "inline"
+        },
+        {
+          "command": "postgresql.testConnection",
+          "when": "view == postgresqlExplorer && viewItem == connection",
+          "group": "inline"
+        },
+        {
+          "command": "postgresql.compareSchemas",
+          "when": "view == postgresqlExplorer && viewItem =~ /^(database|schema)$/",
+          "group": "comparison"
+        },
+        {
+          "command": "postgresql.viewObjectDetails",
+          "when": "view == postgresqlExplorer && viewItem =~ /^(table|view|function|procedure|sequence|type|domain|collation|extension|role|tablespace)$/",
+          "group": "details"
+        },
+        {
+          "command": "postgresql.openQueryEditor",
+          "when": "view == postgresqlExplorer && viewItem == connection",
+          "group": "query"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "postgresql.addConnection",
+          "when": "workspaceState.postgresql.connectionsExist == false"
+        },
+        {
+          "command": "postgresql.compareSchemas",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.generateMigration",
+          "when": "workspaceState.postgresql.comparisonExists == true"
+        },
+        {
+          "command": "postgresql.executeMigration",
+          "when": "workspaceState.postgresql.migrationExists == true"
+        },
+        {
+          "command": "postgresql.openQueryEditor",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.executeQuery",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.newQuery",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showQueryHistory",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showQueryFavorites",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.formatQuery",
+          "when": "resourceExtname == .sql || resourceExtname == .psql"
+        },
+        {
+          "command": "postgresql.showTeamLibrary",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showQueryAnalytics",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showPerformanceAlerts",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showSchemaDocumentation",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showCollaborationStats",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.exportData",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.importData",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.createBackup",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showBackups",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showScheduledBackups",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.validateData",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showDataQuality",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.validateMigration",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showValidationHistory",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.importDataWizard",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showImportHistory",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.startCollaborationSession",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.joinCollaborationSession",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showActiveSessions",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        },
+        {
+          "command": "postgresql.showSelectionInfo",
+          "when": "workspaceState.postgresql.connectionsExist == true"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "postgresql.addConnection",
+        "key": "ctrl+shift+p",
+        "mac": "cmd+shift+p",
+        "when": "editorTextFocus",
+        "args": []
+      },
+      {
+        "command": "postgresql.refreshExplorer",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "view == postgresqlExplorer"
+      },
+      {
+        "command": "postgresql.testConnection",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "view == postgresqlExplorer && viewItem == connection"
+      },
+      {
+        "command": "postgresql.compareSchemas",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c",
+        "when": "view == postgresqlExplorer && viewItem =~ /^(database|schema)$/"
+      },
+      {
+        "command": "postgresql.generateMigration",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g",
+        "when": "workspaceState.postgresql.comparisonExists == true"
+      },
+      {
+        "command": "postgresql.previewMigration",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "workspaceState.postgresql.migrationExists == true"
+      },
+      {
+        "command": "postgresql.executeMigration",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "workspaceState.postgresql.migrationExists == true"
+      },
+      {
+        "command": "postgresql.rollbackMigration",
+        "key": "ctrl+shift+u",
+        "mac": "cmd+shift+u",
+        "when": "workspaceState.postgresql.migrationExists == true"
+      },
+      {
+        "command": "postgresql.viewObjectDetails",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
+        "when": "view == postgresqlExplorer && viewItem =~ /^(table|view|function|procedure|sequence|type|domain|collation|extension|role|tablespace)$/"
+      },
+      {
+        "command": "postgresql.browseSchema",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "view == postgresqlExplorer && viewItem == database"
+      },
+      {
+        "command": "postgresql.showDashboard",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h"
+      },
+      {
+        "command": "postgresql.showNotifications",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n"
+      },
+      {
+        "command": "postgresql.showLogs",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l"
+      },
+      {
+        "command": "postgresql.openSettings",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s"
+      },
+      {
+        "command": "postgresql.showHelp",
+        "key": "f1",
+        "when": "resourceExtname == .sql || resourceExtname == .psql"
+      },
+      {
+        "command": "postgresql.quickConnect",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "postgresql.compareSelectedSchemas",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "view == postgresqlExplorer"
+      },
+      {
+        "command": "postgresql.runQuickMigration",
+        "key": "ctrl+shift+x",
+        "mac": "cmd+shift+x",
+        "when": "workspaceState.postgresql.migrationExists == true"
+      },
+      {
+        "command": "postgresql.expandTree",
+        "key": "ctrl+shift+=",
+        "mac": "cmd+shift+=",
+        "when": "view == postgresqlExplorer"
+      },
+      {
+        "command": "postgresql.collapseTree",
+        "key": "ctrl+shift+-",
+        "mac": "cmd+shift+-",
+        "when": "view == postgresqlExplorer"
+      },
+      {
+        "command": "postgresql.focusTree",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "PostgreSQL Schema Compare & Sync",
+      "properties": {
+        "postgresql-schema-sync.compare.mode": {
+          "type": "string",
+          "default": "strict",
+          "enum": [
+            "strict",
+            "lenient"
+          ],
+          "enumDescriptions": [
+            "Exact comparison including whitespace and formatting",
+            "Ignore formatting differences and focus on structure"
+          ],
+          "description": "Default comparison mode for schema comparisons"
+        },
+        "postgresql-schema-sync.compare.ignoreSchemas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "information_schema",
+            "pg_catalog",
+            "pg_toast"
+          ],
+          "description": "Schemas to ignore during comparison"
+        },
+        "postgresql-schema-sync.migration.dryRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable dry-run mode for migration preview"
+        },
+        "postgresql-schema-sync.migration.batchSize": {
+          "type": "number",
+          "default": 50,
+          "minimum": 10,
+          "maximum": 200,
+          "description": "Number of operations per migration batch"
+        },
+        "postgresql-schema-sync.notifications.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable notifications for operation status"
+        },
+        "postgresql-schema-sync.theme.colorScheme": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "light",
+            "dark"
+          ],
+          "description": "Color scheme for the extension UI"
+        },
+        "postgresql-schema-sync.debug.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug logging"
+        },
+        "postgresql-schema-sync.debug.logLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          "description": "Log level for debug output"
+        },
+        "postgresql.securityManager.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SSL/TLS certificate validation and security monitoring"
+        },
+        "postgresql.securityManager.securityLevel": {
+          "type": "string",
+          "default": "warning",
+          "enum": [
+            "strict",
+            "warning",
+            "permissive"
+          ],
+          "enumDescriptions": [
+            "All security checks enabled. Self-signed certificates are not allowed.",
+            "Security checks enabled with warnings. Self-signed certificates allowed with warnings.",
+            "Minimal security checks. Self-signed certificates allowed."
+          ],
+          "description": "Security level for certificate validation"
+        },
+        "postgresql.securityManager.certificateValidation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SSL/TLS certificate validation"
+        },
+        "postgresql.securityManager.certificateValidation.checkRevocation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check certificate revocation lists (CRL/OCSP) - may impact performance"
+        },
+        "postgresql.securityManager.certificateValidation.checkTransparency": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check certificate transparency logs - may impact performance"
+        },
+        "postgresql.securityManager.certificateValidation.allowSelfSigned": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow self-signed certificates (not recommended for production)"
+        },
+        "postgresql.securityManager.certificateValidation.minKeySize": {
+          "type": "number",
+          "default": 2048,
+          "minimum": 1024,
+          "maximum": 4096,
+          "description": "Minimum acceptable certificate key size in bits"
+        },
+        "postgresql.securityManager.certificateValidation.maxValidityDays": {
+          "type": "number",
+          "default": 825,
+          "minimum": 30,
+          "maximum": 1095,
+          "description": "Maximum certificate validity period in days (~2.25 years default)"
+        },
+        "postgresql.securityManager.certificatePinning.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable certificate pinning for high-security environments"
+        },
+        "postgresql.securityManager.certificatePinning.autoPinTrusted": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically pin certificates from trusted Certificate Authorities"
+        },
+        "postgresql.securityManager.certificatePinning.requireUserApproval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require user approval before pinning certificates"
+        },
+        "postgresql.securityManager.certificatePinning.maxPinAge": {
+          "type": "number",
+          "default": 365,
+          "minimum": 30,
+          "maximum": 730,
+          "description": "Maximum age of pinned certificates in days"
+        },
+        "postgresql.securityManager.certificatePinning.allowedHostnames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of hostnames allowed for certificate pinning (empty allows all)"
+        },
+        "postgresql.securityManager.monitoring.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable security event monitoring and alerting"
+        },
+        "postgresql.securityManager.monitoring.alertLevels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "error",
+              "critical"
+            ]
+          },
+          "default": [
+            "warning",
+            "error",
+            "critical"
+          ],
+          "description": "Security alert levels that trigger notifications"
+        },
+        "postgresql.securityManager.monitoring.retentionDays": {
+          "type": "number",
+          "default": 90,
+          "minimum": 7,
+          "maximum": 365,
+          "description": "Number of days to retain security events"
+        },
+        "postgresql.securityManager.monitoring.maxEvents": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Maximum number of security events to store"
+        },
+        "postgresql.securityManager.monitoring.autoResolveAfterDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 90,
+          "description": "Auto-resolve security events after specified days"
+        },
+        "postgresql.securityManager.monitoring.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show security notifications in VS Code"
+        },
+        "postgresql.securityManager.monitoring.showInStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show security status in VS Code status bar"
+        },
+        "postgresql.securityManager.connectionSecurity.enforceSecureConnections": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enforce secure connections - block insecure connections"
+        },
+        "postgresql.securityManager.connectionSecurity.allowInsecureFallback": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow fallback to insecure connections if secure connection fails"
+        },
+        "postgresql.securityManager.connectionSecurity.validateOnConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Validate certificates when establishing connections"
+        },
+        "postgresql.securityManager.connectionSecurity.validateOnReconnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Validate certificates when reconnecting to databases"
+        },
+        "postgresql.queryEditor.maxResults": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Maximum number of rows to display in query results"
+        },
+        "postgresql.queryEditor.queryTimeout": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "maximum": 300,
+          "description": "Query execution timeout in seconds"
+        },
+        "postgresql.queryEditor.autoComplete.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable autocomplete in query editor"
+        },
+        "postgresql.queryEditor.syntaxHighlighting.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SQL syntax highlighting"
+        },
+        "postgresql.queryEditor.historySize": {
+          "type": "number",
+          "default": 100,
+          "minimum": 50,
+          "maximum": 500,
+          "description": "Maximum number of queries to keep in history"
+        },
+        "postgresql.queryEditor.exportFormats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["csv", "json", "excel"]
+          },
+          "default": ["csv", "json"],
+          "description": "Available export formats for query results"
+        },
+        "postgresql.teamCollaboration.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable team collaboration features"
+        },
+        "postgresql.teamCollaboration.autoShareQueries": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically share queries with team members"
+        },
+        "postgresql.teamCollaboration.requireApproval": {
+          "type": "boolean",
+          "default": false,
+          "description": "Require approval before sharing queries"
+        },
+        "postgresql.teamCollaboration.organizationId": {
+          "type": "string",
+          "default": "",
+          "description": "Organization ID for multi-organization setups"
+        },
+        "postgresql.performanceMonitoring.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable performance monitoring and analytics"
+        },
+        "postgresql.performanceMonitoring.slowQueryThreshold": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Threshold for slow query detection in milliseconds"
+        },
+        "postgresql.performanceMonitoring.alertCooldown": {
+          "type": "number",
+          "default": 300,
+          "minimum": 60,
+          "maximum": 3600,
+          "description": "Cooldown period between similar alerts in seconds"
+        },
+        "postgresql.performanceMonitoring.retentionDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 7,
+          "maximum": 365,
+          "description": "Number of days to retain performance data"
+        },
+        "postgresql.schemaDocumentation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable collaborative schema documentation"
+        },
+        "postgresql.schemaDocumentation.requireReview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require review before publishing documentation"
+        },
+        "postgresql.schemaDocumentation.autoGenerate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-generate documentation from schema metadata"
+        },
+        "postgresql.dataExport.chunkSize": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Number of rows to process in each export chunk"
+        },
+        "postgresql.dataExport.parallelProcessing": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable parallel processing for large exports"
+        },
+        "postgresql.dataExport.compression.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable compression for export files"
+        },
+        "postgresql.dataExport.compression.level": {
+          "type": "number",
+          "default": 6,
+          "minimum": 1,
+          "maximum": 9,
+          "description": "Compression level (1-9, higher = smaller files but slower)"
+        },
+        "postgresql.dataImport.batchSize": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Number of rows to process in each import batch"
+        },
+        "postgresql.dataImport.continueOnError": {
+          "type": "boolean",
+          "default": false,
+          "description": "Continue importing when errors are encountered"
+        },
+        "postgresql.dataImport.validateBeforeImport": {
+          "type": "boolean",
+          "default": true,
+          "description": "Validate data before performing import"
+        },
+        "postgresql.backup.compression.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable compression for backup files"
+        },
+        "postgresql.backup.encryption.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable encryption for backup files"
+        },
+        "postgresql.backup.parallel.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable parallel backup processing"
+        },
+        "postgresql.backup.verifyAfterCreation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Verify backup integrity after creation"
+        },
+        "postgresql.backup.retention.daily": {
+          "type": "number",
+          "default": 7,
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Number of daily backups to retain"
+        },
+        "postgresql.backup.retention.weekly": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 52,
+          "description": "Number of weekly backups to retain"
+        },
+        "postgresql.backup.retention.monthly": {
+          "type": "number",
+          "default": 12,
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Number of monthly backups to retain"
+        },
+        "postgresql.recovery.pointInTime.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable point-in-time recovery capabilities"
+        },
+        "postgresql.recovery.verifyAfterRecovery": {
+          "type": "boolean",
+          "default": true,
+          "description": "Verify data integrity after recovery"
+        },
+        "postgresql.validation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable data validation features"
+        },
+        "postgresql.validation.strictMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable strict validation mode (fail on any warning)"
+        },
+        "postgresql.validation.sampleSize": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Sample size for data quality analysis"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "build:dotnet": "dotnet build --project ./pg-drive/PostgreSqlSchemaCompareSync/PostgreSqlSchemaCompareSync.csproj",
+    "build:all": "pnpm run build:dotnet && pnpm run compile",
+    "package": "pnpm run build:all && vsce package",
+    "clean": "rimraf bin out"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.7.0",
+    "@types/sinon": "^17.0.4",
+    "@types/vscode": "^1.104.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/parser": "^8.46.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.6.2",
+    "edge-js": "^24.0.5",
+    "esbuild": "^0.25.10",
+    "eslint": "^9.37.0",
+    "npm-run-all": "^4.1.5",
+    "rimraf": "^6.0.1",
+    "sinon": "^21.0.0",
+    "ts-jest": "^29.4.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chaluvadis/postgresql-schema-sync.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chaluvadis/postgresql-schema-sync/issues"
+  },
+  "homepage": "https://github.com/chaluvadis/postgresql-schema-sync#readme"
+}
