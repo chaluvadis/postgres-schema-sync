@@ -278,8 +278,8 @@ export class EnhancedStatusBarProvider {
             tooltip += '\n\n📋 Connection Details:';
             connections.slice(0, 5).forEach(conn => {
                 const statusIcon = conn.status === 'Connected' ? '✅' :
-                                 conn.status === 'Error' ? '❌' :
-                                 conn.status === 'Connecting' ? '🔄' : '⚫';
+                    conn.status === 'Error' ? '❌' :
+                        conn.status === 'Connecting' ? '🔄' : '⚫';
                 tooltip += `\n  ${statusIcon} ${conn.name} (${conn.host}:${conn.port})`;
             });
 
@@ -294,7 +294,6 @@ export class EnhancedStatusBarProvider {
             item.backgroundColor = color;
         }
     }
-
 
     private updateOperationIndicators(): void {
         if (!this.config.showOperationIndicators) { return; }

@@ -1,61 +1,29 @@
 import * as vscode from 'vscode';
 import { PostgreSqlTreeProvider } from '@/providers/PostgreSqlTreeProvider';
 import { ConnectionManager } from '@/managers/ConnectionManager';
-import { SchemaManager } from '@/managers/SchemaManager';
-import { MigrationManager } from '@/managers/MigrationManager';
+import { StreamlinedServices } from './services';
 import { ConnectionManagementView } from '@/views/ConnectionManagementView';
-import { SchemaBrowserView } from '@/views/SchemaBrowserView';
-import { SchemaComparisonView, SchemaComparisonData } from '@/views/SchemaComparisonView';
-import { MigrationPreviewView } from '@/views/MigrationPreviewView';
-import { SettingsView } from '@/views/SettingsView';
 import { Logger } from '@/utils/Logger';
 import { ErrorHandler, ErrorSeverity } from '@/utils/ErrorHandler';
-import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 
 export class PostgreSqlExtension {
     private context: vscode.ExtensionContext;
     private connectionManager: ConnectionManager;
-    private schemaManager: SchemaManager;
-    private migrationManager: MigrationManager;
+    private streamlinedServices: StreamlinedServices;
     private connectionView: ConnectionManagementView;
-    private schemaBrowserView: SchemaBrowserView;
-    private schemaComparisonView: SchemaComparisonView;
-    private migrationPreviewView: MigrationPreviewView;
-    private settingsView: SettingsView;
     private treeProvider: PostgreSqlTreeProvider;
 
     constructor(
         context: vscode.ExtensionContext,
         connectionManager: ConnectionManager,
-        schemaManager: SchemaManager,
-        migrationManager: MigrationManager,
+        streamlinedServices: StreamlinedServices,
         treeProvider: PostgreSqlTreeProvider
     ) {
         this.context = context;
         this.connectionManager = connectionManager;
-        this.schemaManager = schemaManager;
-        this.migrationManager = migrationManager;
+        this.streamlinedServices = streamlinedServices;
         this.connectionView = new ConnectionManagementView(connectionManager);
-        this.schemaBrowserView = new SchemaBrowserView(schemaManager, connectionManager);
-        this.schemaComparisonView = new SchemaComparisonView(ExtensionInitializer.getDotNetService());
-        this.migrationPreviewView = new MigrationPreviewView();
-        this.settingsView = new SettingsView();
         this.treeProvider = treeProvider;
-    }
-    async addConnection(): Promise<void> {
-        try {
-            Logger.info('Adding new database connection');
-
-            const connectionInfo = await this.connectionView.showConnectionDialog();
-            if (!connectionInfo) {
-                Logger.debug('Connection dialog cancelled by user');
-                return;
-            }
-
-            this.treeProvider.refresh();
-        } catch (error) {
-            ErrorHandler.handleError(error, ErrorHandler.createContext('AddConnection'));
-        }
     }
     async editConnection(connection: any): Promise<void> {
         try {
@@ -74,37 +42,6 @@ export class PostgreSqlExtension {
             this.treeProvider.refresh();
         } catch (error) {
             ErrorHandler.handleError(error, ErrorHandler.createContext('EditConnection'));
-        }
-    }
-    async removeConnection(connection: any): Promise<void> {
-        try {
-            Logger.info('Removing database connection', connection);
-
-            if (!connection || !connection.id) {
-                vscode.window.showErrorMessage('No connection selected for removal');
-                return;
-            }
-
-            const confirm = await vscode.window.showWarningMessage(
-                `Are you sure you want to remove connection "${connection.name}"?`,
-                'Yes', 'No'
-            );
-
-            if (confirm !== 'Yes') {
-                return;
-            }
-
-            await this.connectionManager.removeConnection(connection.id);
-            this.treeProvider.refresh();
-
-            vscode.window.showInformationMessage(
-                `Connection "${connection.name}" removed successfully`
-            );
-        } catch (error) {
-            Logger.error('Failed to remove connection', error as Error);
-            vscode.window.showErrorMessage(
-                `Failed to remove connection: ${(error as Error).message}`
-            );
         }
     }
     async testConnection(connection: any): Promise<void> {
@@ -225,209 +162,6 @@ export class PostgreSqlExtension {
             ErrorHandler.handleError(error, context);
         }
     }
-    async refreshExplorer(): Promise<void> {
-        try {
-            Logger.info('Refreshing PostgreSQL explorer');
-            this.treeProvider.refresh();
-            vscode.window.showInformationMessage('PostgreSQL explorer refreshed');
-        } catch (error) {
-            Logger.error('Failed to refresh explorer', error as Error);
-            vscode.window.showErrorMessage(
-                `Failed to refresh explorer: ${(error as Error).message}`
-            );
-        }
-    }
-    async browseSchema(connectionId: string, schemaName?: string): Promise<void> {
-        try {
-            Logger.info('Opening schema browser', 'browseSchema', { connectionId, schemaName });
-
-            if (!connectionId) {
-                vscode.window.showErrorMessage('No connection specified for schema browsing');
-                return;
-            }
-
-            await this.schemaBrowserView.showSchemaBrowser(connectionId, schemaName);
-        } catch (error) {
-            ErrorHandler.handleError(error, ErrorHandler.createContext('BrowseSchema'));
-        }
-    }
-    async compareSchemas(source: any, target: any): Promise<void> {
-        const context = ErrorHandler.createEnhancedContext(
-            'CompareSchemas',
-            { sourceId: source?.id, targetId: target?.id }
-        );
-
-        try {
-            Logger.info('Comparing schemas', 'compareSchemas', { source, target });
-
-            if (!source?.id || !target?.id) {
-                const error = new Error('Source and target connections are required for schema comparison');
-                ErrorHandler.handleError(error, context);
-                vscode.window.showErrorMessage('Please select source and target connections for comparison');
-                return;
-            }
-
-            await vscode.window.withProgress(
-                {
-                    title: 'Comparing Schemas',
-                    location: vscode.ProgressLocation.Notification,
-                    cancellable: true
-                },
-                async (progress) => {
-                    progress.report({ increment: 0, message: 'Analyzing source schema...' });
-
-                    try {
-                        // Use SchemaManager for schema comparison instead of manual .NET calls
-                        const comparisonResult = await this.schemaManager.compareSchemas(
-                            source.id,
-                            target.id,
-                            {
-                                mode: 'strict',
-                                ignoreSchemas: ['information_schema', 'pg_catalog'],
-                                includeSystemObjects: false
-                            }
-                        );
-
-                        progress.report({ increment: 50, message: 'Preparing comparison results...' });
-
-                        // Get connection details for display
-                        const sourceConnection = this.connectionManager.getConnection(source.id);
-                        const targetConnection = this.connectionManager.getConnection(target.id);
-
-                        if (!sourceConnection || !targetConnection) {
-                            throw new Error('Source or target connection not found');
-                        }
-
-                        // Get passwords for the comparison data
-                        const sourcePassword = await this.connectionManager.getConnectionPassword(source.id);
-                        const targetPassword = await this.connectionManager.getConnectionPassword(target.id);
-
-                        const comparisonData: SchemaComparisonData = {
-                            id: comparisonResult.comparisonId,
-                            sourceConnection: {
-                                id: sourceConnection.id,
-                                name: sourceConnection.name,
-                                host: sourceConnection.host,
-                                port: sourceConnection.port,
-                                database: sourceConnection.database,
-                                username: sourceConnection.username,
-                                password: sourcePassword || '',
-                                createdDate: new Date().toISOString()
-                            },
-                            targetConnection: {
-                                id: targetConnection.id,
-                                name: targetConnection.name,
-                                host: targetConnection.host,
-                                port: targetConnection.port,
-                                database: targetConnection.database,
-                                username: targetConnection.username,
-                                password: targetPassword || '',
-                                createdDate: new Date().toISOString()
-                            },
-                            differences: comparisonResult.differences.map(diff => ({
-                                id: `${diff.type}-${diff.objectType}-${diff.objectName}-${diff.schema}`,
-                                type: diff.type,
-                                objectType: diff.objectType,
-                                objectName: diff.objectName,
-                                schema: diff.schema,
-                                sourceDefinition: diff.sourceDefinition,
-                                targetDefinition: diff.targetDefinition,
-                                differenceDetails: diff.differenceDetails,
-                                severity: 'medium' // Default severity
-                            })),
-                            comparisonOptions: {
-                                mode: comparisonResult.comparisonMode,
-                                ignoreSchemas: ['information_schema', 'pg_catalog'],
-                                includeSystemObjects: false,
-                                caseSensitive: true
-                            },
-                            createdAt: comparisonResult.createdAt.toISOString(),
-                            executionTime: `${comparisonResult.executionTime}ms`
-                        };
-
-                        progress.report({ increment: 100, message: 'Schema comparison completed' });
-
-                        try {
-                            await this.schemaComparisonView.showComparison(comparisonData);
-                        } catch (error) {
-                            Logger.error('Failed to display comparison results', error as Error);
-                            ErrorHandler.handleError(error, ErrorHandler.createContext('ShowComparisonResults', {
-                                comparisonId: comparisonResult.comparisonId,
-                                differenceCount: comparisonResult.differences.length
-                            }));
-                            throw new Error(`Failed to display comparison results: ${(error as Error).message}`);
-                        }
-
-                    } catch (comparisonError) {
-                        const error = comparisonError as Error;
-                        Logger.error('Schema comparison failed', error);
-
-                        ErrorHandler.handleErrorWithSeverity(
-                            error,
-                            ErrorHandler.createContext('SchemaComparisonFailure', {
-                                sourceId: source.id,
-                                targetId: target.id,
-                                error: error.message
-                            }),
-                            error.message.includes('timeout') || error.message.includes('network')
-                                ? ErrorSeverity.MEDIUM
-                                : ErrorSeverity.HIGH
-                        );
-
-                        throw error;
-                    }
-                }
-            );
-        } catch (error) {
-            ErrorHandler.handleError(error, ErrorHandler.createContext('CompareSchemas'));
-        }
-    }
-    async generateMigration(comparison: any): Promise<void> {
-        try {
-            Logger.info('Generating migration', comparison);
-
-            if (!comparison?.sourceConnectionId || !comparison?.targetConnectionId) {
-                vscode.window.showErrorMessage('Invalid comparison data for migration generation');
-                return;
-            }
-
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Generating Migration',
-                cancellable: true
-            }, async (progress) => {
-                progress.report({ increment: 0, message: 'Analyzing schema differences...' });
-
-                try {
-                    const migration = await this.migrationManager.generateMigration(
-                        comparison.sourceConnectionId,
-                        comparison.targetConnectionId
-                    );
-
-                    progress.report({ increment: 50, message: 'Creating migration script...' });
-
-                    await this.context.globalState.update('postgresql.currentMigration', migration);
-
-                    progress.report({ increment: 100, message: 'Migration generated successfully' });
-
-                    const preview = await vscode.window.showInformationMessage(
-                        `Migration generated with ${migration.sqlScript.split('\n').length} operations`,
-                        'Preview Migration', 'Execute Migration'
-                    );
-
-                    if (preview === 'Preview Migration') {
-                        await this.previewMigration(migration);
-                    } else if (preview === 'Execute Migration') {
-                        await this.executeMigration(migration);
-                    }
-                } catch (migrationError) {
-                    throw new Error(`Migration generation failed: ${(migrationError as Error).message}`);
-                }
-            });
-        } catch (error) {
-            ErrorHandler.handleError(error, ErrorHandler.createContext('GenerateMigration'));
-        }
-    }
     async executeMigration(migration: any): Promise<void> {
         const context = ErrorHandler.createEnhancedContext(
             'ExecuteMigration',
@@ -458,7 +192,7 @@ export class PostgreSqlExtension {
             }
 
             try {
-                if (!this.migrationManager) {
+                if (!this.streamlinedServices.migrationManager) {
                     throw new Error('Migration manager not available');
                 }
             } catch (error) {
@@ -487,7 +221,10 @@ export class PostgreSqlExtension {
 
                 try {
                     try {
-                        const success = await this.migrationManager.executeMigration(migration.id);
+                        const success = await this.streamlinedServices.migrationManager.executeMigration(
+                            migration.sourceConnection,
+                            migration.targetConnection
+                        ).then(result => result.success);
 
                         if (!success) {
                             throw new Error('Migration execution returned false');
@@ -510,7 +247,7 @@ export class PostgreSqlExtension {
 
                                 try {
                                     // Use the dedicated rollback method in MigrationManager
-                                    const rollbackSuccess = await this.migrationManager.rollbackMigration(migration.id);
+                                    const rollbackSuccess = await this.streamlinedServices.migrationManager.cancelMigration(migration.id);
 
                                     if (rollbackSuccess) {
                                         Logger.info('Automatic rollback completed successfully');
@@ -602,401 +339,6 @@ export class PostgreSqlExtension {
         } catch (error) {
             ErrorHandler.handleError(error, ErrorHandler.createContext('ExecuteMigration'));
         }
-    }
-    async previewMigration(migration: any): Promise<void> {
-        try {
-            Logger.info('Previewing migration', migration);
-
-            if (!migration?.sqlScript) {
-                vscode.window.showErrorMessage('Invalid migration data for preview');
-                return;
-            }
-
-            await this.migrationPreviewView.showPreview();
-        } catch (error) {
-            ErrorHandler.handleError(error, ErrorHandler.createContext('PreviewMigration'));
-        }
-    }
-    async rollbackMigration(migration: any): Promise<void> {
-        try {
-            Logger.info('Rolling back migration', migration);
-
-            if (!migration?.id) {
-                vscode.window.showErrorMessage('Invalid migration data for rollback');
-                return;
-            }
-
-            const confirm = await vscode.window.showWarningMessage(
-                `Are you sure you want to rollback this migration?\n\nMigration: ${migration.name}\nThis action cannot be undone!`,
-                'Rollback Migration', 'Cancel'
-            );
-
-            if (confirm !== 'Rollback Migration') {
-                return;
-            }
-
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Rolling Back Migration',
-                cancellable: true
-            }, async (progress) => {
-                progress.report({ increment: 0, message: 'Preparing rollback...' });
-
-                try {
-                    const success = await this.migrationManager.executeMigration(migration.id);
-
-                    progress.report({ increment: 100, message: 'Rollback completed' });
-
-                    if (success) {
-                        vscode.window.showInformationMessage(
-                            `Migration "${migration.name}" rolled back successfully`
-                        );
-                    } else {
-                        vscode.window.showErrorMessage(
-                            `Migration "${migration.name}" rollback failed`
-                        );
-                    }
-                } catch (rollbackError) {
-                    throw new Error(`Migration rollback failed: ${(rollbackError as Error).message}`);
-                }
-            });
-        } catch (error) {
-            ErrorHandler.handleError(error, ErrorHandler.createContext('RollbackMigration'));
-        }
-    }
-    async viewObjectDetails(databaseObject: any): Promise<void> {
-        try {
-            Logger.info('Viewing object details', databaseObject);
-
-            if (!databaseObject?.id || !databaseObject?.type) {
-                vscode.window.showErrorMessage('Invalid object data for details view');
-                return;
-            }
-
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Loading Object Details',
-                cancellable: true
-            }, async (progress) => {
-                progress.report({ increment: 0, message: 'Fetching object metadata...' });
-
-                try {
-                    const connections = this.connectionManager.getConnections();
-                    const connection = connections.find(c => databaseObject.database === c.database);
-
-                    if (!connection) {
-                        throw new Error(`Connection not found for database: ${databaseObject.database}`);
-                    }
-
-                    const details = await this.schemaManager.getObjectDetails(
-                        connection.id,
-                        databaseObject.type,
-                        databaseObject.schema,
-                        databaseObject.name
-                    );
-
-                    progress.report({ increment: 100, message: 'Object details loaded' });
-
-                    const panel = vscode.window.createWebviewPanel(
-                        'objectDetails',
-                        `Details: ${databaseObject.type} ${databaseObject.name}`,
-                        vscode.ViewColumn.One,
-                        { enableScripts: true }
-                    );
-
-                    const detailsHtml = await this.generateObjectDetailsHtml(databaseObject, details);
-                    panel.webview.html = detailsHtml;
-
-                } catch (detailsError) {
-                    throw new Error(`Failed to load object details: ${(detailsError as Error).message}`);
-                }
-            });
-        } catch (error) {
-            ErrorHandler.handleError(error, ErrorHandler.createContext('ViewObjectDetails'));
-        }
-    }
-    async showHelp(): Promise<void> {
-        try {
-            Logger.info('Showing help');
-
-            const helpContent = await this.getHelpContent();
-            const panel = vscode.window.createWebviewPanel(
-                'postgresqlHelp',
-                'PostgreSQL Schema Sync - Help',
-                vscode.ViewColumn.One,
-                { enableScripts: true }
-            );
-
-            panel.webview.html = helpContent;
-        } catch (error) {
-            Logger.error('Failed to show help', error as Error);
-            vscode.window.showErrorMessage(
-                `Failed to show help: ${(error as Error).message}`
-            );
-        }
-    }
-    async showLogs(): Promise<void> {
-        try {
-            Logger.info('Showing logs');
-            Logger.showOutputChannel();
-        } catch (error) {
-            Logger.error('Failed to show logs', error as Error);
-            vscode.window.showErrorMessage(
-                `Failed to show logs: ${(error as Error).message}`
-            );
-        }
-    }
-    async openSettings(): Promise<void> {
-        try {
-            Logger.info('Opening settings');
-            await this.settingsView.showSettings();
-        } catch (error) {
-            Logger.error('Failed to open settings', error as Error);
-            vscode.window.showErrorMessage(
-                `Failed to open settings: ${(error as Error).message}`
-            );
-        }
-    }
-    private async generateObjectDetailsHtml(databaseObject: any, details: any): Promise<string> {
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Object Details</title>
-                <style>
-                    body {
-                        font-family: var(--vscode-font-family);
-                        padding: 20px;
-                        line-height: 1.6;
-                        background: var(--vscode-editor-background);
-                        color: var(--vscode-editor-foreground);
-                    }
-                    .header {
-                        margin-bottom: 20px;
-                        padding-bottom: 15px;
-                        border-bottom: 1px solid var(--vscode-panel-border);
-                    }
-                    .object-info {
-                        display: grid;
-                        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-                        gap: 15px;
-                        margin-bottom: 25px;
-                    }
-                    .info-card {
-                        background: var(--vscode-textBlockQuote-background);
-                        padding: 15px;
-                        border-radius: 6px;
-                        border: 1px solid var(--vscode-textBlockQuote-border);
-                    }
-                    .info-label {
-                        font-size: 12px;
-                        color: var(--vscode-descriptionForeground);
-                        margin-bottom: 5px;
-                        text-transform: uppercase;
-                        font-weight: bold;
-                    }
-                    .info-value {
-                        font-size: 14px;
-                        color: var(--vscode-textLink-foreground);
-                        font-family: 'Courier New', monospace;
-                    }
-                    .definition {
-                        background: var(--vscode-textCodeBlock-background);
-                        border: 1px solid var(--vscode-textBlockQuote-border);
-                        border-radius: 6px;
-                        padding: 15px;
-                        margin-bottom: 20px;
-                    }
-                    .definition pre {
-                        margin: 0;
-                        font-family: 'Courier New', monospace;
-                        font-size: 13px;
-                        line-height: 1.4;
-                        white-space: pre-wrap;
-                    }
-                    .dependencies {
-                        margin-top: 20px;
-                    }
-                    .dependency-list {
-                        background: var(--vscode-list-inactiveSelectionBackground);
-                        border: 1px solid var(--vscode-list-inactiveSelectionBackground);
-                        border-radius: 6px;
-                        padding: 15px;
-                        max-height: 200px;
-                        overflow-y: auto;
-                    }
-                    .dependency-item {
-                        padding: 5px 0;
-                        border-bottom: 1px solid var(--vscode-list-inactiveSelectionBackground);
-                        font-family: 'Courier New', monospace;
-                        font-size: 12px;
-                    }
-                    .dependency-item:last-child {
-                        border-bottom: none;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h2>${databaseObject.type}: ${databaseObject.name}</h2>
-                    <p>Schema: ${databaseObject.schema} | Database: ${databaseObject.database}</p>
-                </div>
-
-                <div class="object-info">
-                    <div class="info-card">
-                        <div class="info-label">Object Type</div>
-                        <div class="info-value">${databaseObject.type}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-label">Schema</div>
-                        <div class="info-value">${databaseObject.schema}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-label">Database</div>
-                        <div class="info-value">${databaseObject.database}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-label">Owner</div>
-                        <div class="info-value">${databaseObject.owner || 'Unknown'}</div>
-                    </div>
-                </div>
-
-                ${databaseObject.sizeInBytes ? `
-                <div class="object-info">
-                    <div class="info-card">
-                        <div class="info-label">Size</div>
-                        <div class="info-value">${(databaseObject.sizeInBytes / 1024).toFixed(2)} KB</div>
-                    </div>
-                </div>
-                ` : ''}
-
-                <h3>Definition</h3>
-                <div class="definition">
-                    <pre>${databaseObject.definition || 'No definition available'}</pre>
-                </div>
-
-                ${details?.dependencies?.length > 0 ? `
-                <div class="dependencies">
-                    <h3>Dependencies (${details.dependencies.length})</h3>
-                    <div class="dependency-list">
-                        ${details.dependencies.map((dep: string) => `<div class="dependency-item">${dep}</div>`).join('')}
-                    </div>
-                </div>
-                ` : ''}
-
-                ${details?.dependents?.length > 0 ? `
-                <div class="dependencies">
-                    <h3>Dependents (${details.dependents.length})</h3>
-                    <div class="dependency-list">
-                        ${details.dependents.map((dep: string) => `<div class="dependency-item">${dep}</div>`).join('')}
-                    </div>
-                </div>
-                ` : ''}
-
-                ${details?.additionalInfo ? `
-                <div class="dependencies">
-                    <h3>Additional Information</h3>
-                    <div class="dependency-list">
-                        ${Object.entries(details.additionalInfo).map(([key, value]) =>
-            `<div class="dependency-item"><strong>${key}:</strong> ${value}</div>`
-        ).join('')}
-                    </div>
-                </div>
-                ` : ''}
-            </body>
-            </html>
-        `;
-    }
-    private async getHelpContent(): Promise<string> {
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>PostgreSQL Schema Sync - Help</title>
-                <style>
-                    body {
-                        font-family: var(--vscode-font-family);
-                        padding: 20px;
-                        line-height: 1.6;
-                    }
-                    .section {
-                        margin-bottom: 30px;
-                    }
-                    .command {
-                        background: var(--vscode-textBlockQuote-background);
-                        padding: 10px;
-                        margin: 10px 0;
-                        border-left: 4px solid var(--vscode-textBlockQuote-border);
-                    }
-                    code {
-                        background: var(--vscode-textCodeBlock-background);
-                        padding: 2px 6px;
-                        border-radius: 3px;
-                    }
-                </style>
-            </head>
-            <body>
-                <h1>PostgreSQL Schema Compare & Sync</h1>
-
-                <div class="section">
-                    <h2>Getting Started</h2>
-                    <p>Welcome to PostgreSQL Schema Compare & Sync for VSCode!</p>
-                    <p>This extension provides enterprise-grade database schema management directly in your development environment.</p>
-                </div>
-
-                <div class="section">
-                    <h2>Quick Start</h2>
-                    <ol>
-                        <li>Add a database connection using the "+" button in the PostgreSQL Explorer</li>
-                        <li>Browse your database schema in the tree view</li>
-                        <li>Compare schemas between different databases</li>
-                        <li>Generate and execute migration scripts</li>
-                    </ol>
-                </div>
-
-                <div class="section">
-                    <h2>Available Commands</h2>
-                    <div class="command">
-                        <strong>Add Connection</strong><br>
-                        Create a new database connection with secure credential storage
-                    </div>
-                    <div class="command">
-                        <strong>Compare Schemas</strong><br>
-                        Compare database schemas and view differences
-                    </div>
-                    <div class="command">
-                        <strong>Generate Migration</strong><br>
-                        Create migration scripts from schema differences
-                    </div>
-                    <div class="command">
-                        <strong>Execute Migration</strong><br>
-                        Apply migration scripts to target databases
-                    </div>
-                </div>
-
-                <div class="section">
-                    <h2>Features</h2>
-                    <ul>
-                        <li>🔗 Multi-environment connection management</li>
-                        <li>🌳 Visual database schema explorer</li>
-                        <li>⚖️ Advanced schema comparison with diff visualization</li>
-                        <li>🔄 Migration generation and execution</li>
-                        <li>🛡️ Secure credential storage</li>
-                        <li>⚡ Enterprise-grade performance</li>
-                    </ul>
-                </div>
-
-                <div class="section">
-                    <h2>Support</h2>
-                    <p>For more information, visit the <a href="#">documentation</a> or check the logs using "Show Logs" command.</p>
-                </div>
-            </body>
-            </html>
-        `;
     }
     async dispose(): Promise<void> {
         const disposeContext = ErrorHandler.createEnhancedContext(

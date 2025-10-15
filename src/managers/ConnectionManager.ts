@@ -22,6 +22,7 @@ export interface DatabaseConnection {
     autoReconnect?: boolean;
     reconnectDelay?: number;
     maxReconnectAttempts?: number;
+    createdDate?: string;
 }
 
 export interface ConnectionPool {

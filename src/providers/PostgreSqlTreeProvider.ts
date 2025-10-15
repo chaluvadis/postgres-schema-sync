@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ConnectionManager, DatabaseConnection } from '@/managers/ConnectionManager';
-import { SchemaManager, DatabaseObject } from '@/managers/SchemaManager';
+import { SchemaManager, DatabaseObject } from '@/managers/schema';
 import { Logger } from '@/utils/Logger';
 import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 
@@ -100,7 +100,6 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
     async getChildren(element?: TreeItem): Promise<TreeItem[]> {
         try {
             if (!element) {
-                // Root level - show connections
                 return this.getConnectionItems();
             }
 

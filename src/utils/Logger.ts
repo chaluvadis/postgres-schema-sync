@@ -23,9 +23,6 @@ export class Logger {
     private static logs: LogEntry[] = [];
     private static maxLogs: number = 10000;
 
-    private constructor() {}
-
-
     static debug(message: string, source?: string, metadata?: Record<string, any>): void {
         this.log(LogLevel.Debug, message, source, metadata);
     }

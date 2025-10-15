@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
 import { DotNetIntegrationService, DotNetSchemaComparison, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
-import { SchemaManager, DetailedSchemaComparisonResult, ColumnComparisonDetail, IndexComparisonDetail, ConstraintDifference, ViewDependencyNode } from '@/managers/SchemaManager';
+import { SchemaManager, DetailedSchemaComparisonResult, ColumnComparisonDetail, IndexComparisonDetail, ConstraintDifference, ViewDependencyNode } from '@/managers/schema';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 
 export interface EnhancedSchemaComparisonData {
