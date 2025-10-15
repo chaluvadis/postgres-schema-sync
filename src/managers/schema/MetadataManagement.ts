@@ -1,6 +1,7 @@
 import { SchemaOperations, DatabaseObject } from './SchemaOperations';
 import { Logger } from '@/utils/Logger';
 import { DotNetIntegrationService, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
+import { SecurityManager, DataClassification } from '@/services/SecurityManager';
 import { ConnectionManager, DatabaseConnection } from '../ConnectionManager';
 
 // Rich metadata interfaces
@@ -283,6 +284,13 @@ export class MetadataManagement {
                 throw new Error(`Connection ${connectionId} not found`);
             }
 
+            // Encrypt password for secure transmission to DotNet service
+            const securityManager = SecurityManager.getInstance();
+            const encryptedPassword = await securityManager.encryptSensitiveData(
+                await this.getConnectionPassword(connectionId),
+                DataClassification.RESTRICTED
+            );
+
             const dotNetConnection: DotNetConnectionInfo = {
                 id: connection.id,
                 name: connection.name,
@@ -290,7 +298,7 @@ export class MetadataManagement {
                 port: connection.port,
                 database: connection.database,
                 username: connection.username,
-                password: await this.getConnectionPassword(connectionId)
+                password: encryptedPassword // 🔒 ENCRYPTED PASSWORD
             };
 
             // Extract comprehensive metadata based on object type

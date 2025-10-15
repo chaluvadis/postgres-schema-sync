@@ -4,6 +4,7 @@ import {
     DotNetIntegrationService,
     DotNetConnectionInfo
 } from '../services/DotNetIntegrationService';
+import { SecurityManager, DataClassification } from '../services/SecurityManager';
 export interface ConnectionInfo {
     id: string;
     name: string;
@@ -127,6 +128,13 @@ export class ConnectionService {
                 return null;
             }
 
+            // Encrypt password for secure transmission to DotNet service
+            const securityManager = SecurityManager.getInstance();
+            const encryptedPassword = await securityManager.encryptSensitiveData(
+                password,
+                DataClassification.RESTRICTED
+            );
+
             return {
                 id: connection.id,
                 name: connection.name,
@@ -134,7 +142,7 @@ export class ConnectionService {
                 port: connection.port,
                 database: connection.database,
                 username: connection.username,
-                password: password,
+                password: encryptedPassword, // 🔒 ENCRYPTED PASSWORD
                 createdDate: connection.createdDate
             };
         } catch (error) {

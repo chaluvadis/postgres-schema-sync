@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
 import { DotNetIntegrationService, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
-import { SecurityManager } from '@/services/SecurityManager';
+import { SecurityManager, DataClassification } from '@/services/SecurityManager';
 import { ActivityBarProvider } from '@/providers/ActivityBarProvider';
 
 export interface DatabaseConnection {
@@ -236,6 +236,13 @@ export class ConnectionManager {
                 }
             }
 
+            // Encrypt password for secure transmission to DotNet service
+            const securityManager = SecurityManager.getInstance();
+            const encryptedPassword = await securityManager.encryptSensitiveData(
+                password,
+                DataClassification.RESTRICTED
+            );
+
             const dotNetConnection: DotNetConnectionInfo = {
                 id: connection.id,
                 name: connection.name,
@@ -243,7 +250,7 @@ export class ConnectionManager {
                 port: connection.port,
                 database: connection.database,
                 username: connection.username,
-                password: password
+                password: encryptedPassword // 🔒 ENCRYPTED PASSWORD
             };
 
             // Test the connection with timeout
@@ -305,6 +312,13 @@ export class ConnectionManager {
                 return false;
             }
 
+            // Encrypt password for secure transmission to DotNet service
+            const securityManager = SecurityManager.getInstance();
+            const encryptedPassword = await securityManager.encryptSensitiveData(
+                connectionData.password,
+                DataClassification.RESTRICTED
+            );
+
             const dotNetConnection: DotNetConnectionInfo = {
                 id: 'temp-' + Date.now(), // Temporary ID for testing
                 name: connectionData.name,
@@ -312,7 +326,7 @@ export class ConnectionManager {
                 port: connectionData.port,
                 database: connectionData.database,
                 username: connectionData.username,
-                password: connectionData.password
+                password: encryptedPassword // 🔒 ENCRYPTED PASSWORD
             };
 
             const result = await this.dotNetService.testConnection(dotNetConnection);

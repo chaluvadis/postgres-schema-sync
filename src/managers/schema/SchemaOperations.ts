@@ -1,6 +1,7 @@
 import { ConnectionManager } from '../ConnectionManager';
 import { Logger } from '@/utils/Logger';
 import { DotNetIntegrationService, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
+import { SecurityManager, DataClassification } from '@/services/SecurityManager';
 import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 
 // Core schema operation interfaces
@@ -111,6 +112,13 @@ export class SchemaOperations {
                 message: 'Querying schema objects...'
             });
 
+            // Encrypt password for secure transmission to DotNet service
+            const securityManager = SecurityManager.getInstance();
+            const encryptedPassword = await securityManager.encryptSensitiveData(
+                password,
+                DataClassification.RESTRICTED
+            );
+
             // Create .NET connection info
             const dotNetConnection: DotNetConnectionInfo = {
                 id: connection.id,
@@ -119,7 +127,7 @@ export class SchemaOperations {
                 port: connection.port,
                 database: connection.database,
                 username: connection.username,
-                password: password,
+                password: encryptedPassword, // 🔒 ENCRYPTED PASSWORD
                 createdDate: new Date().toISOString()
             };
 
@@ -191,6 +199,13 @@ export class SchemaOperations {
                 throw new Error('Password not found for connection');
             }
 
+            // Encrypt password for secure transmission to DotNet service
+            const securityManager = SecurityManager.getInstance();
+            const encryptedPassword = await securityManager.encryptSensitiveData(
+                password,
+                DataClassification.RESTRICTED
+            );
+
             // Create extended connection info with environment support
             const extendedConnection: ExtendedConnectionInfo = {
                 id: connection.id,
@@ -199,7 +214,7 @@ export class SchemaOperations {
                 port: connection.port,
                 database: connection.database,
                 username: connection.username,
-                password: password,
+                password: encryptedPassword, // 🔒 ENCRYPTED PASSWORD
                 createdDate: new Date().toISOString(),
                 comparisonMetadata: {
                     comparisonCount: 0,
@@ -207,7 +222,7 @@ export class SchemaOperations {
                 }
             };
 
-            // Convert to DotNetConnectionInfo for compatibility
+            // Convert to DotNetConnectionInfo for compatibility (password is already encrypted)
             const dotNetConnection: DotNetConnectionInfo = {
                 id: extendedConnection.id,
                 name: extendedConnection.name,
@@ -215,7 +230,7 @@ export class SchemaOperations {
                 port: extendedConnection.port,
                 database: extendedConnection.database,
                 username: extendedConnection.username,
-                password: extendedConnection.password,
+                password: extendedConnection.password, // Already encrypted
                 createdDate: extendedConnection.createdDate
             };
 

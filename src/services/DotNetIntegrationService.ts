@@ -1,5 +1,6 @@
 import { Logger } from '@/utils/Logger';
 import { PerformanceMonitor } from '@/services/PerformanceMonitor';
+import { SecurityManager, DataClassification } from '@/services/SecurityManager';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -918,8 +919,11 @@ export class DotNetIntegrationService {
 
             Logger.debug('Testing connection via .NET library', 'testConnection', { connectionId: connectionInfo.id });
 
+            // Decrypt password for .NET library call
+            const decryptedConnectionInfo = await this.decryptConnectionPassword(connectionInfo);
+
             // Call .NET library method
-            const result = await this.callDotNetMethod<boolean>('TestConnectionAsync', connectionInfo);
+            const result = await this.callDotNetMethod<boolean>('TestConnectionAsync', decryptedConnectionInfo);
 
             performanceMonitor.endOperation(operationId, true);
             Logger.debug('Connection test completed', 'testConnection', { connectionId: connectionInfo.id, success: result });
@@ -940,10 +944,13 @@ export class DotNetIntegrationService {
                 schemaFilter
             });
 
+            // Decrypt password for .NET library call
+            const decryptedConnectionInfo = await this.decryptConnectionPassword(connectionInfo);
+
             // Call .NET library method
             const objects = await this.callDotNetMethod<DotNetDatabaseObject[]>(
                 'BrowseSchemaAsync',
-                connectionInfo,
+                decryptedConnectionInfo,
                 schemaFilter || null
             );
 
@@ -972,11 +979,15 @@ export class DotNetIntegrationService {
                 targetConnection: targetConnection.id
             });
 
+            // Decrypt passwords for .NET library calls
+            const decryptedSourceConnection = await this.decryptConnectionPassword(sourceConnection);
+            const decryptedTargetConnection = await this.decryptConnectionPassword(targetConnection);
+
             // Call .NET library method
             const comparison = await this.callDotNetMethod<DotNetSchemaComparison>(
                 'CompareSchemasAsync',
-                sourceConnection,
-                targetConnection,
+                decryptedSourceConnection,
+                decryptedTargetConnection,
                 options
             );
 
@@ -1112,10 +1123,13 @@ export class DotNetIntegrationService {
                 options
             });
 
+            // Decrypt password for .NET library call
+            const decryptedConnectionInfo = await this.decryptConnectionPassword(connectionInfo);
+
             // Call .NET library method
             const result = await this.callDotNetMethod<DotNetQueryResult>(
                 'ExecuteQueryAsync',
-                connectionInfo,
+                decryptedConnectionInfo,
                 query,
                 options
             );
@@ -1562,6 +1576,32 @@ export class DotNetIntegrationService {
                 return 'Check that all required parameters are provided and valid.';
             default:
                 return 'Please check the logs for more detailed information.';
+        }
+    }
+
+    /**
+     * Decrypts the password in a DotNetConnectionInfo object for use with .NET library calls
+     */
+    private async decryptConnectionPassword(connectionInfo: DotNetConnectionInfo): Promise<DotNetConnectionInfo> {
+        try {
+            // Check if password is encrypted (starts with "encrypted_")
+            if (connectionInfo.password && connectionInfo.password.startsWith('encrypted_')) {
+                const securityManager = SecurityManager.getInstance();
+                const decryptedPassword = await securityManager.decryptSensitiveData(connectionInfo.password);
+
+                return {
+                    ...connectionInfo,
+                    password: decryptedPassword
+                };
+            }
+
+            // Password is not encrypted, return as-is
+            return connectionInfo;
+        } catch (error) {
+            Logger.error('Failed to decrypt connection password', error as Error, 'decryptConnectionPassword', {
+                connectionId: connectionInfo.id
+            });
+            throw error;
         }
     }
 
