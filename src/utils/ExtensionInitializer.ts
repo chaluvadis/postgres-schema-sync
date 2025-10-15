@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { ConnectionManager } from '@/managers/ConnectionManager';
-import { SchemaManager } from '@/managers/SchemaManager';
-import { MigrationManager } from '@/managers/MigrationManager';
+import { ConnectionManager } from '../managers/ConnectionManager';
+import { SchemaManager } from '../managers/schema';
+import { StreamlinedServices } from '../services';
 import { PostgreSqlTreeProvider } from '@/providers/PostgreSqlTreeProvider';
 import { ActivityBarProvider } from '@/providers/ActivityBarProvider';
 import { EnhancedStatusBarProvider } from '@/providers/EnhancedStatusBarProvider';
@@ -30,7 +30,7 @@ import { Logger } from '@/utils/Logger';
 export interface ExtensionComponents {
     connectionManager: ConnectionManager;
     schemaManager: SchemaManager;
-    migrationManager: MigrationManager;
+    streamlinedServices: StreamlinedServices; // New streamlined architecture
     treeProvider: PostgreSqlTreeProvider;
     treeView?: vscode.TreeView<any>;
     activityBarProvider?: ActivityBarProvider;
@@ -86,13 +86,16 @@ export class ExtensionInitializer {
             // Initialize core managers
             const connectionManager = new ConnectionManager(context);
             const schemaManager = new SchemaManager(connectionManager);
-            const migrationManager = new MigrationManager(connectionManager);
+
+            // Initialize streamlined services (replaces legacy managers)
+            const streamlinedServices = StreamlinedServices.getInstance(connectionManager);
+
             const treeProvider = new PostgreSqlTreeProvider(connectionManager, schemaManager);
 
             const components: ExtensionComponents = {
                 connectionManager,
                 schemaManager,
-                migrationManager,
+                streamlinedServices,
                 treeProvider
             };
 
@@ -103,7 +106,6 @@ export class ExtensionInitializer {
             throw error;
         }
     }
-
     static initializeOptionalComponents(
         coreComponents: ExtensionComponents,
         context: vscode.ExtensionContext
@@ -118,7 +120,7 @@ export class ExtensionInitializer {
             const dashboardView = new DashboardView(coreComponents.connectionManager, coreComponents.schemaManager);
             const connectionView = new ConnectionManagementView(coreComponents.connectionManager);
             const schemaBrowserView = new SchemaBrowserView(coreComponents.schemaManager, coreComponents.connectionManager);
-            const schemaComparisonView = new SchemaComparisonView(this.getDotNetService());
+            const schemaComparisonView = new SchemaComparisonView(this.getDotNetService(), coreComponents.connectionManager);
             const migrationPreviewView = new MigrationPreviewView();
             const settingsView = new SettingsView();
             const errorDisplayView = new ErrorDisplayView();
@@ -170,7 +172,6 @@ export class ExtensionInitializer {
             return coreComponents;
         }
     }
-
     static registerTreeView(
         treeProvider: PostgreSqlTreeProvider,
         context: vscode.ExtensionContext
@@ -220,18 +221,9 @@ export class ExtensionInitializer {
         }
         return this.dotNetService;
     }
-
     static getStatusBarProvider(): EnhancedStatusBarProvider {
         return EnhancedStatusBarProvider.getCurrentInstance();
     }
-
-    static getImportManagementView(components: ExtensionComponents): ImportManagementView {
-        if (!components.importManagementView) {
-            throw new Error('ImportManagementView not initialized');
-        }
-        return components.importManagementView;
-    }
-
     static disposeImportManagementView(components: ExtensionComponents): void {
         if (components.importManagementView) {
             components.importManagementView.dispose();

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
 import { ConnectionManager } from '@/managers/ConnectionManager';
-import { SchemaManager } from '@/managers/SchemaManager';
+import { SchemaManager } from '@/managers/schema';
 
 export interface DashboardData {
     connections: {

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from './Logger';
+import { getUUId } from './helper';
 
 export interface ErrorContext {
     operation: string;
@@ -45,10 +46,7 @@ export enum ErrorSeverity {
 export class ErrorHandler {
     private static errorHistory: ErrorDetails[] = [];
     private static maxHistorySize = 1000;
-    private static sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    private constructor() { }
-
+    private static sessionId = `session_${getUUId()}`;
     static createContext(operation: string, contextData?: Record<string, any>): ErrorContext {
         return {
             operation,
@@ -59,7 +57,6 @@ export class ErrorHandler {
             retryCount: 0
         };
     }
-
     static categorizeError(errorMessage: string): ErrorDetails['category'] {
         const message = errorMessage.toLowerCase();
 
@@ -81,7 +78,6 @@ export class ErrorHandler {
 
         return 'unknown';
     }
-
     static generateRecoveryActions(error: unknown, context: ErrorContext): ErrorRecoveryAction[] {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const category = this.categorizeError(errorMessage);
@@ -248,7 +244,6 @@ export class ErrorHandler {
 
         return actions;
     }
-
     static generateSuggestions(error: unknown, category: ErrorDetails['category']): string[] {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const suggestions: string[] = [];
@@ -321,7 +316,6 @@ export class ErrorHandler {
             }
         };
     }
-
     static handleError(error: unknown, context: ErrorContext): void {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : undefined;
@@ -381,7 +375,6 @@ export class ErrorHandler {
             this.showUserErrorNotification(errorMessage, context);
         }
     }
-
     private static shouldShowUserNotification(errorMessage: string): boolean {
         const userNotificationKeywords = [
             'connection failed',
@@ -447,7 +440,6 @@ export class ErrorHandler {
             }
         });
     }
-
     private static determineSeverity(errorMessage: string, category: ErrorDetails['category']): ErrorSeverity {
         const message = errorMessage.toLowerCase();
 
@@ -472,7 +464,6 @@ export class ErrorHandler {
         // Low severity errors
         return ErrorSeverity.LOW;
     }
-
     private static showErrorDetails(errorDetails: ErrorDetails): void {
         const panel = vscode.window.createWebviewPanel(
             'errorDetails',
@@ -483,7 +474,6 @@ export class ErrorHandler {
 
         panel.webview.html = this.generateErrorDetailsHtml(errorDetails);
     }
-
     private static generateErrorDetailsHtml(errorDetails: ErrorDetails): string {
         return `
             <!DOCTYPE html>

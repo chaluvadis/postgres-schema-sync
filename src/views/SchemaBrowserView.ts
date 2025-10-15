@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SchemaManager, DatabaseObject } from '@/managers/SchemaManager';
+import { SchemaManager, DatabaseObject } from '@/managers/schema';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { Logger } from '@/utils/Logger';
 
