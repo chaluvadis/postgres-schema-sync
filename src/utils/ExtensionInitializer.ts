@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ConnectionManager } from '../managers/ConnectionManager';
 import { SchemaManager } from '../managers/schema';
-import { StreamlinedServices } from '../services';
+import { StreamlinedServices } from '../services/StreamlinedServices';
 import { PostgreSqlTreeProvider } from '@/providers/PostgreSqlTreeProvider';
 import { ActivityBarProvider } from '@/providers/ActivityBarProvider';
 import { EnhancedStatusBarProvider } from '@/providers/EnhancedStatusBarProvider';
@@ -16,7 +16,6 @@ import { NotificationManager } from '@/views/NotificationManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
 import { QueryExecutionService } from '@/services/QueryExecutionService';
 import { QueryEditorView } from '@/views/QueryEditorView';
-import { TeamCollaborationService } from '@/services/TeamCollaborationService';
 import { PerformanceMonitorService } from '@/services/PerformanceMonitorService';
 import { PerformanceAlertSystem } from '@/services/PerformanceAlertSystem';
 import { DataImportService } from '@/services/DataImportService';
@@ -26,6 +25,7 @@ import { TeamQueryLibraryView } from '@/views/TeamQueryLibraryView';
 import { ImportWizardView } from '@/views/ImportWizardView';
 import { ImportManagementView } from '@/views/ImportManagementView';
 import { Logger } from '@/utils/Logger';
+import { PostgreSqlExtension } from 'PostgreSqlExtension';
 
 export interface ExtensionComponents {
     connectionManager: ConnectionManager;
@@ -45,15 +45,12 @@ export interface ExtensionComponents {
     notificationManager?: NotificationManager;
     queryExecutionService?: QueryExecutionService;
     queryEditorView?: QueryEditorView;
-    teamCollaborationService?: TeamCollaborationService;
     performanceMonitorService?: PerformanceMonitorService;
     performanceAlertSystem?: PerformanceAlertSystem;
     dataImportService?: DataImportService;
     recoveryService?: RecoveryService;
     importWizardView?: ImportWizardView;
     importManagementView?: ImportManagementView;
-    queryAnalyticsView?: QueryAnalyticsView;
-    teamQueryLibraryView?: TeamQueryLibraryView;
     advancedMigrationPreviewView?: any;
     enhancedTreeProvider?: any;
 }
@@ -126,7 +123,6 @@ export class ExtensionInitializer {
             const errorDisplayView = new ErrorDisplayView();
             const queryExecutionService = new QueryExecutionService(coreComponents.connectionManager);
             const queryEditorView = new QueryEditorView(coreComponents.connectionManager, queryExecutionService);
-            const teamCollaborationService = new TeamCollaborationService(context);
             const performanceMonitorService = PerformanceMonitorService.getInstance();
             const performanceAlertSystem = PerformanceAlertSystem.getInstance(context, performanceMonitorService);
             const dataImportService = new DataImportService(context, coreComponents.connectionManager);
@@ -135,8 +131,6 @@ export class ExtensionInitializer {
                 new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
             const importManagementView = coreComponents.dataImportService ?
                 new ImportManagementView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
-            const queryAnalyticsView = new QueryAnalyticsView(context, performanceMonitorService, teamCollaborationService);
-            const teamQueryLibraryView = new TeamQueryLibraryView(context, teamCollaborationService);
 
             // Add optional components to the core components
             const components: ExtensionComponents = {
@@ -153,15 +147,12 @@ export class ExtensionInitializer {
                 notificationManager,
                 queryExecutionService,
                 queryEditorView,
-                teamCollaborationService,
                 performanceMonitorService,
                 performanceAlertSystem,
                 dataImportService,
                 recoveryService,
                 importWizardView,
                 importManagementView,
-                queryAnalyticsView,
-                teamQueryLibraryView
             };
 
             Logger.info('Optional UI components initialized successfully');

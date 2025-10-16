@@ -1,6 +1,7 @@
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { Logger } from '@/utils/Logger';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { getUUId } from '@/utils/helper';
 
 export interface QueryResult {
     id: string;
@@ -96,7 +97,7 @@ export class QueryExecutionService {
 
             // Convert .NET result to local format
             const result: QueryResult = {
-                id: `query_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                id: `query_${getUUId()}`,
                 query,
                 executionTime,
                 rowCount: dotNetResult.rowCount,
@@ -148,7 +149,6 @@ export class QueryExecutionService {
                 connectionId,
                 position
             });
-
             // For now, return basic SQL keywords and common suggestions
             // In a full implementation, this would query the database schema
             const basicKeywords: IntelliSenseSuggestion[] = [

@@ -35,7 +35,6 @@ export interface MigrationOptions {
     environment?: 'development' | 'staging' | 'production';
     tags?: string[];
 }
-
 export interface MigrationMetadata {
     author?: string;
     businessJustification?: string;
@@ -53,7 +52,6 @@ export interface MigrationMetadata {
     isRealTime?: boolean;
     cancelledAt?: string;
 }
-
 export interface MigrationResult {
     migrationId: string;
     success: boolean;
@@ -871,8 +869,6 @@ export class MigrationOrchestrator {
     private delay(milliseconds: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, milliseconds));
     }
-
-    // Real-time migration result helpers
     private getRealTimeMigrationProgress(migrationId: string, activeMigration: MigrationRequest): MigrationResult {
         const currentTime = Date.now();
         const startTime = this.getMigrationStartTime(migrationId) || currentTime;
@@ -899,7 +895,6 @@ export class MigrationOrchestrator {
             }
         };
     }
-
     private enhanceMigrationResultWithRealTimeData(result: MigrationResult): MigrationResult {
         const currentTime = Date.now();
 
@@ -913,7 +908,6 @@ export class MigrationOrchestrator {
             }
         };
     }
-
     private enhanceActiveMigrationWithRealTimeData(migrationId: string, migration: MigrationRequest): MigrationRequest {
         const currentTime = Date.now();
         const startTime = this.getMigrationStartTime(migrationId) || currentTime;
@@ -934,7 +928,6 @@ export class MigrationOrchestrator {
             }
         };
     }
-
     private getMigrationStartTime(migrationId: string): number | null {
         // Try to get start time from progress tracker first
         const progressInfo = this.progressTracker.getProgress(migrationId) as any;
@@ -951,7 +944,6 @@ export class MigrationOrchestrator {
         return null;
     }
 
-    // Verification helper methods
     private async verifyOperationCompletion(migrationId: string, request: MigrationRequest): Promise<void> {
         // Get the migration result to check if all operations completed
         const migrationResult = this.migrationResults.get(migrationId);

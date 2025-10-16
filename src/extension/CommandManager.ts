@@ -2,21 +2,17 @@ import * as vscode from 'vscode';
 import { PostgreSqlExtension } from '../PostgreSqlExtension';
 import { ExtensionComponents } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
-
-// Command interfaces for better type safety
 interface CommandDefinition {
     command: string;
     handler: (...args: any[]) => any;
     description?: string;
     category?: string;
 }
-
 interface ConnectionItem {
     label: string;
     detail: string;
     connection: any;
 }
-
 interface CommandError {
     command: string;
     error: string;
@@ -24,17 +20,12 @@ interface CommandError {
     context?: any;
 }
 
-/**
- * CommandManager - Handles all VSCode command registrations
- * Extracted from the monolithic extension.ts for better organization
- */
 export class CommandManager {
     private context: vscode.ExtensionContext;
     private extension: PostgreSqlExtension;
     private components: ExtensionComponents;
     private commandErrors: CommandError[] = [];
     private registeredCommands: Set<string> = new Set();
-
     constructor(
         context: vscode.ExtensionContext,
         extension: PostgreSqlExtension,
@@ -44,10 +35,6 @@ export class CommandManager {
         this.extension = extension;
         this.components = components;
     }
-
-    /**
-     * Register all extension commands
-     */
     registerCommands(): void {
         try {
             Logger.info('Registering PostgreSQL extension commands', 'CommandManager');
@@ -68,10 +55,6 @@ export class CommandManager {
             throw error;
         }
     }
-
-    /**
-     * Start command health monitoring
-     */
     private startCommandMonitoring(): void {
         // Monitor command health every 5 minutes
         const monitoringInterval = setInterval(() => {
@@ -83,10 +66,6 @@ export class CommandManager {
 
         Logger.info('Command health monitoring started', 'CommandManager');
     }
-
-    /**
-     * Stop command health monitoring
-     */
     stopCommandMonitoring(): void {
         if ((this as any).monitoringInterval) {
             clearInterval((this as any).monitoringInterval);
@@ -94,10 +73,6 @@ export class CommandManager {
             Logger.info('Command health monitoring stopped', 'CommandManager');
         }
     }
-
-    /**
-     * Register core PostgreSQL extension commands
-     */
     private registerCoreCommands(): void {
         const coreCommands: CommandDefinition[] = [
             {
@@ -189,10 +164,6 @@ export class CommandManager {
         // Register UI-specific commands
         this.registerUICommands();
     }
-
-    /**
-     * Register UI-related commands
-     */
     private registerUICommands(): void {
         // Dashboard command
         this.context.subscriptions.push(
@@ -241,10 +212,6 @@ export class CommandManager {
             })
         );
     }
-
-    /**
-     * Register query-related commands
-     */
     private registerQueryCommands(): void {
         // Open query editor command
         this.context.subscriptions.push(
@@ -290,10 +257,6 @@ export class CommandManager {
             })
         );
     }
-
-    /**
-     * Register SQL file operation commands
-     */
     private registerSQLFileCommands(): void {
         // Execute current file command
         this.context.subscriptions.push(
@@ -317,10 +280,6 @@ export class CommandManager {
             })
         );
     }
-
-    /**
-     * Handle edit connection command
-     */
     private async handleEditConnection(connection?: any): Promise<void> {
         if (!connection) {
             vscode.window.showErrorMessage('No connection provided for editing');
@@ -329,10 +288,6 @@ export class CommandManager {
 
         await this.extension.editConnection(connection);
     }
-
-    /**
-     * Handle test connection command
-     */
     private async handleTestConnection(connection?: any): Promise<void> {
         if (!connection) {
             vscode.window.showErrorMessage('No connection provided for testing');
@@ -341,10 +296,6 @@ export class CommandManager {
 
         await this.extension.testConnection(connection);
     }
-
-    /**
-     * Handle execute migration command
-     */
     private async handleExecuteMigration(migration?: any): Promise<void> {
         if (!migration) {
             vscode.window.showErrorMessage('No migration provided for execution');
@@ -353,10 +304,6 @@ export class CommandManager {
 
         await this.extension.executeMigration(migration);
     }
-
-    /**
-     * Handle add connection command
-     */
     private async handleAddConnection(): Promise<void> {
         try {
             if (this.components.connectionManager) {
@@ -372,10 +319,6 @@ export class CommandManager {
             vscode.window.showErrorMessage(`Failed to add connection: ${(error as Error).message}`);
         }
     }
-
-    /**
-     * Handle remove connection command
-     */
     private async handleRemoveConnection(connection?: any): Promise<void> {
         try {
             if (!connection) {
@@ -390,8 +333,15 @@ export class CommandManager {
                 );
 
                 if (confirm === 'Remove') {
-                    // Remove connection logic would go here
-                    Logger.info('Connection removal requested', 'CommandManager', { connectionId: connection.id });
+                    // Actually remove the connection using the ConnectionManager
+                    await this.components.connectionManager.removeConnection(connection.id);
+
+                    // Refresh the tree view to update the UI
+                    if (this.components.treeProvider) {
+                        this.components.treeProvider.refresh();
+                    }
+
+                    Logger.info('Connection removed successfully', 'CommandManager', { connectionId: connection.id });
                     vscode.window.showInformationMessage(`Connection "${connection.name}" removed successfully`);
                 }
             } else {
@@ -402,10 +352,6 @@ export class CommandManager {
             vscode.window.showErrorMessage(`Failed to remove connection: ${(error as Error).message}`);
         }
     }
-
-    /**
-     * Handle refresh explorer command
-     */
     private async handleRefreshExplorer(): Promise<void> {
         try {
             if (this.components.treeProvider) {
@@ -419,10 +365,6 @@ export class CommandManager {
             vscode.window.showErrorMessage(`Failed to refresh explorer: ${(error as Error).message}`);
         }
     }
-
-    /**
-     * Handle browse schema command
-     */
     private async handleBrowseSchema(connectionId?: string, schemaName?: string): Promise<void> {
         try {
             if (!connectionId) {
@@ -440,10 +382,6 @@ export class CommandManager {
             vscode.window.showErrorMessage(`Failed to browse schema: ${(error as Error).message}`);
         }
     }
-
-    /**
-     * Handle compare schemas command
-     */
     private async handleCompareSchemas(source?: any, target?: any): Promise<void> {
         try {
             if (!source || !target) {
@@ -463,10 +401,6 @@ export class CommandManager {
             vscode.window.showErrorMessage(`Failed to compare schemas: ${(error as Error).message}`);
         }
     }
-
-    /**
-     * Handle generate migration command
-     */
     private async handleGenerateMigration(comparison?: any): Promise<void> {
         try {
             if (!comparison) {
@@ -486,10 +420,6 @@ export class CommandManager {
             vscode.window.showErrorMessage(`Failed to generate migration: ${(error as Error).message}`);
         }
     }
-
-    /**
-     * Handle preview migration command
-     */
     private async handlePreviewMigration(migration?: any): Promise<void> {
         try {
             if (!migration) {
@@ -509,10 +439,6 @@ export class CommandManager {
             vscode.window.showErrorMessage(`Failed to preview migration: ${(error as Error).message}`);
         }
     }
-
-    /**
-     * Handle view object details command
-     */
     private async handleViewObjectDetails(databaseObject?: any): Promise<void> {
         try {
             if (!databaseObject) {
@@ -533,10 +459,6 @@ export class CommandManager {
             vscode.window.showErrorMessage(`Failed to view object details: ${(error as Error).message}`);
         }
     }
-
-    /**
-     * Handle command errors
-     */
     private handleCommandError(command: string, error: Error, context?: any[]): void {
         const commandError: CommandError = {
             command,
@@ -555,26 +477,6 @@ export class CommandManager {
         // Show user-friendly error message
         vscode.window.showErrorMessage(`Command "${command}" failed: ${error.message}`);
     }
-
-    /**
-     * Dispose of command manager resources
-     */
-    dispose(): void {
-        Logger.info('Disposing CommandManager', 'CommandManager');
-
-        // Stop monitoring
-        this.stopCommandMonitoring();
-
-        // Clear error history
-        this.commandErrors = [];
-        this.registeredCommands.clear();
-
-        Logger.info('CommandManager disposed successfully', 'CommandManager');
-    }
-
-    /**
-     * Get command statistics
-     */
     getCommandStats(): {
         registeredCommands: number;
         totalErrors: number;
@@ -595,16 +497,12 @@ export class CommandManager {
             successRate: Math.round(successRate * 100) / 100
         };
     }
-
-    /**
-     * Show command statistics in output channel
-     */
     showCommandStats(): void {
         const stats = this.getCommandStats();
         const recentErrorsText = stats.recentErrors.length > 0
             ? `\n\nRecent Errors:\n${stats.recentErrors.map((error, index) =>
                 `${index + 1}. ${error.command}: ${error.error} (${error.timestamp.toLocaleTimeString()})`
-              ).join('\n')}`
+            ).join('\n')}`
             : '\n\nNo recent errors';
 
         const statsMessage = `
@@ -643,10 +541,6 @@ Generated at: ${new Date().toLocaleString()}
             }
         });
     }
-
-    /**
-     * Clear command error history
-     */
     clearCommandErrors(): void {
         const clearedCount = this.commandErrors.length;
         this.commandErrors = [];
@@ -655,10 +549,6 @@ Generated at: ${new Date().toLocaleString()}
 
         vscode.window.showInformationMessage(`Cleared ${clearedCount} command errors from history`);
     }
-
-    /**
-     * Monitor command health and report issues
-     */
     private monitorCommandHealth(): void {
         const stats = this.getCommandStats();
 
@@ -692,10 +582,6 @@ Generated at: ${new Date().toLocaleString()}
             });
         }
     }
-
-    /**
-     * Get list of commands that have failed
-     */
     private getFailedCommands(): string[] {
         const commandErrorMap = new Map<string, number>();
 
@@ -710,10 +596,6 @@ Generated at: ${new Date().toLocaleString()}
             .filter(([_, count]) => count > 2)
             .map(([command, _]) => command);
     }
-
-    /**
-     * Execute the currently active SQL file
-     */
     private async executeCurrentSQLFile(): Promise<void> {
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) {
@@ -766,10 +648,6 @@ Generated at: ${new Date().toLocaleString()}
         const { executeSQLContent } = await import('./SQLExecutionManager');
         await executeSQLContent(sqlContent, targetConnection.id, this.components);
     }
-
-    /**
-     * Format the currently active SQL file
-     */
     private async formatCurrentSQLFile(): Promise<void> {
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) {
@@ -802,5 +680,12 @@ Generated at: ${new Date().toLocaleString()}
             Logger.error('Failed to format SQL file', error as Error);
             vscode.window.showErrorMessage(`Failed to format SQL: ${(error as Error).message}`);
         }
+    }
+    dispose(): void {
+        Logger.info('Disposing CommandManager', 'CommandManager');
+        this.stopCommandMonitoring();
+        this.commandErrors = [];
+        this.registeredCommands.clear();
+        Logger.info('CommandManager disposed successfully', 'CommandManager');
     }
 }
