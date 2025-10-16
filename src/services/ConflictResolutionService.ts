@@ -1,9 +1,6 @@
 import { Logger } from '@/utils/Logger';
-import { ConnectionManager } from '@/managers/ConnectionManager';
-import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
-import { SchemaComparison, SchemaDifference } from '@/managers/schema/SchemaComparison';
-
-// Core conflict resolution interfaces
+import { SchemaDifference } from '@/managers/schema/SchemaComparison';
+import { getUUId } from '@/utils/helper';
 export interface ConflictResolutionStrategy {
     id: string;
     name: string;
@@ -101,37 +98,8 @@ export interface ResolutionProgress {
     currentPhase: 'detection' | 'analysis' | 'resolution' | 'validation' | 'completion';
 }
 
-export interface ConflictAnalysis {
-    conflictId: string;
-    complexity: 'simple' | 'moderate' | 'complex' | 'critical';
-    riskLevel: 'low' | 'medium' | 'high' | 'critical';
-    businessImpact: 'none' | 'low' | 'medium' | 'high' | 'critical';
-    technicalImpact: 'none' | 'low' | 'medium' | 'high' | 'critical';
-    dependencies: string[]; // Other conflict IDs
-    resolutionTime: number; // estimated minutes
-    successProbability: number; // 0-1 scale
-    alternativeApproaches: string[];
-}
-
-export interface ResolutionResult {
-    success: boolean;
-    resolution: ConflictResolution;
-    generatedScript?: string;
-    affectedObjects: string[];
-    warnings: string[];
-    nextSteps: string[];
-    rollbackRequired: boolean;
-}
-
 export class ConflictResolutionService {
-    private connectionManager: ConnectionManager;
-    private dotNetService: DotNetIntegrationService;
-
-    constructor(connectionManager: ConnectionManager) {
-        this.connectionManager = connectionManager;
-        this.dotNetService = DotNetIntegrationService.getInstance();
-    }
-
+    constructor() { }
     async detectSchemaConflicts(
         sourceConnectionId: string,
         targetConnectionId: string,
@@ -609,12 +577,12 @@ export class ConflictResolutionService {
     private areConflictsDependent(conflict1: SchemaConflict, conflict2: SchemaConflict): boolean {
         // Check if two conflicts are dependent on each other
         return conflict1.sourceObject.name === conflict2.sourceObject.name ||
-               conflict1.targetObject.name === conflict2.targetObject.name ||
-               conflict1.conflictDetails.some(detail =>
-                   conflict2.conflictDetails.some(otherDetail =>
-                       detail.field === otherDetail.field
-                   )
-               );
+            conflict1.targetObject.name === conflict2.targetObject.name ||
+            conflict1.conflictDetails.some(detail =>
+                conflict2.conflictDetails.some(otherDetail =>
+                    detail.field === otherDetail.field
+                )
+            );
     }
 
     async createConflictResolutionSession(
@@ -784,253 +752,8 @@ export class ConflictResolutionService {
     }
 
     private generateId(): string {
-        return `conflict_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return `conflict_${getUUId()}`;
     }
-
-    /**
-     * Analyze a specific conflict in detail
-     */
-    async analyzeConflict(conflictId: string, session: ConflictResolutionSession): Promise<ConflictAnalysis> {
-        try {
-            const conflict = session.conflicts.find(c => c.id === conflictId);
-            if (!conflict) {
-                throw new Error(`Conflict ${conflictId} not found in session`);
-            }
-
-            // Analyze conflict complexity and impact
-            const complexity = this.determineConflictComplexity(conflict);
-            const riskLevel = this.assessConflictRisk(conflict);
-            const businessImpact = this.assessBusinessImpact(conflict);
-            const technicalImpact = this.assessTechnicalImpact(conflict);
-
-            const analysis: ConflictAnalysis = {
-                conflictId,
-                complexity,
-                riskLevel,
-                businessImpact,
-                technicalImpact,
-                dependencies: this.findConflictDependencies(conflict, session.conflicts),
-                resolutionTime: this.estimateResolutionTime(conflict),
-                successProbability: this.calculateSuccessProbability(conflict),
-                alternativeApproaches: this.generateAlternativeApproaches(conflict)
-            };
-
-            Logger.info('Conflict analysis completed', 'ConflictResolutionService.analyzeConflict', {
-                conflictId,
-                complexity,
-                riskLevel,
-                businessImpact,
-                technicalImpact
-            });
-
-            return analysis;
-
-        } catch (error) {
-            Logger.error('Failed to analyze conflict', error as Error);
-            throw error;
-        }
-    }
-
-    /**
-     * Execute a specific conflict resolution
-     */
-    async executeConflictResolution(
-        conflictId: string,
-        session: ConflictResolutionSession,
-        strategyId: string
-    ): Promise<ResolutionResult> {
-        try {
-            const conflict = session.conflicts.find(c => c.id === conflictId);
-            if (!conflict) {
-                throw new Error(`Conflict ${conflictId} not found`);
-            }
-
-            const strategy = conflict.resolutionStrategies.find(s => s.id === strategyId);
-            if (!strategy) {
-                throw new Error(`Strategy ${strategyId} not found for conflict ${conflictId}`);
-            }
-
-            // Create resolution record
-            const resolution: ConflictResolution = {
-                conflictId,
-                strategy,
-                resolution: 'source_wins', // Would be determined by strategy
-                resolvedBy: 'system',
-                resolvedAt: new Date(),
-                executionOrder: session.resolutions.length + 1,
-                dependencies: [],
-                validationResults: [],
-                notes: `Executed using strategy: ${strategy.name}`
-            };
-
-            // Generate resolution script
-            const script = await this.generateResolutionScript(conflict, strategy);
-
-            const result: ResolutionResult = {
-                success: true,
-                resolution,
-                generatedScript: script,
-                affectedObjects: [conflict.sourceObject.name, conflict.targetObject.name],
-                warnings: this.generateResolutionWarnings(conflict, strategy),
-                nextSteps: this.generateNextSteps(conflict, strategy),
-                rollbackRequired: strategy.canHandleDataLoss
-            };
-
-            Logger.info('Conflict resolution executed', 'ConflictResolutionService.executeConflictResolution', {
-                conflictId,
-                strategyId,
-                success: result.success
-            });
-
-            return result;
-
-        } catch (error) {
-            Logger.error('Failed to execute conflict resolution', error as Error);
-            throw error;
-        }
-    }
-
-    private determineConflictComplexity(conflict: SchemaConflict): 'simple' | 'moderate' | 'complex' | 'critical' {
-        const detailCount = conflict.conflictDetails.length;
-        const strategyCount = conflict.resolutionStrategies.length;
-        const hasDependencies = conflict.conflictDetails.some(d => d.impact === 'critical');
-
-        if (hasDependencies && detailCount > 3) return 'critical';
-        if (detailCount > 2 || strategyCount > 3) return 'complex';
-        if (detailCount > 1 || strategyCount > 1) return 'moderate';
-        return 'simple';
-    }
-
-    private assessConflictRisk(conflict: SchemaConflict): 'low' | 'medium' | 'high' | 'critical' {
-        if (conflict.priority === 'critical') return 'critical';
-        if (conflict.priority === 'high') return 'high';
-        if (conflict.conflictDetails.some(d => d.impact === 'high')) return 'high';
-        if (conflict.conflictDetails.some(d => d.impact === 'medium')) return 'medium';
-        return 'low';
-    }
-
-    private assessBusinessImpact(conflict: SchemaConflict): 'none' | 'low' | 'medium' | 'high' | 'critical' {
-        // Assess based on conflict type and object types
-        if (conflict.type.category === 'data' && conflict.type.severity === 'critical') return 'critical';
-        if (conflict.type.category === 'schema' && conflict.priority === 'high') return 'high';
-        if (conflict.conflictDetails.some(d => d.impact === 'high')) return 'high';
-        if (conflict.conflictDetails.some(d => d.impact === 'medium')) return 'medium';
-        return 'low';
-    }
-
-    private assessTechnicalImpact(conflict: SchemaConflict): 'none' | 'low' | 'medium' | 'high' | 'critical' {
-        // Assess based on technical complexity
-        if (conflict.conflictDetails.some(d => d.differenceType === 'structure_different')) return 'high';
-        if (conflict.conflictDetails.some(d => d.differenceType === 'type_mismatch')) return 'medium';
-        return 'low';
-    }
-
-    private findConflictDependencies(conflict: SchemaConflict, allConflicts: SchemaConflict[]): string[] {
-        return allConflicts
-            .filter(c => c.id !== conflict.id)
-            .filter(c => this.areConflictsDependent(conflict, c))
-            .map(c => c.id);
-    }
-
-    private estimateResolutionTime(conflict: SchemaConflict): number {
-        const baseTime = 5; // minutes
-        const complexityMultiplier = { simple: 1, moderate: 2, complex: 4, critical: 8 }[this.determineConflictComplexity(conflict)];
-        const strategyCount = conflict.resolutionStrategies.length;
-
-        return baseTime * complexityMultiplier * Math.max(1, strategyCount * 0.5);
-    }
-
-    private calculateSuccessProbability(conflict: SchemaConflict): number {
-        const strategySuccessRates = conflict.resolutionStrategies.map(s => s.successRate);
-        const avgSuccessRate = strategySuccessRates.reduce((sum, rate) => sum + rate, 0) / strategySuccessRates.length;
-
-        // Adjust based on conflict complexity
-        const complexity = this.determineConflictComplexity(conflict);
-        const complexityAdjustment = { simple: 0.1, moderate: 0, complex: -0.1, critical: -0.2 }[complexity];
-
-        return Math.max(0, Math.min(1, avgSuccessRate + complexityAdjustment));
-    }
-
-    private generateAlternativeApproaches(conflict: SchemaConflict): string[] {
-        const approaches: string[] = [];
-
-        if (conflict.resolutionStrategies.length > 1) {
-            approaches.push('Consider multiple resolution strategies');
-        }
-
-        if (conflict.type.category === 'schema') {
-            approaches.push('Manual schema review and adjustment');
-            approaches.push('Create custom migration script');
-        }
-
-        if (conflict.priority === 'high' || conflict.priority === 'critical') {
-            approaches.push('Involve subject matter experts');
-            approaches.push('Create detailed rollback plan');
-        }
-
-        return approaches;
-    }
-
-    private async generateResolutionScript(conflict: SchemaConflict, strategy: ConflictResolutionStrategy): Promise<string> {
-        // Generate appropriate SQL script based on conflict type and strategy
-        return `-- Resolution script for ${conflict.id}\n-- Strategy: ${strategy.name}\n-- Auto-generated script`;
-    }
-
-    private generateResolutionWarnings(conflict: SchemaConflict, strategy: ConflictResolutionStrategy): string[] {
-        const warnings: string[] = [];
-
-        if (strategy.canHandleDataLoss) {
-            warnings.push('This resolution may result in data loss');
-        }
-
-        if (strategy.riskLevel === 'high' || strategy.riskLevel === 'critical') {
-            warnings.push('High risk resolution strategy');
-        }
-
-        if (conflict.priority === 'critical') {
-            warnings.push('Critical conflict - ensure proper testing');
-        }
-
-        return warnings;
-    }
-
-    private generateNextSteps(conflict: SchemaConflict, strategy: ConflictResolutionStrategy): string[] {
-        const steps: string[] = [];
-
-        steps.push('Test resolution in staging environment');
-        steps.push('Backup data before applying');
-
-        if (strategy.requiresUserInput) {
-            steps.push('Review and approve resolution manually');
-        }
-
-        if (conflict.conflictDetails.some(d => d.impact === 'high')) {
-            steps.push('Monitor application impact after resolution');
-        }
-
-        return steps;
-    }
-
-    /**
-     * Get service statistics
-     */
-    getStats(): {
-        totalSessions: number;
-        activeSessions: number;
-        totalConflicts: number;
-        resolvedConflicts: number;
-        averageResolutionTime: number;
-    } {
-        // This would track actual statistics in a real implementation
-        return {
-            totalSessions: 0,
-            activeSessions: 0,
-            totalConflicts: 0,
-            resolvedConflicts: 0,
-            averageResolutionTime: 0
-        };
-    }
-
     async dispose(): Promise<void> {
         Logger.info('Disposing ConflictResolutionService');
     }
