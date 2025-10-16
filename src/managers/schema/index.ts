@@ -1,28 +1,33 @@
-// Schema Management Module Index
-// Provides clean exports for all schema management functionality
-
-// Main modular schema manager
+// Export the main schema manager
 export { ModularSchemaManager } from './ModularSchemaManager';
 
-// Export as SchemaManager for backward compatibility
-export { ModularSchemaManager as SchemaManager } from './ModularSchemaManager';
+// Export core interfaces and types
+export type {
+    DatabaseObject,
+    SchemaCache,
+    ExtendedConnectionInfo,
+    EnvironmentInfo,
+    ConnectionComparisonMetadata
+} from './SchemaOperations';
 
-// Core modules
-export { SchemaOperations } from './SchemaOperations';
-export { SchemaComparison } from './SchemaComparison';
-export { MetadataManagement } from './MetadataManagement';
-export { DependencyAnalysis } from './DependencyAnalysis';
-export { ImpactAnalysis } from './ImpactAnalysis';
-export { MigrationManagement } from './MigrationManagement';
-export { PerformanceAnalysis } from './PerformanceAnalysis';
+// Export additional interfaces from other modules
+export type {
+    RichMetadataObject,
+    ObjectMetadata,
+    ObjectStatistics,
+    PermissionInfo,
+    DependencyInfo,
+    ChangeRecord,
+    ValidationStatus,
+    PerformanceMetrics,
+    MetadataCacheEntry,
+    CachePerformanceMetrics,
+    IntelligentCacheConfig,
+    CacheAnalytics,
+    CacheRecommendation
+} from './MetadataManagement';
 
-// Re-export key interfaces for backward compatibility (selective exports to avoid conflicts)
-export * from './SchemaOperations';
-export * from './SchemaComparison';
-export * from './MetadataManagement';
-
-// Export specific interfaces from other modules to avoid naming conflicts
-export {
+export type {
     RichDependencyGraph,
     RichDependencyNode,
     RichDependencyEdge,
@@ -42,7 +47,7 @@ export {
     GraphMetadata
 } from './DependencyAnalysis';
 
-export {
+export type {
     BasicImpactAnalysis,
     AdvancedImpactAnalysis,
     BusinessImpactAssessment,
@@ -53,7 +58,7 @@ export {
     StakeholderImpact
 } from './ImpactAnalysis';
 
-export {
+export type {
     EnhancedMigrationScript,
     SchemaSnapshot,
     MigrationStep,
@@ -69,33 +74,10 @@ export {
     ValidationResult
 } from './MigrationManagement';
 
-// TODO: ConflictResolution and PerformanceAnalysis modules need to be created
-// For now, commenting out broken imports to fix compilation errors
-// export {
-//     ConflictResolutionStrategyInfo,
-//     ConflictType,
-//     SchemaConflict,
-//     ConflictDetail,
-//     ConflictResolution,
-//     RollbackInfo,
-//     ConflictResolutionSession,
-//     ResolutionProgress,
-//     ConflictAnalysis,
-//     ResolutionResult
-// } from './ConflictResolution';
-
-// TODO: Re-enable when ConflictResolution module is created
-// Export the class with a different name to avoid conflicts
-// export { ConflictResolution as ConflictResolutionService } from './ConflictResolution';
-
-// TODO: PerformanceAnalysis module needs to be created
-// export {
-//     PerformanceTrend,
-//     DataPoint,
-//     SystemPerformanceTrend,
-//     PerformanceRecommendation,
-//     PerformanceAlert,
-//     PerformanceBaseline,
-//     BaselineMetric,
-//     SystemBaselineMetric
-// } from './PerformanceAnalysis';
+// Export classes
+export { SchemaOperations } from './SchemaOperations';
+export { SchemaComparison } from './SchemaComparison';
+export { MetadataManagement } from './MetadataManagement';
+export { DependencyAnalysis } from './DependencyAnalysis';
+export { ImpactAnalysis } from './ImpactAnalysis';
+export { MigrationManagement } from './MigrationManagement';

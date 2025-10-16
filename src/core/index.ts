@@ -31,7 +31,7 @@ export class CoreServices {
 
     get connectionService(): ConnectionService {
         if (!this._connectionService) {
-            this._connectionService = new ConnectionService(this.connectionManager);
+            this._connectionService = new ConnectionService(this.connectionManager, this.validationFramework);
         }
         return this._connectionService;
     }
@@ -67,9 +67,9 @@ export class CoreServices {
         migrationOrchestrator: any;
     } {
         return {
-            connectionService: this._connectionService?.getServiceStats(),
-            progressTracker: this._progressTracker?.getStats(),
-            validationFramework: this._validationFramework?.getStats(),
+            connectionService: this._connectionService ? { initialized: true } : { initialized: false },
+            progressTracker: this._progressTracker ? { initialized: true } : { initialized: false },
+            validationFramework: this._validationFramework ? { initialized: true } : { initialized: false },
             migrationOrchestrator: this._migrationOrchestrator?.getStats()
         };
     }

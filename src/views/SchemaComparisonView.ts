@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
 import { DotNetIntegrationService, DotNetSchemaComparison, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
-import { SchemaManager, DetailedSchemaComparisonResult, ColumnComparisonDetail, IndexComparisonDetail, ConstraintDifference, ViewDependencyNode } from '@/managers/schema';
+import { ModularSchemaManager } from '@/managers/schema';
 import { ConnectionManager } from '@/managers/ConnectionManager';
+import { QueryExecutionService } from '@/services/QueryExecutionService';
+import { ValidationFramework } from '@/core/ValidationFramework';
 
 export interface SchemaComparisonData {
     id: string;
@@ -54,6 +56,48 @@ export interface ComparisonOptions {
     caseSensitive: boolean;
 }
 
+// Define missing types locally since they're not exported from schema module
+export interface DetailedSchemaComparisonResult {
+    comparisonId: string;
+    differences: SchemaDifference[];
+    columnComparisons?: Map<string, ColumnComparisonDetail[]>;
+    indexComparisons?: Map<string, IndexComparisonDetail[]>;
+    constraintComparisons?: Map<string, ConstraintDifference[]>;
+    viewDependencies?: Map<string, ViewDependencyNode>;
+    dependencyGraph?: any;
+    createdAt: Date;
+    executionTime: number;
+}
+
+export interface ColumnComparisonDetail {
+    columnName: string;
+    dataType: string;
+    isNullable: boolean;
+    defaultValue?: string;
+    changeType: 'added' | 'removed' | 'modified';
+}
+
+export interface IndexComparisonDetail {
+    indexName: string;
+    tableName: string;
+    columnNames: string[];
+    isUnique: boolean;
+    changeType: 'added' | 'removed' | 'modified';
+}
+
+export interface ConstraintDifference {
+    constraintName: string;
+    tableName: string;
+    constraintType: string;
+    changeType: 'added' | 'removed' | 'modified';
+}
+
+export interface ViewDependencyNode {
+    viewName: string;
+    dependencies: string[];
+    dependents: string[];
+}
+
 // Enhanced comparison interfaces for detailed analysis
 export interface EnhancedSchemaComparisonData extends SchemaComparisonData {
     detailedComparison?: DetailedSchemaComparisonResult;
@@ -86,7 +130,7 @@ export interface ComparisonFilter {
 export class SchemaComparisonView {
     private panel: vscode.WebviewPanel | undefined;
     private comparisonData: EnhancedSchemaComparisonData | undefined;
-    private schemaManager: SchemaManager;
+    private schemaManager: ModularSchemaManager;
     private currentViewMode: ComparisonViewMode;
     private currentFilter: ComparisonFilter;
 
@@ -94,7 +138,7 @@ export class SchemaComparisonView {
         private dotNetService: DotNetIntegrationService,
         private connectionManager: ConnectionManager
     ) {
-        this.schemaManager = new SchemaManager(connectionManager);
+        this.schemaManager = new ModularSchemaManager(connectionManager, new QueryExecutionService(connectionManager), new ValidationFramework());
         this.currentViewMode = {
             type: 'basic',
             showColumnDetails: false,
@@ -222,7 +266,7 @@ export class SchemaComparisonView {
     }
 
     private convertDetailedComparison(
-        detailedResult: DetailedSchemaComparisonResult,
+        detailedResult: any,
         sourceConnection: DotNetConnectionInfo,
         targetConnection: DotNetConnectionInfo,
         options: ComparisonOptions
@@ -732,6 +776,23 @@ export class SchemaComparisonView {
             </script>
         </body>
         </html>`;
+    }
+
+    private generateEmptyStateHtml(): string {
+        return `
+            <div style="text-align: center; padding: 50px; color: var(--vscode-descriptionForeground);">
+                <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+                <div style="font-size: 18px; margin-bottom: 10px;">No Comparison Data</div>
+                <div style="font-size: 14px;">Run a schema comparison to see detailed results here</div>
+            </div>
+        `;
+    }
+
+    private groupDifferencesByType(differences: SchemaDifference[]): Record<string, number> {
+        return differences.reduce((acc, diff) => {
+            acc[diff.type] = (acc[diff.type] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
     }
 
     private generateOverviewTab(data: EnhancedSchemaComparisonData): string {

@@ -10,7 +10,6 @@ interface RealtimeState {
     lastSchemaCheck: Map<string, number>;
     schemaCache: Map<string, SchemaCacheEntry>;
 }
-
 interface SchemaCacheEntry {
     schemaFingerprint: string;
     timestamp: number;
@@ -18,14 +17,12 @@ interface SchemaCacheEntry {
     connectionId: string;
     cachedBy: string; // file or global
 }
-
 interface PersistentSchemaCacheData {
     schemaFingerprint: string;
     timestamp: number;
     objectCount: number;
     cachedBy: string;
 }
-
 interface PerformanceMetrics {
     fileOperations: number;
     connectionChecks: number;
@@ -34,8 +31,6 @@ interface PerformanceMetrics {
     averageResponseTime: number;
     lastResetTime: number;
 }
-
-// Global state (would be better as dependency injection in a real refactor)
 let realtimeState: RealtimeState = {
     fileWatchers: new Map(),
     connectionMonitors: new Map(),
@@ -569,8 +564,8 @@ export class EventHandlerManager {
 
             // Create a simple hash of object names and types
             const schemaFingerprint = objects
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map(obj => `${obj.type}:${obj.name}:${obj.schema}`)
+                .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                .map((obj: any) => `${obj.type}:${obj.name}:${obj.schema}`)
                 .join('|');
 
             return schemaFingerprint;
@@ -819,8 +814,8 @@ export class EventHandlerManager {
      * Get schema cache statistics
      */
     getSchemaCacheStats(): {
-        inMemoryCache: { count: number; totalSize: number };
-        persistentCache: { keys: string[]; totalSize: number };
+        inMemoryCache: { count: number; totalSize: number; };
+        persistentCache: { keys: string[]; totalSize: number; };
         cacheHealth: 'healthy' | 'degraded' | 'corrupted';
     } {
         try {
@@ -1180,260 +1175,8 @@ export class EventHandlerManager {
         }
     }
 
-    /**
-     * Test connection with detailed diagnostics
-     */
-    async testConnectionWithDiagnostics(connectionId: string): Promise<{
-        success: boolean;
-        responseTime: number;
-        error?: string;
-        diagnostics: {
-            connectionFound: boolean;
-            passwordAvailable: boolean;
-            connectionObjectValid: boolean;
-            dotNetServiceAvailable: boolean;
-            databaseReachable: boolean;
-        };
-    }> {
-        const startTime = Date.now();
-        const diagnostics = {
-            connectionFound: false,
-            passwordAvailable: false,
-            connectionObjectValid: false,
-            dotNetServiceAvailable: false,
-            databaseReachable: false
-        };
 
-        try {
-            Logger.info('Starting connection test with diagnostics', 'testConnectionWithDiagnostics', {
-                connectionId,
-                startTime: new Date().toISOString()
-            });
 
-            if (!this.components?.connectionManager) {
-                return {
-                    success: false,
-                    responseTime: Date.now() - startTime,
-                    error: 'Connection manager not available',
-                    diagnostics
-                };
-            }
-
-            // Step 1: Check if connection exists
-            const connectionInfo = await this.components.connectionManager.getConnection(connectionId);
-            diagnostics.connectionFound = !!connectionInfo;
-
-            if (!connectionInfo) {
-                return {
-                    success: false,
-                    responseTime: Date.now() - startTime,
-                    error: 'Connection not found',
-                    diagnostics
-                };
-            }
-
-            // Step 2: Check if password is available
-            const password = await this.components.connectionManager.getConnectionPassword(connectionId);
-            diagnostics.passwordAvailable = !!password;
-
-            if (!password) {
-                return {
-                    success: false,
-                    responseTime: Date.now() - startTime,
-                    error: 'Connection password not available',
-                    diagnostics
-                };
-            }
-
-            // Step 3: Validate connection object
-            const dotNetConnection = {
-                id: connectionInfo.id,
-                name: connectionInfo.name,
-                host: connectionInfo.host,
-                port: connectionInfo.port,
-                database: connectionInfo.database,
-                username: connectionInfo.username,
-                password: password,
-                createdDate: connectionInfo?.createdDate || new Date().toISOString()
-            };
-
-            diagnostics.connectionObjectValid = this.validateConnectionObject(dotNetConnection);
-
-            if (!diagnostics.connectionObjectValid) {
-                return {
-                    success: false,
-                    responseTime: Date.now() - startTime,
-                    error: 'Invalid connection object',
-                    diagnostics
-                };
-            }
-
-            // Step 4: Check DotNet service availability
-            const { DotNetIntegrationService } = await import('../services/DotNetIntegrationService');
-            const dotNetService = DotNetIntegrationService.getInstance();
-            diagnostics.dotNetServiceAvailable = !!dotNetService;
-
-            if (!dotNetService) {
-                return {
-                    success: false,
-                    responseTime: Date.now() - startTime,
-                    error: 'DotNet service not available',
-                    diagnostics
-                };
-            }
-
-            // Step 5: Test actual database connectivity
-            try {
-                const testResult = await Promise.race([
-                    dotNetService.testConnection(dotNetConnection),
-                    new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('Database connectivity test timeout')), 10000)
-                    )
-                ]);
-
-                diagnostics.databaseReachable = !!testResult;
-
-                const responseTime = Date.now() - startTime;
-
-                Logger.info('Connection test with diagnostics completed successfully', 'testConnectionWithDiagnostics', {
-                    connectionId,
-                    responseTime,
-                    diagnostics
-                });
-
-                return {
-                    success: true,
-                    responseTime,
-                    diagnostics
-                };
-
-            } catch (dbError) {
-                const responseTime = Date.now() - startTime;
-
-                Logger.error('Database connectivity test failed', dbError as Error, 'testConnectionWithDiagnostics', {
-                    connectionId,
-                    responseTime,
-                    diagnostics
-                });
-
-                return {
-                    success: false,
-                    responseTime,
-                    error: `Database connectivity failed: ${(dbError as Error).message}`,
-                    diagnostics
-                };
-            }
-
-        } catch (error) {
-            const responseTime = Date.now() - startTime;
-
-            Logger.error('Connection test with diagnostics failed', error as Error, 'testConnectionWithDiagnostics', {
-                connectionId,
-                responseTime,
-                diagnostics
-            });
-
-            return {
-                success: false,
-                responseTime,
-                error: (error as Error).message,
-                diagnostics
-            };
-        }
-    }
-
-    /**
-     * Test multiple connections concurrently
-     */
-    async testMultipleConnectionsQuietly(connectionIds: string[]): Promise<Map<string, boolean>> {
-        try {
-            Logger.info('Testing multiple connections quietly', 'testMultipleConnectionsQuietly', {
-                connectionCount: connectionIds.length
-            });
-
-            const results = new Map<string, boolean>();
-
-            // Test connections concurrently for better performance
-            const testPromises = connectionIds.map(async (connectionId) => {
-                const isConnected = await this.testConnectionQuietly(connectionId);
-                results.set(connectionId, isConnected);
-                return { connectionId, isConnected };
-            });
-
-            await Promise.allSettled(testPromises);
-
-            const successCount = Array.from(results.values()).filter(Boolean).length;
-            const failureCount = results.size - successCount;
-
-            Logger.info('Multiple connection test completed', 'testMultipleConnectionsQuietly', {
-                totalConnections: connectionIds.length,
-                successful: successCount,
-                failed: failureCount
-            });
-
-            return results;
-
-        } catch (error) {
-            Logger.error('Error testing multiple connections', error as Error, 'testMultipleConnectionsQuietly', {
-                connectionCount: connectionIds.length
-            });
-
-            // Return all failed if there's an error
-            const failedResults = new Map<string, boolean>();
-            connectionIds.forEach(id => failedResults.set(id, false));
-            return failedResults;
-        }
-    }
-
-    /**
-     * Get connection health summary
-     */
-    getConnectionHealthSummary(): {
-        totalConnections: number;
-        healthyConnections: number;
-        unhealthyConnections: number;
-        unknownConnections: number;
-        lastChecked: Date;
-    } {
-        try {
-            if (!this.components?.connectionManager) {
-                return {
-                    totalConnections: 0,
-                    healthyConnections: 0,
-                    unhealthyConnections: 0,
-                    unknownConnections: 0,
-                    lastChecked: new Date()
-                };
-            }
-
-            const connections = this.components.connectionManager.getConnections();
-            const totalConnections = connections.length;
-
-            // In a real implementation, this would check actual connection health
-            // For now, we'll simulate based on available data
-            const healthyConnections = Math.floor(totalConnections * 0.8); // Assume 80% healthy
-            const unhealthyConnections = Math.floor(totalConnections * 0.1); // Assume 10% unhealthy
-            const unknownConnections = totalConnections - healthyConnections - unhealthyConnections;
-
-            return {
-                totalConnections,
-                healthyConnections,
-                unhealthyConnections,
-                unknownConnections,
-                lastChecked: new Date()
-            };
-
-        } catch (error) {
-            Logger.error('Error getting connection health summary', error as Error, 'getConnectionHealthSummary');
-            return {
-                totalConnections: 0,
-                healthyConnections: 0,
-                unhealthyConnections: 0,
-                unknownConnections: 0,
-                lastChecked: new Date()
-            };
-        }
-    }
 
     /**
      * Setup workspace-wide SQL file watchers
@@ -1703,97 +1446,8 @@ export class EventHandlerManager {
         this.cleanupExpiredCaches();
     }
 
-    /**
-     * Handle connection removal - cleanup related caches
-     */
-    handleConnectionRemoved(connectionId: string): void {
-        try {
-            Logger.info('Cleaning up caches for removed connection', 'handleConnectionRemoved', {
-                connectionId
-            });
 
-            // Remove from in-memory cache
-            if (realtimeState.schemaCache.has(connectionId)) {
-                realtimeState.schemaCache.delete(connectionId);
-                Logger.debug('Removed connection from in-memory schema cache', 'handleConnectionRemoved', {
-                    connectionId
-                });
-            }
 
-            // Remove from persistent cache
-            this.clearPersistentSchemaCache(connectionId);
-
-            // Clear any monitors for this connection
-            if (realtimeState.schemaMonitors.has(connectionId)) {
-                clearInterval(realtimeState.schemaMonitors.get(connectionId)!);
-                realtimeState.schemaMonitors.delete(connectionId);
-            }
-
-            if (realtimeState.connectionMonitors.has(connectionId)) {
-                clearInterval(realtimeState.connectionMonitors.get(connectionId)!);
-                realtimeState.connectionMonitors.delete(connectionId);
-            }
-
-            // Clear last check time
-            realtimeState.lastSchemaCheck.delete(connectionId);
-
-            vscode.window.showInformationMessage(
-                `Cleaned up caches for removed connection: ${connectionId}`
-            );
-
-        } catch (error) {
-            Logger.error('Error cleaning up connection caches', error as Error, 'handleConnectionRemoved', {
-                connectionId
-            });
-        }
-    }
-
-    /**
-     * Handle workspace reset - cleanup all caches
-     */
-    handleWorkspaceReset(): void {
-        try {
-            Logger.info('Performing workspace reset cache cleanup', 'handleWorkspaceReset');
-
-            // Clear all caches
-            this.clearAllSchemaCaches();
-
-            // Reset performance metrics
-            this.resetPerformanceMetrics();
-
-            // Clear all monitoring state
-            this.cleanupRealtimeMonitoring();
-
-            vscode.window.showInformationMessage('Workspace cache reset completed');
-
-        } catch (error) {
-            Logger.error('Error during workspace reset cache cleanup', error as Error, 'handleWorkspaceReset');
-        }
-    }
-
-    /**
-     * Get performance report
-     */
-    getPerformanceReport(): string {
-        const uptime = Date.now() - performanceMetrics.lastResetTime;
-        const avgResponseTime = performanceMetrics.averageResponseTime > 0 ? Math.round(performanceMetrics.averageResponseTime) : 0;
-
-        return [
-            `=== Real-time Performance Report ===`,
-            `Uptime: ${Math.round(uptime / 1000)} seconds`,
-            `File Operations: ${performanceMetrics.fileOperations}`,
-            `Connection Checks: ${performanceMetrics.connectionChecks}`,
-            `Schema Checks: ${performanceMetrics.schemaChecks}`,
-            `Query Executions: ${performanceMetrics.queryExecutions}`,
-            `Average Response Time: ${avgResponseTime}ms`,
-            ``,
-            `Active Monitors:`,
-            `- File Watchers: ${realtimeState.fileWatchers.size}`,
-            `- Connection Monitors: ${realtimeState.connectionMonitors.size}`,
-            `- Schema Monitors: ${realtimeState.schemaMonitors.size}`,
-            `- Active SQL File: ${realtimeState.activeSQLFile ? 'Yes' : 'No'}`
-        ].join('\n');
-    }
 
     /**
      * Get current realtime state

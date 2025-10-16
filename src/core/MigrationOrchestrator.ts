@@ -1,5 +1,6 @@
 import { ConnectionService } from './ConnectionService';
 import { ProgressTracker, ProgressCallback } from './ProgressTracker';
+import { ValidationFramework, ValidationRequest, ValidationReport } from './ValidationFramework';
 import { Logger } from '../utils/Logger';
 import {
     DotNetIntegrationService,
@@ -126,16 +127,19 @@ export interface MigrationResult {
 export class MigrationOrchestrator {
     private connectionService: ConnectionService;
     private progressTracker: ProgressTracker;
+    private validationFramework: ValidationFramework;
     private dotNetService: DotNetIntegrationService;
     private activeMigrations: Map<string, MigrationRequest> = new Map();
     private migrationResults: Map<string, MigrationResult> = new Map();
 
     constructor(
         connectionService: ConnectionService,
-        progressTracker: ProgressTracker
+        progressTracker: ProgressTracker,
+        validationFramework: ValidationFramework
     ) {
         this.connectionService = connectionService;
         this.progressTracker = progressTracker;
+        this.validationFramework = validationFramework;
         this.dotNetService = DotNetIntegrationService.getInstance();
     }
     async executeMigration(request: MigrationRequest): Promise<MigrationResult> {
@@ -161,8 +165,18 @@ export class MigrationOrchestrator {
             // Store active migration
             this.activeMigrations.set(migrationId, request);
 
-            // Phase 1: Validation (simplified - no validation framework available)
-            this.progressTracker.updateMigrationProgress(migrationId, 'validation', 'Validation skipped - no validation framework');
+            // Phase 1: Validation
+            this.progressTracker.updateMigrationProgress(migrationId, 'validation', 'Running pre-migration validation');
+
+            // Perform comprehensive validation before migration
+            const validationReport = await this.performPreMigrationValidation(migrationId, request);
+
+            if (!validationReport.canProceed) {
+                this.progressTracker.updateMigrationProgress(migrationId, 'validation', `Validation failed: ${validationReport.overallStatus}`);
+                throw new Error(`Pre-migration validation failed: ${validationReport.recommendations.join(', ')}`);
+            }
+
+            this.progressTracker.updateMigrationProgress(migrationId, 'validation', `Validation completed: ${validationReport.passedRules}/${validationReport.totalRules} rules passed`);
 
             // Phase 2: Backup (if requested)
             if (request.options?.createBackupBeforeExecution) {
@@ -192,6 +206,7 @@ export class MigrationOrchestrator {
                 errors: executionResult.errors,
                 warnings: executionResult.warnings,
                 rollbackAvailable: request.options?.includeRollback || false,
+                validationReport,
                 executionLog: executionResult.executionLog,
                 metadata: request.metadata || {}
             };
@@ -797,6 +812,87 @@ export class MigrationOrchestrator {
         }
 
         return batches;
+    }
+    private async performPreMigrationValidation(migrationId: string, request: MigrationRequest): Promise<ValidationReport> {
+        Logger.info('Starting pre-migration validation', 'MigrationOrchestrator.performPreMigrationValidation', {
+            migrationId,
+            sourceConnectionId: request.sourceConnectionId,
+            targetConnectionId: request.targetConnectionId
+        });
+
+        try {
+            // Get connection information for validation context
+            const sourceConnection = await this.connectionService.getConnection(request.sourceConnectionId);
+            const targetConnection = await this.connectionService.getConnection(request.targetConnectionId);
+
+            if (!sourceConnection || !targetConnection) {
+                throw new Error('Source or target connection not found for validation');
+            }
+
+            // Create validation context with connection information
+            const validationContext = {
+                migrationId,
+                sourceConnectionId: request.sourceConnectionId,
+                targetConnectionId: request.targetConnectionId,
+                sourceConnection,
+                targetConnection,
+                migrationOptions: request.options,
+                migrationMetadata: request.metadata
+            };
+
+            // Create validation request
+            const validationRequest: ValidationRequest = {
+                connectionId: request.targetConnectionId, // Use target connection for validation
+                rules: request.options?.businessRules, // Use specific business rules if provided
+                failOnWarnings: request.options?.failOnWarnings || false,
+                stopOnFirstError: request.options?.stopOnFirstError || true,
+                context: validationContext
+            };
+
+            // Execute validation using the ValidationFramework
+            const validationReport = await this.validationFramework.executeValidation(validationRequest);
+
+            Logger.info('Pre-migration validation completed', 'MigrationOrchestrator.performPreMigrationValidation', {
+                migrationId,
+                totalRules: validationReport.totalRules,
+                passedRules: validationReport.passedRules,
+                failedRules: validationReport.failedRules,
+                warningRules: validationReport.warningRules,
+                overallStatus: validationReport.overallStatus,
+                canProceed: validationReport.canProceed,
+                executionTime: validationReport.executionTime
+            });
+
+            return validationReport;
+
+        } catch (error) {
+            Logger.error('Pre-migration validation failed', error as Error, 'MigrationOrchestrator.performPreMigrationValidation', {
+                migrationId
+            });
+
+            // Return a failed validation report
+            return {
+                requestId: migrationId,
+                validationTimestamp: new Date(),
+                totalRules: 0,
+                passedRules: 0,
+                failedRules: 1,
+                warningRules: 0,
+                results: [{
+                    ruleId: 'validation_system',
+                    ruleName: 'Validation System Check',
+                    passed: false,
+                    severity: 'error',
+                    message: `Validation system error: ${(error as Error).message}`,
+                    executionTime: 0,
+                    timestamp: new Date()
+                }],
+                overallStatus: 'failed',
+                canProceed: false,
+                recommendations: ['Fix validation system error before proceeding with migration'],
+                executionTime: 0
+            };
+        }
     }
     private generateId(): string {
         return `migration_${getUUId()}`;

@@ -1,24 +1,20 @@
 import * as vscode from 'vscode';
 import { PerformanceMonitorService, PerformanceReport } from '@/services/PerformanceMonitorService';
-import { TeamCollaborationService } from '@/services/TeamCollaborationService';
 import { Logger } from '@/utils/Logger';
 import { ErrorHandler } from '@/utils/ErrorHandler';
 
 export class QueryAnalyticsView {
     private context: vscode.ExtensionContext;
     private performanceMonitor: PerformanceMonitorService;
-    private collaborationService: TeamCollaborationService;
     private webviewPanel?: vscode.WebviewPanel;
     private currentReport?: PerformanceReport;
 
     constructor(
         context: vscode.ExtensionContext,
         performanceMonitor: PerformanceMonitorService,
-        collaborationService: TeamCollaborationService
     ) {
         this.context = context;
         this.performanceMonitor = performanceMonitor;
-        this.collaborationService = collaborationService;
     }
 
     async showAnalytics(connectionId?: string): Promise<void> {

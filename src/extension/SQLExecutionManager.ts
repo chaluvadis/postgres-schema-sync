@@ -1,13 +1,6 @@
 import * as vscode from 'vscode';
 import { ExtensionComponents } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
-
-/**
- * SQLExecutionManager - Handles SQL execution logic and performance monitoring
- * Extracted from the monolithic extension.ts for better organization
- */
-
-// Query execution state interface
 interface QueryExecutionState {
     isExecuting: boolean;
     currentStatement: number;
@@ -16,8 +9,6 @@ interface QueryExecutionState {
     progressItem: vscode.Progress<{ message?: string; increment?: number; }> | null;
     executionResults: Array<{ statement: string; success: boolean; duration: number; error?: string; }>;
 }
-
-// Performance metrics interface
 interface PerformanceMetrics {
     fileOperations: number;
     connectionChecks: number;
@@ -27,7 +18,6 @@ interface PerformanceMetrics {
     lastResetTime: number;
 }
 
-// Global state (would be better as dependency injection in a real refactor)
 let queryExecutionState: QueryExecutionState = {
     isExecuting: false,
     currentStatement: 0,
@@ -45,10 +35,6 @@ let performanceMetrics: PerformanceMetrics = {
     averageResponseTime: 0,
     lastResetTime: Date.now()
 };
-
-/**
- * Execute SQL content from a file or editor
- */
 export async function executeSQLContent(
     sqlContent: string,
     connectionId: string,
@@ -184,10 +170,6 @@ export async function executeSQLContent(
         queryExecutionState.executionResults = [];
     }
 }
-
-/**
- * Format SQL content
- */
 export async function formatSQL(sqlContent: string): Promise<string> {
     try {
         Logger.info('Formatting SQL content', 'formatSQL', {
@@ -218,9 +200,6 @@ export async function formatSQL(sqlContent: string): Promise<string> {
     }
 }
 
-/**
- * Show execution results to user
- */
 function showExecutionResults(successCount: number, errorCount: number, totalCount: number): void {
     const totalDuration = Date.now() - queryExecutionState.startTime;
     const avgDuration = queryExecutionState.executionResults.length > 0
@@ -252,9 +231,6 @@ function showExecutionResults(successCount: number, errorCount: number, totalCou
     }
 }
 
-/**
- * Show detailed performance information
- */
 function showPerformanceDetails(): void {
     try {
         const totalDuration = Date.now() - queryExecutionState.startTime;
@@ -352,9 +328,6 @@ function showPerformanceDetails(): void {
     }
 }
 
-/**
- * Analyze performance and return rating
- */
 function analyzePerformance(avgDuration: number, totalDuration: number): { rating: string; description: string; } {
     const avgRating = getAverageDurationRating(avgDuration);
     const totalRating = getTotalDurationRating(totalDuration);
@@ -372,9 +345,6 @@ function analyzePerformance(avgDuration: number, totalDuration: number): { ratin
     }
 }
 
-/**
- * Get performance indicator emoji
- */
 function getPerformanceIndicator(duration: number, avgDuration: number): string {
     const ratio = duration / avgDuration;
     if (ratio < 0.5) return '⚡';
@@ -384,9 +354,6 @@ function getPerformanceIndicator(duration: number, avgDuration: number): string 
     return '🐌';
 }
 
-/**
- * Generate performance recommendations
- */
 function generatePerformanceRecommendations(
     successfulResults: Array<{ statement: string; success: boolean; duration: number; error?: string; }>,
     failedResults: Array<{ statement: string; success: boolean; duration: number; error?: string; }>,
@@ -422,9 +389,6 @@ function generatePerformanceRecommendations(
     return recommendations;
 }
 
-/**
- * Show report in a new document
- */
 async function showReportInDocument(reportContent: string): Promise<void> {
     try {
         const document = await vscode.workspace.openTextDocument({
@@ -445,9 +409,6 @@ async function showReportInDocument(reportContent: string): Promise<void> {
     }
 }
 
-/**
- * Export report to file
- */
 async function exportReportToFile(reportContent: string): Promise<void> {
     try {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
@@ -471,9 +432,6 @@ async function exportReportToFile(reportContent: string): Promise<void> {
     }
 }
 
-/**
- * Copy report to clipboard
- */
 async function copyReportToClipboard(reportContent: string): Promise<void> {
     try {
         await vscode.env.clipboard.writeText(reportContent);
@@ -484,9 +442,6 @@ async function copyReportToClipboard(reportContent: string): Promise<void> {
     }
 }
 
-/**
- * Get average duration rating
- */
 function getAverageDurationRating(avgDuration: number): { rating: string; description: string; severity: number; } {
     if (avgDuration < 50) {
         return { rating: 'Excellent', description: 'Very fast individual query performance', severity: 1 };
@@ -501,9 +456,6 @@ function getAverageDurationRating(avgDuration: number): { rating: string; descri
     }
 }
 
-/**
- * Get total duration rating
- */
 function getTotalDurationRating(totalDuration: number): { rating: string; description: string; severity: number; } {
     if (totalDuration < 100) {
         return { rating: 'Excellent', description: 'Very fast overall execution', severity: 1 };

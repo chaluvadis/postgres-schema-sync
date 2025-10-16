@@ -17,6 +17,9 @@
     "skipLibCheck": true,
     "baseUrl": "./src",
     "paths": {
+      "@/core/*": [
+        "core/*"
+      ],
       "@/services/*": [
         "services/*"
       ],
@@ -26,12 +29,18 @@
       "@/managers/*": [
         "managers/*"
       ],
+      "@/managers/schema/*": [
+        "managers/schema/*"
+      ],
       "@/providers/*": [
         "providers/*"
       ],
       "@/views/*": [
         "views/*"
-      ]
+      ],
+      "@/extension/*": [
+        "extension/*"
+      ],
     }
   },
   "include": [

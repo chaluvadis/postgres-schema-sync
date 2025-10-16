@@ -1,11 +1,11 @@
-import { Logger } from '../utils/Logger';
-import { CoreServices } from '../core';
+import { Logger } from '@/utils/Logger';
+import { CoreServices } from '@/core/index';
 import {
     MigrationRequest,
     MigrationResult,
     MigrationOptions,
     MigrationMetadata
-} from '../core/MigrationOrchestrator';
+} from '@/core/MigrationOrchestrator';
 export class StreamlinedMigrationManager {
     private coreServices: CoreServices;
     constructor(connectionManager: any) {

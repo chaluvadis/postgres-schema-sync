@@ -1,20 +1,15 @@
 import * as vscode from 'vscode';
-import { DataImportService, ImportJob, ImportTemplate } from '@/services/DataImportService';
-import { ConnectionManager } from '@/managers/ConnectionManager';
+import { DataImportService, ImportJob } from '@/services/DataImportService';
 import { Logger } from '@/utils/Logger';
 
 export class ImportManagementView {
     private panel: vscode.WebviewPanel | undefined;
     private importService: DataImportService;
-    private connectionManager: ConnectionManager;
     private refreshInterval?: NodeJS.Timeout;
 
     constructor(
-        importService: DataImportService,
-        connectionManager: ConnectionManager
-    ) {
+        importService: DataImportService) {
         this.importService = importService;
-        this.connectionManager = connectionManager;
     }
 
     /**

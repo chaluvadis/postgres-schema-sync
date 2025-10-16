@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
-import { SchemaManager, DatabaseObject } from '@/managers/schema';
+import { ModularSchemaManager, DatabaseObject } from '@/managers/schema';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { Logger } from '@/utils/Logger';
 
 export class SchemaBrowserView {
-    private schemaManager: SchemaManager;
+    private schemaManager: ModularSchemaManager;
     private connectionManager: ConnectionManager;
 
-    constructor(schemaManager: SchemaManager, connectionManager: ConnectionManager) {
+    constructor(schemaManager: ModularSchemaManager, connectionManager: ConnectionManager) {
         this.schemaManager = schemaManager;
         this.connectionManager = connectionManager;
     }

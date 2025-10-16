@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { NotificationManager } from '@/views/NotificationManager';
-
 export interface StatusBarItem {
     id: string;
     text: string;
@@ -14,7 +13,6 @@ export interface StatusBarItem {
     alignment: 'left' | 'right';
     visible: boolean | undefined;
 }
-
 export interface OperationIndicator {
     id: string;
     name: string;
@@ -28,7 +26,6 @@ export interface OperationIndicator {
     cancellable?: boolean | undefined;
     cancellationToken?: vscode.CancellationTokenSource | undefined;
 }
-
 export interface OperationStep {
     id: string;
     name: string;
@@ -38,7 +35,6 @@ export interface OperationStep {
     startTime?: number | undefined;
     endTime?: number | undefined;
 }
-
 export interface StatusBarConfig {
     enabled: boolean;
     showConnectionStatus: boolean;
@@ -49,7 +45,6 @@ export interface StatusBarConfig {
     updateInterval: number;
     maxOperationIndicators: number;
 }
-
 export class EnhancedStatusBarProvider {
     private static instance: EnhancedStatusBarProvider;
     private config: StatusBarConfig;
@@ -59,7 +54,6 @@ export class EnhancedStatusBarProvider {
     private updateTimer?: NodeJS.Timeout | undefined;
     private notificationManager: NotificationManager;
     private connectionManager: ConnectionManager;
-
     private constructor(
         connectionManager: ConnectionManager,
         notificationManager: NotificationManager
@@ -72,7 +66,6 @@ export class EnhancedStatusBarProvider {
         this.setupEventListeners();
         this.startAutoUpdate();
     }
-
     static getInstance(
         connectionManager: ConnectionManager,
         notificationManager: NotificationManager
@@ -85,14 +78,12 @@ export class EnhancedStatusBarProvider {
         }
         return EnhancedStatusBarProvider.instance;
     }
-
     static getCurrentInstance(): EnhancedStatusBarProvider {
         if (!EnhancedStatusBarProvider.instance) {
             throw new Error('EnhancedStatusBarProvider not initialized. Call getInstance() first.');
         }
         return EnhancedStatusBarProvider.instance;
     }
-
     private loadConfig(): StatusBarConfig {
         const vscodeConfig = vscode.workspace.getConfiguration('postgresql.statusBar');
         return {
@@ -106,7 +97,6 @@ export class EnhancedStatusBarProvider {
             maxOperationIndicators: vscodeConfig.get('maxOperationIndicators', 3)
         };
     }
-
     private createStatusBarItems(): void {
         if (!this.config.enabled) { return; }
 
@@ -173,7 +163,6 @@ export class EnhancedStatusBarProvider {
             visible: true
         });
     }
-
     private createStatusBarItem(item: StatusBarItem): void {
         const statusBarItem = vscode.window.createStatusBarItem(
             item.alignment === 'left' ? vscode.StatusBarAlignment.Left : vscode.StatusBarAlignment.Right,
@@ -195,7 +184,6 @@ export class EnhancedStatusBarProvider {
         this.statusBarItems.set(item.id, statusBarItem);
         statusBarItem.show();
     }
-
     private setupEventListeners(): void {
         // Listen for configuration changes
         vscode.workspace.onDidChangeConfiguration(e => {
@@ -205,7 +193,6 @@ export class EnhancedStatusBarProvider {
             }
         });
     }
-
     private recreateStatusBarItems(): void {
         // Hide all existing items
         this.statusBarItems.forEach(item => item.hide());
@@ -214,7 +201,6 @@ export class EnhancedStatusBarProvider {
         // Recreate items based on new config
         this.createStatusBarItems();
     }
-
     private startAutoUpdate(): void {
         if (this.updateTimer) {
             clearInterval(this.updateTimer);
@@ -224,7 +210,6 @@ export class EnhancedStatusBarProvider {
             this.updateAllStatusItems();
         }, this.config.updateInterval);
     }
-
     private updateAllStatusItems(): void {
         if (!this.config.enabled) { return; }
 
@@ -234,7 +219,6 @@ export class EnhancedStatusBarProvider {
         this.updateMemoryUsage();
         this.updateSystemStatus();
     }
-
     private updateConnectionStatus(): void {
         if (!this.config.showConnectionStatus) { return; }
 
@@ -294,7 +278,6 @@ export class EnhancedStatusBarProvider {
             item.backgroundColor = color;
         }
     }
-
     private updateOperationIndicators(): void {
         if (!this.config.showOperationIndicators) { return; }
 
@@ -373,7 +356,6 @@ export class EnhancedStatusBarProvider {
             }
         }
     }
-
     private updateNotificationStatus(): void {
         if (!this.config.showNotifications) { return; }
 
@@ -412,7 +394,6 @@ export class EnhancedStatusBarProvider {
             }
         }
     }
-
     private updateMemoryUsage(): void {
         if (!this.config.showMemoryUsage) { return; }
 
@@ -438,7 +419,6 @@ export class EnhancedStatusBarProvider {
             item.backgroundColor = color;
         }
     }
-
     private updateSystemStatus(): void {
         const item = this.statusBarItems.get('system');
         if (!item) { return; }
@@ -451,14 +431,12 @@ export class EnhancedStatusBarProvider {
         item.text = text;
         item.tooltip = tooltip;
     }
-
     private getSystemUptime(): string {
         const uptimeMs = process.uptime() * 1000;
         const hours = Math.floor(uptimeMs / (1000 * 60 * 60));
         const minutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
         return `${hours}h ${minutes}m`;
     }
-
     private formatDuration(ms: number): string {
         if (ms < 1000) {
             return `${ms}ms`;
@@ -470,7 +448,6 @@ export class EnhancedStatusBarProvider {
             return `${minutes}m ${seconds}s`;
         }
     }
-
     startOperation(
         id: string,
         name: string,
@@ -510,7 +487,6 @@ export class EnhancedStatusBarProvider {
 
         return indicator;
     }
-
     updateOperationStep(
         id: string,
         stepIndex: number,
@@ -546,7 +522,6 @@ export class EnhancedStatusBarProvider {
 
         this.updateOperationIndicators();
     }
-
     cancelOperation(id: string): boolean {
         const indicator = this.operationIndicators.get(id);
         if (!indicator || !indicator.cancellable || !indicator.cancellationToken) {
@@ -565,17 +540,10 @@ export class EnhancedStatusBarProvider {
             return false;
         }
     }
-
-    getOperation(id: string): OperationIndicator | undefined {
-        return this.operationIndicators.get(id);
-    }
-
     getActiveOperations(): OperationIndicator[] {
         return Array.from(this.operationIndicators.values())
             .filter(op => op.status === 'running' || op.status === 'pending');
     }
-
-
     updateOperation(
         id: string,
         status: OperationIndicator['status'],
@@ -604,10 +572,6 @@ export class EnhancedStatusBarProvider {
             }
         }
     }
-
-    /**
-     * Complete an operation indicator
-     */
     completeOperation(id: string): void {
         this.operationIndicators.delete(id);
         this.currentOperations.delete(id);
@@ -615,10 +579,6 @@ export class EnhancedStatusBarProvider {
 
         Logger.debug('Operation completed', 'completeOperation', { operationId: id });
     }
-
-    /**
-     * Show operation details in a webview
-     */
     async showOperationDetails(): Promise<void> {
         const activeOperations = this.getActiveOperations();
 
@@ -657,7 +617,6 @@ export class EnhancedStatusBarProvider {
             this.updateOperationIndicators();
         });
     }
-
     private generateOperationDetailsHtml(operations: OperationIndicator[]): string {
         return `
             <!DOCTYPE html>

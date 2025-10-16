@@ -1,6 +1,6 @@
-import { ConnectionManager } from '../managers/ConnectionManager';
+import { ConnectionManager } from '@/managers/ConnectionManager';
 import { StreamlinedMigrationManager } from './StreamlinedMigrationManager';
-import { Logger } from '../utils/Logger';
+import { Logger } from '@/utils/Logger';
 
 export class StreamlinedServices {
     private static instance: StreamlinedServices;

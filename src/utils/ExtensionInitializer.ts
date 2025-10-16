@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ConnectionManager } from '../managers/ConnectionManager';
-import { SchemaManager } from '../managers/schema';
+import { ModularSchemaManager } from '../managers/schema';
 import { StreamlinedServices } from '../services/StreamlinedServices';
 import { PostgreSqlTreeProvider } from '@/providers/PostgreSqlTreeProvider';
 import { ActivityBarProvider } from '@/providers/ActivityBarProvider';
@@ -15,6 +15,7 @@ import { ErrorDisplayView } from '@/views/ErrorDisplayView';
 import { NotificationManager } from '@/views/NotificationManager';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
 import { QueryExecutionService } from '@/services/QueryExecutionService';
+import { ValidationFramework } from '@/core/ValidationFramework';
 import { QueryEditorView } from '@/views/QueryEditorView';
 import { PerformanceMonitorService } from '@/services/PerformanceMonitorService';
 import { PerformanceAlertSystem } from '@/services/PerformanceAlertSystem';
@@ -29,7 +30,7 @@ import { PostgreSqlExtension } from 'PostgreSqlExtension';
 
 export interface ExtensionComponents {
     connectionManager: ConnectionManager;
-    schemaManager: SchemaManager;
+    schemaManager: ModularSchemaManager;
     streamlinedServices: StreamlinedServices; // New streamlined architecture
     treeProvider: PostgreSqlTreeProvider;
     treeView?: vscode.TreeView<any>;
@@ -51,6 +52,7 @@ export interface ExtensionComponents {
     recoveryService?: RecoveryService;
     importWizardView?: ImportWizardView;
     importManagementView?: ImportManagementView;
+    queryAnalyticsView?: QueryAnalyticsView;
     advancedMigrationPreviewView?: any;
     enhancedTreeProvider?: any;
 }
@@ -82,7 +84,9 @@ export class ExtensionInitializer {
 
             // Initialize core managers
             const connectionManager = new ConnectionManager(context);
-            const schemaManager = new SchemaManager(connectionManager);
+            const queryExecutionService = new QueryExecutionService(connectionManager);
+            const validationFramework = new (require('../../core/ValidationFramework')).ValidationFramework();
+            const schemaManager = new ModularSchemaManager(connectionManager, queryExecutionService, validationFramework);
 
             // Initialize streamlined services (replaces legacy managers)
             const streamlinedServices = StreamlinedServices.getInstance(connectionManager);
@@ -127,10 +131,11 @@ export class ExtensionInitializer {
             const performanceAlertSystem = PerformanceAlertSystem.getInstance(context, performanceMonitorService);
             const dataImportService = new DataImportService(context, coreComponents.connectionManager);
             const recoveryService = new RecoveryService(context, coreComponents.connectionManager);
+            const queryAnalyticsView = new QueryAnalyticsView(context, performanceMonitorService);
             const importWizardView = coreComponents.dataImportService ?
                 new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
             const importManagementView = coreComponents.dataImportService ?
-                new ImportManagementView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
+                new ImportManagementView(coreComponents.dataImportService) : undefined;
 
             // Add optional components to the core components
             const components: ExtensionComponents = {
@@ -153,6 +158,7 @@ export class ExtensionInitializer {
                 recoveryService,
                 importWizardView,
                 importManagementView,
+                queryAnalyticsView,
             };
 
             Logger.info('Optional UI components initialized successfully');
