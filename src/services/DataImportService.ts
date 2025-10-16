@@ -179,7 +179,6 @@ export class DataImportService {
     private importTemplates: Map<string, ImportTemplate> = new Map();
     private activeImports: Set<string> = new Set();
     private importHistory: ImportJob[] = [];
-
     constructor(
         context: vscode.ExtensionContext,
         connectionManager: ConnectionManager
@@ -189,7 +188,6 @@ export class DataImportService {
         this.dotNetService = DotNetIntegrationService.getInstance();
         this.loadImportData();
     }
-
     private loadImportData(): void {
         try {
             // Load import templates
@@ -226,7 +224,6 @@ export class DataImportService {
             this.importHistory = [];
         }
     }
-
     private saveImportData(): void {
         try {
             // Save import templates
@@ -242,8 +239,6 @@ export class DataImportService {
             Logger.error('Failed to save import data', error as Error);
         }
     }
-
-    // Import Job Management
     async createImportJob(
         name: string,
         connectionId: string,
@@ -285,7 +280,6 @@ export class DataImportService {
             throw error;
         }
     }
-
     async analyzeImportFile(jobId: string): Promise<{
         detectedColumns: DetectedColumn[];
         totalRows: number;
@@ -389,7 +383,6 @@ export class DataImportService {
             throw error;
         }
     }
-
     private async analyzeCSV(content: string, options: ImportOptions): Promise<{
         columns: DetectedColumn[];
         preview: any[];
@@ -445,7 +438,6 @@ export class DataImportService {
             totalRows: lines.length - startRow - 1
         };
     }
-
     private async analyzeJSON(content: string): Promise<{
         columns: DetectedColumn[];
         preview: any[];
@@ -485,7 +477,6 @@ export class DataImportService {
             totalRows: data.length
         };
     }
-
     private async analyzeExcel(content: string): Promise<{
         columns: DetectedColumn[];
         preview: any[];
@@ -494,7 +485,6 @@ export class DataImportService {
         // For now, treat as tab-delimited CSV
         return this.analyzeCSV(content, { delimiter: '\t', hasHeaders: true });
     }
-
     private async analyzeSQL(content: string): Promise<{
         columns: DetectedColumn[];
         preview: any[];
@@ -541,7 +531,6 @@ export class DataImportService {
             totalRows: preview.length
         };
     }
-
     private detectColumnType(columnName: string, sampleValues: string[]): DetectedColumn {
         if (sampleValues.length === 0) {
             return {
@@ -596,7 +585,6 @@ export class DataImportService {
             format: detectedType === 'date' ? 'YYYY-MM-DD' : undefined
         };
     }
-
     private generateRecommendedMappings(columns: DetectedColumn[]): ColumnMapping[] {
         return columns.map(col => ({
             sourceColumn: col.name,
@@ -606,7 +594,6 @@ export class DataImportService {
             transformation: undefined
         }));
     }
-
     private mapDetectedTypeToSQL(detectedType: DetectedColumn['type']): string {
         switch (detectedType) {
             case 'string': return 'VARCHAR(255)';
@@ -616,7 +603,6 @@ export class DataImportService {
             default: return 'TEXT';
         }
     }
-
     private async performDataQualityAnalysis(
         previewData: any[],
         columns: DetectedColumn[]
@@ -772,7 +758,6 @@ export class DataImportService {
 
         return { report, issues };
     }
-
     private isValidValue(value: any, type: DetectedColumn['type']): boolean {
         if (value === null || value === undefined || value === '') {
             return true; // Null values are considered valid
@@ -792,7 +777,6 @@ export class DataImportService {
                 return typeof value === 'string' || value.toString();
         }
     }
-
     private detectValueFormat(value: string): string {
         // Simple format detection
         if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'date-yyyy-mm-dd';
@@ -804,7 +788,6 @@ export class DataImportService {
         if (/^[a-z\s]+$/.test(value)) return 'lowercase';
         return 'mixed';
     }
-
     async executeImportJob(
         jobId: string,
         targetTable: string,
@@ -959,7 +942,6 @@ export class DataImportService {
             vscode.window.showErrorMessage(`Import failed: ${(error as Error).message}`);
         }
     }
-
     private async validateImportData(
         job: ImportJob,
         columnMapping: ColumnMapping[]
@@ -1042,7 +1024,6 @@ export class DataImportService {
             };
         }
     }
-
     private parseCSV(content: string, options: ImportOptions): any[] {
         const lines = content.split('\n').filter(line => line.trim());
         const delimiter = options.delimiter || ',';
@@ -1067,7 +1048,6 @@ export class DataImportService {
             return row;
         });
     }
-
     private validateDataType(value: string, targetType: string): string | null {
         switch (targetType.toLowerCase()) {
             case 'integer':
@@ -1102,7 +1082,6 @@ export class DataImportService {
 
         return null;
     }
-
     private async performImport(
         job: ImportJob,
         columnMapping: ColumnMapping[],
@@ -1220,7 +1199,6 @@ export class DataImportService {
             throw error;
         }
     }
-
     private transformBatchData(batch: any[], columnMapping: ColumnMapping[]): any[] {
         return batch.map(row => {
             const transformedRow: any = {};
@@ -1239,7 +1217,6 @@ export class DataImportService {
             return transformedRow;
         });
     }
-
     private applyTransformation(value: any, transformation: string): any {
         if (value === null || value === undefined) return value;
 
@@ -1254,7 +1231,6 @@ export class DataImportService {
                 return value;
         }
     }
-
     private generateBatchInsertSQL(
         tableName: string,
         schemaName: string,
@@ -1282,7 +1258,6 @@ export class DataImportService {
 
         return `INSERT INTO "${schemaName}"."${tableName}" (${columnList}) VALUES ${values.join(', ')};`;
     }
-
     private showImportDetails(jobId: string): void {
         const job = this.importJobs.get(jobId);
         if (!job) return;
@@ -1351,7 +1326,6 @@ export class DataImportService {
             </html>
         `;
     }
-
     private showImportErrors(jobId: string): void {
         const job = this.importJobs.get(jobId);
         if (!job || job.errors.length === 0) return;
@@ -1388,7 +1362,6 @@ export class DataImportService {
             </html>
         `;
     }
-
     async createImportTemplate(templateData: Omit<ImportTemplate, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>): Promise<ImportTemplate> {
         try {
             const template: ImportTemplate = {
@@ -1414,7 +1387,6 @@ export class DataImportService {
             throw error;
         }
     }
-
     getImportTemplates(category?: string): ImportTemplate[] {
         let templates = Array.from(this.importTemplates.values());
 
@@ -1424,12 +1396,9 @@ export class DataImportService {
 
         return templates.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
     }
-
-    // Import Job Management
     getImportJob(jobId: string): ImportJob | undefined {
         return this.importJobs.get(jobId);
     }
-
     getImportJobs(status?: ImportJob['status']): ImportJob[] {
         let jobs = Array.from(this.importJobs.values());
 
@@ -1439,11 +1408,9 @@ export class DataImportService {
 
         return jobs.sort((a, b) => (b.startedAt?.getTime() || 0) - (a.startedAt?.getTime() || 0));
     }
-
     getImportHistory(limit: number = 50): ImportJob[] {
         return this.importHistory.slice(0, limit);
     }
-
     async cancelImportJob(jobId: string): Promise<void> {
         try {
             const job = this.importJobs.get(jobId);
@@ -1464,16 +1431,12 @@ export class DataImportService {
             throw error;
         }
     }
-
-    // Utility Methods
     private generateId(): string {
         return crypto.randomUUID();
     }
-
     getActiveImports(): string[] {
         return Array.from(this.activeImports);
     }
-
     getImportStatistics(): {
         totalJobs: number;
         completedJobs: number;
@@ -1510,7 +1473,6 @@ export class DataImportService {
                 .slice(0, 5)
         };
     }
-
     dispose(): void {
         this.saveImportData();
     }
