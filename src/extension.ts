@@ -4,9 +4,9 @@ import { ExtensionInitializer, ExtensionComponents } from '@/utils/ExtensionInit
 import { Logger } from '@/utils/Logger';
 import { ErrorHandler } from '@/utils/ErrorHandler';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
-import { CommandManager } from './extension/CommandManager';
-import { EventHandlerManager } from './extension/EventHandlerManager';
-import { RealtimeMonitoringManager } from './extension/RealtimeMonitoringManager';
+import { CommandManager } from '@/extension/CommandManager';
+import { EventHandlerManager } from '@/extension/EventHandlerManager';
+import { RealtimeMonitoringManager } from '@/extension/RealtimeMonitoringManager';
 export enum ErrorSeverity {
     LOW = 'LOW',
     MEDIUM = 'MEDIUM',

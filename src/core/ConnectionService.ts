@@ -1,10 +1,11 @@
-import { ConnectionManager } from '../managers/ConnectionManager';
-import { Logger } from '../utils/Logger';
+import { ConnectionManager } from '@/managers/ConnectionManager';
+import { Logger } from '@/utils/Logger';
 import {
     DotNetIntegrationService,
     DotNetConnectionInfo
-} from '../services/DotNetIntegrationService';
-import { SecurityManager, DataClassification } from '../services/SecurityManager';
+} from '@/services/DotNetIntegrationService';
+import { SecurityManager, DataClassification } from '@/services/SecurityManager';
+import { ValidationFramework, ValidationRequest } from './ValidationFramework';
 export interface ConnectionInfo {
     id: string;
     name: string;
@@ -28,13 +29,16 @@ export interface ConnectionServiceOptions {
 export class ConnectionService {
     private connectionManager: ConnectionManager;
     private dotNetService: DotNetIntegrationService;
+    private validationFramework: ValidationFramework;
     private options: Required<ConnectionServiceOptions>;
 
     constructor(
         connectionManager: ConnectionManager,
+        validationFramework: ValidationFramework,
         options: ConnectionServiceOptions = {}
     ) {
         this.connectionManager = connectionManager;
+        this.validationFramework = validationFramework;
         this.dotNetService = DotNetIntegrationService.getInstance();
         this.options = {
             retryAttempts: 3,
@@ -156,7 +160,31 @@ export class ConnectionService {
         const warnings: string[] = [];
 
         try {
-            // Check if connection exists
+            // First run ValidationFramework validation for comprehensive checks
+            const frameworkValidationReport = await this.performConnectionValidationFramework(connectionId);
+
+            // Extract errors and warnings from framework validation
+            frameworkValidationReport.results.forEach(result => {
+                if (!result.passed) {
+                    if (result.severity === 'error') {
+                        errors.push(`ValidationFramework: ${result.message}`);
+                    } else {
+                        warnings.push(`ValidationFramework: ${result.message}`);
+                    }
+                }
+            });
+
+            // If framework validation fails, don't proceed with basic checks
+            if (!frameworkValidationReport.canProceed) {
+                return {
+                    isValid: false,
+                    errors,
+                    warnings,
+                    connectionTime: Date.now() - startTime
+                };
+            }
+
+            // Continue with existing basic validation checks
             const connection = this.connectionManager.getConnection(connectionId);
             if (!connection) {
                 errors.push(`Connection ${connectionId} not found`);
@@ -210,6 +238,81 @@ export class ConnectionService {
             options: this.options,
             health: 'healthy' // Would be determined by connection success rates
         };
+    }
+    private async performConnectionValidationFramework(connectionId: string) {
+        Logger.info('Performing ValidationFramework connection validation', 'performConnectionValidationFramework', {
+            connectionId
+        });
+
+        try {
+            // Get connection information for validation context
+            const connection = this.connectionManager.getConnection(connectionId);
+            if (!connection) {
+                throw new Error(`Connection ${connectionId} not found`);
+            }
+
+            // Create validation context with connection information
+            const validationContext = {
+                connectionId,
+                connectionName: connection.name,
+                host: connection.host,
+                port: connection.port,
+                database: connection.database,
+                username: connection.username,
+                validationType: 'connection'
+            };
+
+            // Create validation request for connection-specific rules
+            const validationRequest: ValidationRequest = {
+                connectionId,
+                rules: ['connection_connectivity', 'connection_security', 'connection_performance'],
+                failOnWarnings: false,
+                stopOnFirstError: true,
+                context: validationContext
+            };
+
+            // Execute validation using the ValidationFramework
+            const validationReport = await this.validationFramework.executeValidation(validationRequest);
+
+            Logger.info('ValidationFramework connection validation completed', 'performConnectionValidationFramework', {
+                connectionId,
+                totalRules: validationReport.totalRules,
+                passedRules: validationReport.passedRules,
+                failedRules: validationReport.failedRules,
+                overallStatus: validationReport.overallStatus,
+                canProceed: validationReport.canProceed
+            });
+
+            return validationReport;
+
+        } catch (error) {
+            Logger.error('ValidationFramework connection validation failed', error as Error, 'performConnectionValidationFramework', {
+                connectionId
+            });
+
+            // Return a failed validation report
+            return {
+                requestId: connectionId,
+                validationTimestamp: new Date(),
+                totalRules: 0,
+                passedRules: 0,
+                failedRules: 1,
+                warningRules: 0,
+                results: [{
+                    ruleId: 'connection_validation_framework',
+                    ruleName: 'Connection Validation Framework Check',
+                    passed: false,
+                    severity: 'error',
+                    message: `Connection validation framework error: ${(error as Error).message}`,
+                    executionTime: 0,
+                    timestamp: new Date()
+                }],
+                overallStatus: 'failed',
+                canProceed: false,
+                recommendations: ['Fix connection validation framework error before proceeding'],
+                executionTime: 0
+            };
+        }
     }
     private delay(milliseconds: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, milliseconds));

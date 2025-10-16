@@ -1,6 +1,5 @@
 import { getUUId } from '@/utils/helper';
-import { Logger } from '../utils/Logger';
-
+import { Logger } from '@/utils/Logger';
 export interface ValidationRule {
     id: string;
     name: string;
@@ -12,7 +11,6 @@ export interface ValidationRule {
     createdAt: Date;
     lastModified: Date;
 }
-
 export interface ValidationRuleDefinition {
     type: 'sql_query' | 'pattern_match' | 'threshold_check' | 'custom_logic';
     expression: string;
@@ -21,7 +19,6 @@ export interface ValidationRuleDefinition {
     timeout?: number;
     retryAttempts?: number;
 }
-
 export interface ValidationResult {
     ruleId: string;
     ruleName: string;
@@ -33,7 +30,6 @@ export interface ValidationResult {
     timestamp: Date;
     retryCount?: number;
 }
-
 export interface ValidationRequest {
     connectionId: string;
     rules?: string[]; // Specific rule IDs to run, if empty runs all enabled rules
@@ -41,7 +37,6 @@ export interface ValidationRequest {
     stopOnFirstError?: boolean;
     context?: Record<string, any>; // Additional context for validation
 }
-
 export interface ValidationReport {
     requestId: string;
     validationTimestamp: Date;
@@ -55,15 +50,9 @@ export interface ValidationReport {
     recommendations: string[];
     executionTime: number;
 }
-
-/**
- * ValidationFramework - Unified validation system
- * Consolidates validation patterns used across multiple managers
- */
 export class ValidationFramework {
     private validationRules: Map<string, ValidationRule> = new Map();
     private activeValidations: Map<string, ValidationReport> = new Map();
-
     constructor() {
         this.initializeDefaultRules();
     }
@@ -76,97 +65,8 @@ export class ValidationFramework {
             severity: rule.severity
         });
     }
-    unregisterRule(ruleId: string): boolean {
-        const rule = this.validationRules.get(ruleId);
-        if (!rule) {
-            Logger.warn('Attempted to unregister non-existent rule', 'ValidationFramework.unregisterRule', { ruleId });
-            return false;
-        }
-
-        this.validationRules.delete(ruleId);
-
-        Logger.info('Validation rule unregistered successfully', 'ValidationFramework.unregisterRule', {
-            ruleId,
-            ruleName: rule.name,
-            category: rule.category
-        });
-
-        return true;
-    }
-    getAllRules(): ValidationRule[] {
-        return Array.from(this.validationRules.values());
-    }
     getEnabledRules(): ValidationRule[] {
         return Array.from(this.validationRules.values()).filter(rule => rule.isEnabled);
-    }
-    getRulesByCategory(category: ValidationRule['category']): ValidationRule[] {
-        return Array.from(this.validationRules.values()).filter(rule => rule.category === category);
-    }
-    setRuleEnabled(ruleId: string, enabled: boolean): boolean {
-        const rule = this.validationRules.get(ruleId);
-        if (!rule) {
-            Logger.warn('Attempted to modify non-existent rule', 'ValidationFramework.setRuleEnabled', { ruleId });
-            return false;
-        }
-
-        const previousState = rule.isEnabled;
-        rule.isEnabled = enabled;
-        rule.lastModified = new Date();
-
-        this.validationRules.set(ruleId, rule);
-
-        Logger.info('Validation rule state changed', 'ValidationFramework.setRuleEnabled', {
-            ruleId,
-            ruleName: rule.name,
-            previousState,
-            newState: enabled
-        });
-
-        return true;
-    }
-    registerRules(rules: ValidationRule[]): void {
-        let successCount = 0;
-        let failureCount = 0;
-
-        for (const rule of rules) {
-            try {
-                this.registerRule(rule);
-                successCount++;
-            } catch (error) {
-                Logger.error('Failed to register rule', error as Error, 'ValidationFramework.registerRules', {
-                    ruleId: rule.id,
-                    ruleName: rule.name
-                });
-                failureCount++;
-            }
-        }
-
-        Logger.info('Batch rule registration completed', 'ValidationFramework.registerRules', {
-            totalRules: rules.length,
-            successCount,
-            failureCount
-        });
-    }
-    unregisterRules(ruleIds: string[]): { successful: string[], failed: string[]; } {
-        const successful: string[] = [];
-        const failed: string[] = [];
-
-        for (const ruleId of ruleIds) {
-            const result = this.unregisterRule(ruleId);
-            if (result) {
-                successful.push(ruleId);
-            } else {
-                failed.push(ruleId);
-            }
-        }
-
-        Logger.info('Batch rule unregistration completed', 'ValidationFramework.unregisterRules', {
-            totalRules: ruleIds.length,
-            successful: successful.length,
-            failed: failed.length
-        });
-
-        return { successful, failed };
     }
     async executeValidation(request: ValidationRequest): Promise<ValidationReport> {
         const requestId = this.generateId();

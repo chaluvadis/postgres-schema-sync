@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
 import { ConnectionManager, DatabaseConnection } from '@/managers/ConnectionManager';
-import { SchemaManager, DatabaseObject } from '@/managers/schema';
+import { ModularSchemaManager, DatabaseObject } from '@/managers/schema';
 import { Logger } from '@/utils/Logger';
 import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
-
 export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | void> = new vscode.EventEmitter<TreeItem | undefined | void>();
     readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | void> = this._onDidChangeTreeData.event;
@@ -13,7 +12,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
 
     constructor(
         private connectionManager: ConnectionManager,
-        private schemaManager: SchemaManager
+        private schemaManager: ModularSchemaManager
     ) {
         this.refresh();
     }
@@ -55,7 +54,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
             // Load schema objects for all connections (this could be long-running)
             const loadPromises = this.connections.map(async (connection) => {
                 try {
-                    const objects = await this.schemaManager.getDatabaseObjects(connection.id);
+                    const objects = await this.schemaManager.getDatabaseObjects(connection.id) || [];
                     this.schemaObjects.set(connection.id, objects);
                 } catch (error) {
                     Logger.warn('Failed to load schema for connection', 'refresh', {
@@ -241,7 +240,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
             // Load schema objects from the database (check cache first)
             let objects = this.schemaObjects.get(connectionId);
             if (!objects) {
-                objects = await this.schemaManager.getDatabaseObjects(connectionId);
+                objects = await this.schemaManager.getDatabaseObjects(connectionId) || [];
                 this.schemaObjects.set(connectionId, objects);
             }
 
@@ -308,7 +307,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
             // Load schema objects from the database (check cache first)
             let objects = this.schemaObjects.get(connectionId);
             if (!objects) {
-                objects = await this.schemaManager.getDatabaseObjects(connectionId);
+                objects = await this.schemaManager.getDatabaseObjects(connectionId) || [];
                 this.schemaObjects.set(connectionId, objects);
             }
 
@@ -469,7 +468,6 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
         return ['table', 'view'].includes(type);
     }
 }
-
 export class TreeItem extends vscode.TreeItem {
     public connectionId?: string | undefined;
     public schemaName?: string | undefined;

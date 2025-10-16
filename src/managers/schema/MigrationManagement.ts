@@ -1,6 +1,7 @@
 import { SchemaDifference } from './SchemaComparison';
 import { Logger } from '@/utils/Logger';
 import { QueryExecutionService } from '@/services/QueryExecutionService';
+import { ValidationFramework, ValidationRequest, ValidationReport } from '../../core/ValidationFramework';
 
 // Enhanced Migration Script Generation Interfaces
 export interface EnhancedMigrationScript {
@@ -159,9 +160,11 @@ export interface ValidationResult {
  */
 export class MigrationManagement {
     private queryService: QueryExecutionService;
+    private validationFramework: ValidationFramework;
 
-    constructor(queryService: QueryExecutionService) {
+    constructor(queryService: QueryExecutionService, validationFramework: ValidationFramework) {
         this.queryService = queryService;
+        this.validationFramework = validationFramework;
     }
     async generateEnhancedMigrationScript(
         sourceConnectionId: string,
@@ -377,13 +380,17 @@ export class MigrationManagement {
     }
     async validateMigrationScript(script: EnhancedMigrationScript, connectionId: string): Promise<ValidationResult[]> {
         try {
-            Logger.info('Validating migration script', 'validateMigrationScript', {
+            Logger.info('Validating migration script with ValidationFramework', 'validateMigrationScript', {
                 scriptId: script.id,
                 stepCount: script.validationSteps.length,
                 connectionId
             });
 
-            const validationResults: ValidationResult[] = [];
+            // First run the ValidationFramework validation
+            const frameworkValidationReport = await this.performFrameworkValidation(script, connectionId);
+
+            // Then run the existing validation steps for backward compatibility
+            const legacyValidationResults: ValidationResult[] = [];
 
             // Run each validation step
             for (const validation of script.validationSteps) {
@@ -427,7 +434,7 @@ export class MigrationManagement {
                         errorMessage = 'Manual validation required';
                     }
 
-                    validationResults.push({
+                    legacyValidationResults.push({
                         stepId: validation.id.split('_')[1] || 'unknown', // Extract step ID
                         validationId: validation.id,
                         passed,
@@ -438,7 +445,7 @@ export class MigrationManagement {
                     });
 
                 } catch (error) {
-                    validationResults.push({
+                    legacyValidationResults.push({
                         stepId: validation.id.split('_')[1] || 'unknown',
                         validationId: validation.id,
                         passed: false,
@@ -448,17 +455,22 @@ export class MigrationManagement {
                 }
             }
 
-            const passedValidations = validationResults.filter(v => v.passed).length;
-            const failedValidations = validationResults.length - passedValidations;
+            // Combine framework validation results with legacy results
+            const combinedResults = this.combineValidationResults(frameworkValidationReport, legacyValidationResults);
+
+            const passedValidations = combinedResults.filter(v => v.passed).length;
+            const failedValidations = combinedResults.length - passedValidations;
 
             Logger.info('Migration script validation completed', 'validateMigrationScript', {
-                totalValidations: validationResults.length,
+                totalValidations: combinedResults.length,
                 passedValidations,
                 failedValidations,
-                successRate: `${((passedValidations / validationResults.length) * 100).toFixed(1)}%`
+                successRate: `${((passedValidations / combinedResults.length) * 100).toFixed(1)}%`,
+                frameworkValidationPassed: frameworkValidationReport.canProceed,
+                legacyValidationPassed: legacyValidationResults.filter(v => v.passed).length
             });
 
-            return validationResults;
+            return combinedResults;
 
         } catch (error) {
             Logger.error('Migration script validation failed', error as Error, 'validateMigrationScript');
@@ -7000,6 +7012,106 @@ export class MigrationManagement {
                 limitations: ['Manual rollback required']
             };
         }
+    }
+    private async performFrameworkValidation(script: EnhancedMigrationScript, connectionId: string): Promise<ValidationReport> {
+        Logger.info('Performing ValidationFramework validation', 'performFrameworkValidation', {
+            scriptId: script.id,
+            connectionId
+        });
+
+        try {
+            // Create validation context for the migration script
+            const validationContext = {
+                scriptId: script.id,
+                scriptName: script.name,
+                connectionId,
+                migrationSteps: script.migrationSteps.length,
+                riskLevel: script.riskLevel,
+                estimatedExecutionTime: script.estimatedExecutionTime,
+                rollbackAvailable: script.rollbackScript.isComplete,
+                validationSteps: script.validationSteps.length
+            };
+
+            // Create validation request
+            const validationRequest: ValidationRequest = {
+                connectionId,
+                rules: ['migration_script_validation', 'schema_consistency', 'data_integrity'], // Use specific validation rules
+                failOnWarnings: false,
+                stopOnFirstError: true,
+                context: validationContext
+            };
+
+            // Execute validation using the ValidationFramework
+            const validationReport = await this.validationFramework.executeValidation(validationRequest);
+
+            Logger.info('ValidationFramework validation completed', 'performFrameworkValidation', {
+                scriptId: script.id,
+                totalRules: validationReport.totalRules,
+                passedRules: validationReport.passedRules,
+                failedRules: validationReport.failedRules,
+                overallStatus: validationReport.overallStatus,
+                canProceed: validationReport.canProceed
+            });
+
+            return validationReport;
+
+        } catch (error) {
+            Logger.error('ValidationFramework validation failed', error as Error, 'performFrameworkValidation', {
+                scriptId: script.id
+            });
+
+            // Return a failed validation report
+            return {
+                requestId: script.id,
+                validationTimestamp: new Date(),
+                totalRules: 0,
+                passedRules: 0,
+                failedRules: 1,
+                warningRules: 0,
+                results: [{
+                    ruleId: 'validation_framework',
+                    ruleName: 'Validation Framework Check',
+                    passed: false,
+                    severity: 'error',
+                    message: `ValidationFramework error: ${(error as Error).message}`,
+                    executionTime: 0,
+                    timestamp: new Date()
+                }],
+                overallStatus: 'failed',
+                canProceed: false,
+                recommendations: ['Fix ValidationFramework error before proceeding with migration'],
+                executionTime: 0
+            };
+        }
+    }
+
+    private combineValidationResults(frameworkReport: ValidationReport, legacyResults: ValidationResult[]): ValidationResult[] {
+        Logger.info('Combining validation results', 'combineValidationResults', {
+            frameworkResults: frameworkReport.results.length,
+            legacyResults: legacyResults.length
+        });
+
+        // Convert framework validation results to legacy format for compatibility
+        const frameworkResults: ValidationResult[] = frameworkReport.results.map(result => ({
+            stepId: result.ruleId,
+            validationId: result.ruleId,
+            passed: result.passed,
+            actualResult: result.details?.actualResult,
+            expectedResult: result.details?.expectedResult,
+            executionTime: result.executionTime,
+            errorMessage: result.passed ? undefined : result.message
+        }));
+
+        // Combine both result sets
+        const combinedResults = [...frameworkResults, ...legacyResults];
+
+        Logger.info('Validation results combined', 'combineValidationResults', {
+            totalResults: combinedResults.length,
+            passedResults: combinedResults.filter(r => r.passed).length,
+            failedResults: combinedResults.filter(r => !r.passed).length
+        });
+
+        return combinedResults;
     }
     private generateId(): string {
         return crypto.randomUUID();

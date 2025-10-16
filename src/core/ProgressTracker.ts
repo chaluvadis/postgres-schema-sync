@@ -1,5 +1,4 @@
-import { Logger } from '../utils/Logger';
-
+import { Logger } from '@/utils/Logger';
 export interface ProgressInfo {
     id: string;
     operation: string;
@@ -10,11 +9,9 @@ export interface ProgressInfo {
     details?: Record<string, any>;
     timestamp: Date;
 }
-
 export interface ProgressCallback {
     (progress: ProgressInfo | BatchProgressInfo | ValidationProgressInfo | MigrationProgressInfo): void;
 }
-
 export interface BatchProgressInfo extends ProgressInfo {
     batchId: string;
     batchNumber: number;
@@ -25,7 +22,6 @@ export interface BatchProgressInfo extends ProgressInfo {
     batchErrors: string[];
     batchWarnings: string[];
 }
-
 export interface ValidationProgressInfo extends ProgressInfo {
     validationType: 'business_rules' | 'schema' | 'data' | 'performance';
     rulesProcessed: number;
@@ -34,7 +30,6 @@ export interface ValidationProgressInfo extends ProgressInfo {
     failedRules: number;
     warningRules: number;
 }
-
 export interface MigrationProgressInfo extends ProgressInfo {
     migrationId: string;
     sourceConnection: string;
@@ -226,74 +221,6 @@ export class ProgressTracker {
             percentage: batchProgress.percentage
         });
     }
-    startValidationOperation(
-        id: string,
-        validationType: ValidationProgressInfo['validationType'],
-        totalRules: number,
-        callback?: ProgressCallback
-    ): void {
-        const validationProgress: ValidationProgressInfo = {
-            id,
-            operation: `${validationType} Validation`,
-            currentStep: 0,
-            totalSteps: totalRules,
-            percentage: 0,
-            timestamp: new Date(),
-            validationType,
-            rulesProcessed: 0,
-            totalRules,
-            passedRules: 0,
-            failedRules: 0,
-            warningRules: 0
-        };
-
-        this.validationOperations.set(id, validationProgress);
-
-        if (callback) {
-            this.addCallback(id, callback);
-        }
-
-        Logger.debug('Validation operation started', 'ProgressTracker.startValidationOperation', {
-            id,
-            validationType,
-            totalRules
-        });
-    }
-    updateValidationProgress(
-        id: string,
-        rulesProcessed: number,
-        passedRules: number,
-        failedRules: number,
-        warningRules: number,
-        currentRule?: string
-    ): void {
-        const validationProgress = this.validationOperations.get(id);
-        if (!validationProgress) {
-            Logger.warn('Attempted to update validation progress for non-existent operation', 'ProgressTracker.updateValidationProgress', { id });
-            return;
-        }
-
-        validationProgress.rulesProcessed = rulesProcessed;
-        validationProgress.passedRules = passedRules;
-        validationProgress.failedRules = failedRules;
-        validationProgress.warningRules = warningRules;
-        validationProgress.currentStep = rulesProcessed;
-        validationProgress.percentage = Math.round((rulesProcessed / validationProgress.totalRules) * 100);
-        validationProgress.message = currentRule;
-        validationProgress.timestamp = new Date();
-
-        this.validationOperations.set(id, validationProgress);
-        this.notifyCallbacks(id, validationProgress);
-
-        Logger.debug('Validation progress updated', 'ProgressTracker.updateValidationProgress', {
-            id,
-            rulesProcessed,
-            passedRules,
-            failedRules,
-            warningRules,
-            percentage: validationProgress.percentage
-        });
-    }
     startMigrationOperation(
         id: string,
         migrationId: string,
@@ -385,9 +312,6 @@ export class ProgressTracker {
             this.migrationOperations.get(id) ||
             null
         );
-    }
-    getActiveOperations(): ProgressInfo[] {
-        return Array.from(this.activeOperations.values());
     }
     cancelOperation(id: string): void {
         const operation = this.activeOperations.get(id);

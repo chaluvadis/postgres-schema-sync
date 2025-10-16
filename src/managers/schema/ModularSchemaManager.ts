@@ -3,6 +3,8 @@ import { Logger } from '@/utils/Logger';
 import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
 import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 import { ConflictResolutionService } from '@/services/ConflictResolutionService';
+import { ValidationFramework } from '../../core/ValidationFramework';
+import { QueryExecutionService } from '@/services/QueryExecutionService';
 
 // Import all the modular components
 import { SchemaOperations } from './SchemaOperations';
@@ -98,6 +100,8 @@ export {
 export class ModularSchemaManager {
     private connectionManager: ConnectionManager;
     private dotNetService: DotNetIntegrationService;
+    private queryService: QueryExecutionService;
+    private validationFramework: ValidationFramework;
 
     // Modular components
     private schemaOperations: SchemaOperations;
@@ -108,18 +112,24 @@ export class ModularSchemaManager {
     private migrationManagement: MigrationManagement;
     private conflictResolutionService: ConflictResolutionService;
 
-    constructor(connectionManager: ConnectionManager) {
+    constructor(
+        connectionManager: ConnectionManager,
+        queryService: QueryExecutionService,
+        validationFramework: ValidationFramework
+    ) {
         this.connectionManager = connectionManager;
         this.dotNetService = DotNetIntegrationService.getInstance();
+        this.queryService = queryService;
+        this.validationFramework = validationFramework;
 
         // Initialize all modular components
         this.schemaOperations = new SchemaOperations(connectionManager);
-        this.metadataManagement = new MetadataManagement(this.schemaOperations);
+        this.metadataManagement = new MetadataManagement(this.schemaOperations, connectionManager);
         this.schemaComparison = new SchemaComparison(this.schemaOperations);
         this.dependencyAnalysis = new DependencyAnalysis(this.metadataManagement);
         this.impactAnalysis = new ImpactAnalysis(this.schemaComparison, this.dependencyAnalysis);
-        this.migrationManagement = new MigrationManagement(this.schemaComparison, this.impactAnalysis);
-        this.conflictResolutionService = new ConflictResolutionService(connectionManager);
+        this.migrationManagement = new MigrationManagement(this.queryService, this.validationFramework);
+        this.conflictResolutionService = new ConflictResolutionService();
 
         Logger.info('ModularSchemaManager initialized with all components', 'ModularSchemaManager');
     }

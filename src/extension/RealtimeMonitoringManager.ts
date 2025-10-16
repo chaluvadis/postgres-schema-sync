@@ -1,12 +1,6 @@
 import * as vscode from 'vscode';
 import { ExtensionComponents } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
-
-/**
- * RealtimeMonitoringManager - Handles real-time monitoring, file watching, and connection monitoring
- * Extracted from the monolithic extension.ts for better organization
- */
-
 // Real-time monitoring state interface
 interface RealtimeState {
     fileWatchers: Map<string, vscode.FileSystemWatcher>;
@@ -593,29 +587,6 @@ export class RealtimeMonitoringManager {
         }
     }
 
-    /**
-     * Get performance report
-     */
-    getPerformanceReport(): string {
-        const uptime = Date.now() - performanceMetrics.lastResetTime;
-        const avgResponseTime = performanceMetrics.averageResponseTime > 0 ? Math.round(performanceMetrics.averageResponseTime) : 0;
-
-        return [
-            `=== Real-time Performance Report ===`,
-            `Uptime: ${Math.round(uptime / 1000)} seconds`,
-            `File Operations: ${performanceMetrics.fileOperations}`,
-            `Connection Checks: ${performanceMetrics.connectionChecks}`,
-            `Schema Checks: ${performanceMetrics.schemaChecks}`,
-            `Query Executions: ${performanceMetrics.queryExecutions}`,
-            `Average Response Time: ${avgResponseTime}ms`,
-            ``,
-            `Active Monitors:`,
-            `- File Watchers: ${realtimeState.fileWatchers.size}`,
-            `- Connection Monitors: ${realtimeState.connectionMonitors.size}`,
-            `- Schema Monitors: ${realtimeState.schemaMonitors.size}`,
-            `- Active SQL File: ${realtimeState.activeSQLFile ? 'Yes' : 'No'}`
-        ].join('\n');
-    }
 
     /**
      * Get current realtime state

@@ -19,7 +19,6 @@ interface CommandError {
     timestamp: Date;
     context?: any;
 }
-
 export class CommandManager {
     private context: vscode.ExtensionContext;
     private extension: PostgreSqlExtension;
@@ -194,6 +193,17 @@ export class CommandManager {
                     this.components.enhancedStatusBarProvider.showOperationDetails();
                 } else {
                     vscode.window.showErrorMessage('Enhanced status bar not available');
+                }
+            })
+        );
+
+        // Query analytics command
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('postgresql.showQueryAnalytics', async () => {
+                if (this.components.queryAnalyticsView) {
+                    await this.components.queryAnalyticsView.showAnalytics();
+                } else {
+                    vscode.window.showErrorMessage('Query analytics view not available');
                 }
             })
         );

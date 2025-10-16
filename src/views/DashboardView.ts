@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
 import { ConnectionManager } from '@/managers/ConnectionManager';
-import { SchemaManager } from '@/managers/schema';
+import { ModularSchemaManager } from '@/managers/schema';
 
 export interface DashboardData {
     connections: {
@@ -79,7 +79,7 @@ export class DashboardView {
 
     constructor(
         private connectionManager: ConnectionManager,
-        private schemaManager: SchemaManager
+        private schemaManager: ModularSchemaManager
     ) { }
 
     async showDashboard(): Promise<void> {

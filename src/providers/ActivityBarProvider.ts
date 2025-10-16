@@ -4,17 +4,14 @@ import { Logger } from '@/utils/Logger';
 
 export class ActivityBarProvider {
     private connectionManager: ConnectionManager;
-
     constructor(connectionManager: ConnectionManager) {
         this.connectionManager = connectionManager;
         this.setupActivityBar();
     }
-
     private setupActivityBar(): void {
         Logger.info('Activity Bar provider initialized');
         this.updateWelcomeView();
     }
-
     private updateWelcomeView(): void {
         const connections = this.connectionManager.getConnections();
 
@@ -25,7 +22,6 @@ export class ActivityBarProvider {
             vscode.commands.executeCommand('setContext', 'postgresql:noConnections', false);
         }
     }
-
     updateActivityBar(): void {
         const connections = this.connectionManager.getConnections();
         // Set connected count context for activity bar badge
