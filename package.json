@@ -1156,10 +1156,12 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "build:dotnet": "dotnet build --project ./pg-drive/PostgreSqlSchemaCompareSync/PostgreSqlSchemaCompareSync.csproj",
-    "build:all": "pnpm run build:dotnet && pnpm run compile",
+    "build:dotnet": "cd pg-drive/PostgreSqlSchemaCompareSync && dotnet build",
+    "build:dotnet:copy": "pnpm run build:dotnet && node scripts/copy-dll.js",
+    "build:all": "pnpm run build:dotnet:copy && pnpm run compile",
     "package": "pnpm run build:all && vsce package",
-    "clean": "rimraf bin out"
+    "clean": "rimraf bin out",
+    "postinstall": "node scripts/check-edge.js"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

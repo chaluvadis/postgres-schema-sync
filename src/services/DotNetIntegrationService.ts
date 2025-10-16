@@ -1,17 +1,9 @@
 import { Logger } from '@/utils/Logger';
 import { PerformanceMonitor } from '@/services/PerformanceMonitor';
-import { SecurityManager, DataClassification } from '@/services/SecurityManager';
+import { SecurityManager } from '@/services/SecurityManager';
 import * as path from 'path';
 import * as fs from 'fs';
-
-// Import Edge.js for .NET interop
-// Note: edge-js is installed as a dependency
 let edge: any;
-
-// Define Edge.js function type for TypeScript
-type EdgeFunction = (args: any[], callback: (error: any, result?: any) => void) => void;
-
-// Custom error class for .NET integration errors
 export class DotNetError extends Error {
     constructor(
         public type: string,
@@ -106,7 +98,6 @@ export interface DotNetQueryColumn {
     primaryKey?: boolean;
 }
 
-// Enhanced interfaces for pg-drive metadata extractors
 export interface DotNetMetadataExtractionOptions {
     includeDependencies?: boolean;
     includePermissions?: boolean;
@@ -199,32 +190,17 @@ export interface DotNetViewDependency {
     name: string;
     schema: string;
 }
-
-export interface DotNetMigrationProgressReport {
-    stage: string;
-    completedOperations: number;
-    totalOperations: number;
-    currentOperation: string;
-    percentage: number;
-    estimatedTimeRemaining?: string;
-    errors: string[];
-    warnings: string[];
-}
-
 export class DotNetIntegrationService {
     private static instance: DotNetIntegrationService;
     private isInitialized: boolean = false;
     private dotNetFunctions: Record<string, any> = {};
-
     private constructor() { }
-
     static getInstance(): DotNetIntegrationService {
         if (!DotNetIntegrationService.instance) {
             DotNetIntegrationService.instance = new DotNetIntegrationService();
         }
         return DotNetIntegrationService.instance;
     }
-
     async initialize(): Promise<boolean> {
         if (this.isInitialized) {
             return true;
@@ -241,27 +217,46 @@ export class DotNetIntegrationService {
             return false;
         }
     }
-
     private async initializeDotNetLibrary(): Promise<void> {
         try {
-            Logger.debug('Loading PostgreSqlSchemaCompareSync library');
+            Logger.info('Initializing .NET library integration');
 
             // Import edge-js dynamically for ESM compatibility
             if (!edge) {
                 try {
+                    Logger.debug('Loading edge-js module');
                     const edgeModule = await import('edge-js');
                     edge = edgeModule;
+                    Logger.info('Edge.js loaded successfully');
                 } catch (error) {
-                    Logger.warn('Edge.js not available, .NET integration will use mock implementation');
+                    Logger.warn('Edge.js not available, falling back to mock implementation');
+                    throw new Error('Edge.js module not available');
                 }
             }
 
             // Get the path to the .NET DLL for VS Code extension
             const dllPath = this.getDotNetDllPath();
 
-            // Check if .NET DLL exists
+            // Validate DLL path
             if (!dllPath || dllPath.length === 0) {
-                throw new Error('.NET DLL path is not available');
+                throw new DotNetError('InvalidDllPath', '.NET DLL path is not available', 'initializeDotNetLibrary');
+            }
+
+            // Check if DLL file actually exists
+            if (!fs.existsSync(dllPath)) {
+                const errorMsg = `.NET DLL not found at: ${dllPath}`;
+                Logger.error(errorMsg);
+                throw new DotNetError('DllNotFound', errorMsg, 'initializeDotNetLibrary');
+            }
+
+            // Validate DLL is readable
+            try {
+                await fs.promises.access(dllPath, fs.constants.R_OK);
+                Logger.debug('DLL file is readable');
+            } catch (error) {
+                const errorMsg = `.NET DLL is not readable: ${dllPath}`;
+                Logger.error(errorMsg);
+                throw new DotNetError('DllNotReadable', errorMsg, 'initializeDotNetLibrary');
             }
 
             // Check if edge-js is available
@@ -409,12 +404,6 @@ export class DotNetIntegrationService {
                         methodName: 'ExtractMetadataAsync'
                     }),
 
-                    // Enhanced migration and comparison methods
-                    GenerateMigrationWithProgressAsync: edge.func({
-                        assemblyFile: dllPath,
-                        typeName: 'PostgreSqlSchemaCompareSync.Core.Migration.MigrationScriptGenerator',
-                        methodName: 'GenerateMigrationWithProgressAsync'
-                    }),
 
                     ExecuteMigrationWithProgressAsync: edge.func({
                         assemblyFile: dllPath,
@@ -431,481 +420,47 @@ export class DotNetIntegrationService {
 
                 Logger.info('.NET library functions initialized successfully with Edge.js');
             } else {
-                Logger.warn('Edge.js not available, falling back to mock implementation');
-
-                // Create mock functions for development/testing
-                this.dotNetFunctions = {
-                    TestConnectionAsync: this.createMockDotNetFunction('TestConnectionAsync'),
-                    BrowseSchemaAsync: this.createMockDotNetFunction('BrowseSchemaAsync'),
-                    CompareSchemasAsync: this.createMockDotNetFunction('CompareSchemasAsync'),
-                    GenerateMigrationAsync: this.createMockDotNetFunction('GenerateMigrationAsync'),
-                    ExecuteMigrationAsync: this.createMockDotNetFunction('ExecuteMigrationAsync'),
-                    GetObjectDetailsAsync: this.createMockDotNetFunction('GetObjectDetailsAsync'),
-                    ExecuteQueryAsync: this.createMockDotNetFunction('ExecuteQueryAsync'),
-
-                    // Enhanced metadata extractors - mock implementations
-                    ExtractColumnMetadataAsync: this.createMockDotNetFunction('ExtractColumnMetadataAsync'),
-                    ExtractIndexMetadataAsync: this.createMockDotNetFunction('ExtractIndexMetadataAsync'),
-                    ExtractConstraintMetadataAsync: this.createMockDotNetFunction('ExtractConstraintMetadataAsync'),
-                    ExtractViewMetadataAsync: this.createMockDotNetFunction('ExtractViewMetadataAsync'),
-                    ExtractFunctionMetadataAsync: this.createMockDotNetFunction('ExtractFunctionMetadataAsync'),
-                    ExtractTriggerMetadataAsync: this.createMockDotNetFunction('ExtractTriggerMetadataAsync'),
-                    ExtractSequenceMetadataAsync: this.createMockDotNetFunction('ExtractSequenceMetadataAsync'),
-                    ExtractMaterializedViewMetadataAsync: this.createMockDotNetFunction('ExtractMaterializedViewMetadataAsync'),
-                    ExtractPartitionMetadataAsync: this.createMockDotNetFunction('ExtractPartitionMetadataAsync'),
-                    ExtractCollationMetadataAsync: this.createMockDotNetFunction('ExtractCollationMetadataAsync'),
-                    ExtractForeignTableMetadataAsync: this.createMockDotNetFunction('ExtractForeignTableMetadataAsync'),
-                    ExtractTypeMetadataAsync: this.createMockDotNetFunction('ExtractTypeMetadataAsync'),
-                    ExtractProcedureMetadataAsync: this.createMockDotNetFunction('ExtractProcedureMetadataAsync'),
-                    ExtractRoleMetadataAsync: this.createMockDotNetFunction('ExtractRoleMetadataAsync'),
-                    ExtractTablespaceMetadataAsync: this.createMockDotNetFunction('ExtractTablespaceMetadataAsync'),
-                    ExtractExtensionMetadataAsync: this.createMockDotNetFunction('ExtractExtensionMetadataAsync'),
-
-                    // Enhanced migration and comparison methods - mock implementations
-                    GenerateMigrationWithProgressAsync: this.createMockDotNetFunction('GenerateMigrationWithProgressAsync'),
-                    ExecuteMigrationWithProgressAsync: this.createMockDotNetFunction('ExecuteMigrationWithProgressAsync'),
-                    CompareSchemasDetailedAsync: this.createMockDotNetFunction('CompareSchemasDetailedAsync')
-                };
-
-                Logger.info('.NET library functions initialized successfully (using mock implementation)');
+                Logger.error('Edge.js not available - .NET integration cannot function');
+                throw new DotNetError('DotNetNotAvailable', 'Edge.js is not available. .NET integration requires Edge.js to communicate with .NET DLL.', 'initializeDotNetLibrary');
             }
         } catch (error) {
             Logger.error('Failed to initialize .NET library', error as Error, 'initializeDotNetLibrary');
             throw error;
         }
     }
-
-    private createMockDotNetFunction(methodName: string): EdgeFunction {
-        // Return a mock function that simulates .NET behavior
-        return (args: any[], callback: (error: any, result?: any) => void) => {
-            Logger.debug(`Mock .NET function called: ${methodName}`, 'createMockDotNetFunction');
-
-            // Simulate async operation
-            setTimeout(() => {
-                try {
-                    const result = this.getMockResult(methodName, args);
-                    callback(null, result);
-                } catch (error) {
-                    callback(error, null);
-                }
-            }, 100); // Simulate network delay
-        };
-    }
-
-    private getMockResult(methodName: string, args: any[]): any {
-        switch (methodName) {
-            case 'TestConnectionAsync':
-                return true; // Mock successful connection
-
-            case 'BrowseSchemaAsync':
-                return [
-                    {
-                        id: '1',
-                        name: 'users',
-                        type: 'table',
-                        schema: 'public',
-                        database: args[0]?.database || 'testdb',
-                        owner: 'postgres',
-                        properties: {},
-                        definition: 'CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100));',
-                        createdAt: new Date().toISOString(),
-                        dependencies: []
-                    }
-                ];
-
-            case 'CompareSchemasAsync':
-                return {
-                    id: 'comparison-1',
-                    sourceConnection: args[0],
-                    targetConnection: args[1],
-                    differences: [
-                        {
-                            type: 'Added',
-                            objectType: 'table',
-                            objectName: 'new_table',
-                            schema: 'public',
-                            differenceDetails: ['Table was added in target database']
-                        }
-                    ],
-                    executionTime: '150ms',
-                    createdAt: new Date().toISOString()
-                };
-
-            case 'GenerateMigrationAsync':
-                return {
-                    id: 'migration-1',
-                    comparison: args[0],
-                    selectedDifferences: args[0]?.differences || [],
-                    sqlScript: 'CREATE TABLE new_table (id SERIAL PRIMARY KEY);',
-                    rollbackScript: 'DROP TABLE IF EXISTS new_table;',
-                    type: 'schema_sync',
-                    isDryRun: true,
-                    status: 'generated',
-                    createdAt: new Date().toISOString()
-                };
-
-            case 'ExecuteMigrationAsync':
-                return {
-                    status: 'completed',
-                    executionTime: '200ms',
-                    operationsExecuted: 1,
-                    errors: [],
-                    warnings: []
-                };
-
-            case 'GetObjectDetailsAsync':
-                return {
-                    id: '1',
-                    name: args[3], // objectName
-                    type: args[1], // objectType
-                    schema: args[2], // schema
-                    definition: `Detailed definition for ${args[1]} ${args[3]}`,
-                    properties: {
-                        owner: 'postgres',
-                        size: '8KB',
-                        created: new Date().toISOString()
-                    }
-                };
-
-            case 'ExecuteQueryAsync':
-                const query = args[1] || '';
-                const isSelect = query.trim().toUpperCase().startsWith('SELECT');
-
-                if (isSelect) {
-                    return {
-                        rowCount: 2,
-                        columns: [
-                            { name: 'id', type: 'integer', nullable: false, primaryKey: true },
-                            { name: 'name', type: 'varchar', nullable: true }
-                        ],
-                        rows: [
-                            [1, 'Test User 1'],
-                            [2, 'Test User 2']
-                        ],
-                        executionPlan: 'Seq Scan on users'
-                    };
-                } else {
-                    return {
-                        rowCount: 0,
-                        columns: [],
-                        rows: [],
-                        executionPlan: 'DDL operation completed'
-                    };
-                }
-
-            // Enhanced metadata extractor mock results
-            case 'ExtractColumnMetadataAsync':
-                return [
-                    {
-                        name: 'id',
-                        dataType: 'integer',
-                        isNullable: false,
-                        defaultValue: 'nextval(\'users_id_seq\'::regclass)',
-                        isPrimaryKey: true,
-                        isForeignKey: false,
-                        constraints: [
-                            {
-                                name: 'users_pkey',
-                                type: 'PRIMARY KEY',
-                                definition: 'PRIMARY KEY (id)',
-                                isEnabled: true
-                            }
-                        ],
-                        statistics: {
-                            distinctValues: 1000,
-                            nullCount: 0,
-                            avgLength: 4
-                        }
-                    },
-                    {
-                        name: 'name',
-                        dataType: 'varchar',
-                        isNullable: true,
-                        isPrimaryKey: false,
-                        isForeignKey: false,
-                        constraints: [],
-                        statistics: {
-                            distinctValues: 850,
-                            nullCount: 50,
-                            avgLength: 12
-                        }
-                    }
-                ];
-
-            case 'ExtractIndexMetadataAsync':
-                return [
-                    {
-                        name: 'users_pkey',
-                        tableName: 'users',
-                        schema: 'public',
-                        isUnique: true,
-                        isPartial: false,
-                        isFunctional: false,
-                        columnNames: ['id'],
-                        definition: 'CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)',
-                        statistics: {
-                            sizeInBytes: 24576,
-                            indexScans: 150,
-                            tuplesRead: 200,
-                            tuplesFetched: 180
-                        }
-                    }
-                ];
-
-            case 'ExtractConstraintMetadataAsync':
-                return [
-                    {
-                        name: 'users_pkey',
-                        type: 'PRIMARY KEY',
-                        tableName: 'users',
-                        schema: 'public',
-                        isEnabled: true,
-                        isDeferrable: false,
-                        definition: 'PRIMARY KEY (id)',
-                        columns: ['id']
-                    }
-                ];
-
-            case 'ExtractViewMetadataAsync':
-                return [
-                    {
-                        name: 'active_users',
-                        schema: 'public',
-                        definition: 'SELECT id, name FROM users WHERE active = true',
-                        isMaterialized: false,
-                        columns: [
-                            { name: 'id', dataType: 'integer', isNullable: false, sourceExpression: 'id' },
-                            { name: 'name', dataType: 'varchar', isNullable: true, sourceExpression: 'name' }
-                        ],
-                        dependencies: [
-                            { type: 'table', name: 'users', schema: 'public' }
-                        ]
-                    }
-                ];
-
-            case 'ExtractFunctionMetadataAsync':
-                return [
-                    {
-                        name: 'get_user_count',
-                        schema: 'public',
-                        definition: 'CREATE FUNCTION get_user_count() RETURNS integer AS $$ BEGIN RETURN (SELECT COUNT(*) FROM users); END; $$ LANGUAGE plpgsql',
-                        isMaterialized: false,
-                        columns: [
-                            { name: 'get_user_count', dataType: 'integer', isNullable: false, sourceExpression: 'get_user_count()' }
-                        ],
-                        dependencies: [
-                            { type: 'table', name: 'users', schema: 'public' }
-                        ]
-                    }
-                ];
-
-            case 'ExtractTriggerMetadataAsync':
-                return [
-                    {
-                        name: 'update_user_timestamp',
-                        tableName: 'users',
-                        schema: 'public',
-                        definition: 'CREATE TRIGGER update_user_timestamp BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_timestamp()',
-                        isEnabled: true
-                    }
-                ];
-
-            case 'ExtractSequenceMetadataAsync':
-                return [
-                    {
-                        name: 'users_id_seq',
-                        schema: 'public',
-                        definition: 'CREATE SEQUENCE users_id_seq INCREMENT 1 START 1',
-                        lastValue: 1000,
-                        isCalled: true
-                    }
-                ];
-
-            case 'ExtractMaterializedViewMetadataAsync':
-                return [
-                    {
-                        name: 'user_stats_mv',
-                        schema: 'public',
-                        definition: 'SELECT COUNT(*), AVG(LENGTH(name)) FROM users',
-                        isMaterialized: true,
-                        columns: [
-                            { name: 'count', dataType: 'bigint', isNullable: false, sourceExpression: 'COUNT(*)' },
-                            { name: 'avg_length', dataType: 'numeric', isNullable: true, sourceExpression: 'AVG(LENGTH(name))' }
-                        ],
-                        dependencies: [
-                            { type: 'table', name: 'users', schema: 'public' }
-                        ],
-                        statistics: {
-                            rowCount: 1,
-                            sizeInBytes: 8192,
-                            lastRefresh: new Date().toISOString()
-                        }
-                    }
-                ];
-
-            case 'ExtractPartitionMetadataAsync':
-                return [
-                    {
-                        name: 'sales_2024',
-                        tableName: 'sales',
-                        schema: 'public',
-                        partitionType: 'RANGE',
-                        partitionKey: 'sale_date',
-                        definition: 'CREATE TABLE sales_2024 PARTITION OF sales FOR VALUES FROM (\'2024-01-01\') TO (\'2025-01-01\')'
-                    }
-                ];
-
-            case 'ExtractCollationMetadataAsync':
-                return [
-                    {
-                        name: 'en_US',
-                        schema: 'pg_catalog',
-                        definition: 'en_US.utf8',
-                        characterSet: 'UTF-8',
-                        isDefault: false
-                    }
-                ];
-
-            case 'ExtractForeignTableMetadataAsync':
-                return [
-                    {
-                        name: 'remote_users',
-                        schema: 'public',
-                        definition: 'CREATE FOREIGN TABLE remote_users (id integer, name text) SERVER remote_server OPTIONS (table_name \'users\')',
-                        serverName: 'remote_server',
-                        options: { table_name: 'users' }
-                    }
-                ];
-
-            case 'ExtractTypeMetadataAsync':
-                return [
-                    {
-                        name: 'user_status',
-                        schema: 'public',
-                        definition: 'CREATE TYPE user_status AS ENUM (\'active\', \'inactive\', \'suspended\')',
-                        typeCategory: 'ENUM',
-                        isArray: false
-                    }
-                ];
-
-            case 'ExtractProcedureMetadataAsync':
-                return [
-                    {
-                        name: 'update_user_stats',
-                        schema: 'public',
-                        definition: 'CREATE PROCEDURE update_user_stats() AS $$ BEGIN UPDATE user_stats SET last_updated = NOW(); END; $$ LANGUAGE plpgsql',
-                        isProcedure: true
-                    }
-                ];
-
-            case 'ExtractRoleMetadataAsync':
-                return [
-                    {
-                        name: 'app_user',
-                        definition: 'CREATE ROLE app_user WITH LOGIN PASSWORD \'secret\'',
-                        isSuperuser: false,
-                        canCreateDb: false,
-                        canCreateRole: false,
-                        inherit: true,
-                        connectionLimit: -1
-                    }
-                ];
-
-            case 'ExtractTablespaceMetadataAsync':
-                return [
-                    {
-                        name: 'fast_ssd',
-                        definition: 'CREATE TABLESPACE fast_ssd OWNER postgres LOCATION \'/mnt/ssd/postgresql/data\'',
-                        location: '/mnt/ssd/postgresql/data',
-                        sizeInBytes: 1073741824
-                    }
-                ];
-
-            case 'ExtractExtensionMetadataAsync':
-                return [
-                    {
-                        name: 'uuid-ossp',
-                        schema: 'public',
-                        definition: 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public',
-                        version: '1.1',
-                        isEnabled: true
-                    }
-                ];
-
-            case 'GenerateMigrationWithProgressAsync':
-                return {
-                    id: 'migration-progress-1',
-                    comparison: args[0],
-                    selectedDifferences: args[0]?.differences || [],
-                    sqlScript: 'CREATE TABLE new_table (id SERIAL PRIMARY KEY);',
-                    rollbackScript: 'DROP TABLE IF EXISTS new_table;',
-                    type: 'schema_sync',
-                    isDryRun: true,
-                    status: 'generated',
-                    createdAt: new Date().toISOString(),
-                    progressCallback: args[1] // Progress callback for real-time updates
-                };
-
-            case 'ExecuteMigrationWithProgressAsync':
-                return {
-                    status: 'completed',
-                    executionTime: '200ms',
-                    operationsExecuted: 1,
-                    errors: [],
-                    warnings: [],
-                    progressCallback: args[2] // Progress callback for real-time updates
-                };
-
-            case 'CompareSchemasDetailedAsync':
-                return {
-                    id: 'comparison-detailed-1',
-                    sourceConnection: args[0],
-                    targetConnection: args[1],
-                    differences: [
-                        {
-                            type: 'Added',
-                            objectType: 'table',
-                            objectName: 'new_table',
-                            schema: 'public',
-                            differenceDetails: ['Table was added in target database'],
-                            detailedComparison: {
-                                columns: [],
-                                indexes: [],
-                                constraints: [],
-                                triggers: [],
-                                permissions: []
-                            }
-                        }
-                    ],
-                    executionTime: '150ms',
-                    createdAt: new Date().toISOString(),
-                    detailedMetadata: {
-                        sourceMetadata: args[0],
-                        targetMetadata: args[1]
-                    }
-                };
-
-            default:
-                throw new Error(`Unknown method: ${methodName}`);
-        }
-    }
-
     private getDotNetDllPath(): string {
-        // For VS Code extension, look in the extension's bin directory
-        // Use Node.js __dirname equivalent for ESM compatibility
-        const extensionPath = path.dirname(path.dirname(__dirname));
-        const dllPath = path.join(extensionPath, 'pg-drive', 'PostgreSqlSchemaCompareSync', 'bin', 'PostgreSqlSchemaCompareSync.dll');
+        const possiblePaths = [
+            // Built extension path (in out directory)
+            path.join(process.cwd(), 'out', 'PostgreSqlSchemaCompareSync.dll'),
+            // Development path (Debug build)
+            path.join(process.cwd(), 'pg-drive', 'PostgreSqlSchemaCompareSync', 'bin', 'Debug', 'net9.0', 'PostgreSqlSchemaCompareSync.dll'),
+            // Development path (Release build)
+            path.join(process.cwd(), 'pg-drive', 'PostgreSqlSchemaCompareSync', 'bin', 'Release', 'net9.0', 'PostgreSqlSchemaCompareSync.dll'),
+            // Packaged extension path (in dist directory)
+            path.join(process.cwd(), 'dist', 'PostgreSqlSchemaCompareSync.dll'),
+            // Alternative development path
+            path.join(__dirname, '..', '..', 'pg-drive', 'PostgreSqlSchemaCompareSync', 'bin', 'Debug', 'net9.0', 'PostgreSqlSchemaCompareSync.dll'),
+            // VS Code extension host path (when installed)
+            path.join(__dirname, '..', '..', '..', 'PostgreSqlSchemaCompareSync.dll')
+        ];
 
-        if (fs.existsSync(dllPath)) {
-            Logger.debug('Found .NET DLL at', dllPath);
-            return dllPath;
+        Logger.debug('Searching for .NET DLL in possible locations');
+
+        for (const dllPath of possiblePaths) {
+            if (fs.existsSync(dllPath)) {
+                Logger.info('Found .NET DLL at', dllPath);
+                return dllPath;
+            } else {
+                Logger.debug('DLL not found at', dllPath);
+            }
         }
 
-        Logger.warn('Could not find .NET DLL at expected location');
-        return dllPath; // Return the expected path anyway for Edge.js to handle
-    }
+        Logger.warn('Could not find .NET DLL in any expected location');
+        Logger.info('Attempting to use primary path for Edge.js compatibility');
 
-    // Connection Management Methods
+        // Return the most likely path for Edge.js to handle
+        return possiblePaths[0];
+    }
     async testConnection(connectionInfo: DotNetConnectionInfo): Promise<boolean> {
         const performanceMonitor = PerformanceMonitor.getInstance();
         const operationId = performanceMonitor.startOperation('testConnection', {
@@ -934,7 +489,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async browseSchema(connectionInfo: DotNetConnectionInfo, schemaFilter?: string): Promise<DotNetDatabaseObject[]> {
         await this.ensureInitialized();
 
@@ -965,7 +519,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async compareSchemas(
         sourceConnection: DotNetConnectionInfo,
         targetConnection: DotNetConnectionInfo,
@@ -1002,7 +555,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async generateMigration(
         comparison: DotNetSchemaComparison,
         options: any
@@ -1033,7 +585,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async executeMigration(
         migration: DotNetMigrationScript,
         connection: DotNetConnectionInfo
@@ -1066,7 +617,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async getObjectDetails(
         connectionInfo: DotNetConnectionInfo,
         objectType: string,
@@ -1104,7 +654,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async executeQuery(
         connectionInfo: DotNetConnectionInfo,
         query: string,
@@ -1145,8 +694,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
-    // Direct .NET interop implementation using Edge.js with comprehensive error handling
     private async callDotNetMethod<TResult>(
         methodName: string,
         ...args: any[]
@@ -1224,7 +771,6 @@ export class DotNetIntegrationService {
             throw this.createDotNetError('UnknownError', (error as Error).message, methodName);
         }
     }
-
     private validateArguments(args: any[]): boolean {
         // Basic validation - ensure we have arguments and they're not all null/undefined
         if (!args || args.length === 0) {
@@ -1240,21 +786,15 @@ export class DotNetIntegrationService {
 
         return true;
     }
-
     private createDotNetError(type: string, message: string, methodName: string): DotNetError {
         return new DotNetError(type, message, methodName);
     }
-
-
     private async ensureInitialized(): Promise<void> {
         const initialized = await this.initialize();
         if (!initialized) {
             throw new Error('.NET integration service failed to initialize');
         }
     }
-
-    // Enhanced Metadata Extraction Methods
-
     async extractColumnMetadata(
         connectionInfo: DotNetConnectionInfo,
         tableName: string,
@@ -1291,7 +831,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async extractIndexMetadata(
         connectionInfo: DotNetConnectionInfo,
         tableName?: string,
@@ -1327,7 +866,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async extractConstraintMetadata(
         connectionInfo: DotNetConnectionInfo,
         tableName?: string,
@@ -1363,7 +901,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async extractViewMetadata(
         connectionInfo: DotNetConnectionInfo,
         viewName?: string,
@@ -1399,7 +936,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async extractFunctionMetadata(
         connectionInfo: DotNetConnectionInfo,
         functionName?: string,
@@ -1435,153 +971,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
-    // Enhanced Migration Methods with Progress Support
-
-    async generateMigrationWithProgress(
-        comparison: DotNetSchemaComparison,
-        options: any,
-        progressCallback?: (progress: DotNetMigrationProgressReport) => void
-    ): Promise<DotNetMigrationScript> {
-        await this.ensureInitialized();
-
-        try {
-            Logger.debug('Generating migration with progress via .NET library', 'generateMigrationWithProgress', {
-                comparisonId: comparison.id,
-                hasProgressCallback: !!progressCallback
-            });
-
-            const migration = await this.callDotNetMethod<DotNetMigrationScript>(
-                'GenerateMigrationWithProgressAsync',
-                comparison,
-                options,
-                progressCallback || null
-            );
-
-            Logger.info('Migration generation with progress completed', 'generateMigrationWithProgress', {
-                migrationId: migration.id,
-                operationCount: migration.sqlScript ? migration.sqlScript.split('\n').length : 0
-            });
-
-            return migration;
-        } catch (error) {
-            Logger.error('Failed to generate migration with progress via .NET library', error as Error);
-            throw error;
-        }
-    }
-
-    async executeMigrationWithProgress(
-        migration: DotNetMigrationScript,
-        connection: DotNetConnectionInfo,
-        progressCallback?: (progress: DotNetMigrationProgressReport) => void
-    ): Promise<DotNetMigrationResult> {
-        await this.ensureInitialized();
-
-        try {
-            Logger.debug('Executing migration with progress via .NET library', 'executeMigrationWithProgress', {
-                migrationId: migration.id,
-                targetConnection: connection.id,
-                hasProgressCallback: !!progressCallback
-            });
-
-            const result = await this.callDotNetMethod<DotNetMigrationResult>(
-                'ExecuteMigrationWithProgressAsync',
-                migration,
-                connection,
-                progressCallback || null
-            );
-
-            Logger.info('Migration execution with progress completed', 'executeMigrationWithProgress', {
-                migrationId: migration.id,
-                status: result.status,
-                operationsExecuted: result.operationsExecuted
-            });
-
-            return result;
-        } catch (error) {
-            Logger.error('Failed to execute migration with progress via .NET library', error as Error);
-            throw error;
-        }
-    }
-
-    async compareSchemasDetailed(
-        sourceConnection: DotNetConnectionInfo,
-        targetConnection: DotNetConnectionInfo,
-        options: any
-    ): Promise<any> {
-        await this.ensureInitialized();
-
-        try {
-            Logger.debug('Comparing schemas in detail via .NET library', 'compareSchemasDetailed', {
-                sourceConnection: sourceConnection.id,
-                targetConnection: targetConnection.id
-            });
-
-            const comparison = await this.callDotNetMethod<any>(
-                'CompareSchemasDetailedAsync',
-                sourceConnection,
-                targetConnection,
-                options
-            );
-
-            Logger.info('Detailed schema comparison completed', 'compareSchemasDetailed', {
-                comparisonId: comparison.id,
-                differenceCount: comparison.differences.length
-            });
-
-            return comparison;
-        } catch (error) {
-            Logger.error('Failed to compare schemas in detail via .NET library', error as Error);
-            throw error;
-        }
-    }
-
-    // Enhanced Error Information Method
-    getEnhancedErrorInfo(error: any): {
-        type: string;
-        message: string;
-        methodName: string;
-        suggestion?: string;
-        originalError?: Error;
-    } {
-        if (error instanceof DotNetError) {
-            return {
-                type: error.type,
-                message: error.message,
-                methodName: error.methodName,
-                suggestion: this.getErrorSuggestion(error.type),
-                originalError: error.originalError
-            };
-        }
-
-        return {
-            type: 'UnknownError',
-            message: error.message || error.toString(),
-            methodName: 'Unknown',
-            suggestion: 'Please check your connection and try again.'
-        };
-    }
-
-    private getErrorSuggestion(errorType: string): string {
-        switch (errorType) {
-            case 'ConnectionError':
-                return 'Check your connection string, host availability, and authentication credentials.';
-            case 'PermissionError':
-                return 'Ensure the user has sufficient privileges for the requested operation.';
-            case 'SyntaxError':
-                return 'Review the SQL syntax and object definitions.';
-            case 'Timeout':
-                return 'The operation timed out. Try increasing the timeout or check system performance.';
-            case 'InvalidArguments':
-                return 'Check that all required parameters are provided and valid.';
-            default:
-                return 'Please check the logs for more detailed information.';
-        }
-    }
-
-    /**
-     * Decrypts the password in a DotNetConnectionInfo object for use with .NET library calls
-     */
     private async decryptConnectionPassword(connectionInfo: DotNetConnectionInfo): Promise<DotNetConnectionInfo> {
         try {
             // Check if password is encrypted (starts with "encrypted_")
@@ -1604,7 +993,6 @@ export class DotNetIntegrationService {
             throw error;
         }
     }
-
     async dispose(): Promise<void> {
         Logger.info('Disposing .NET integration service');
         this.isInitialized = false;
