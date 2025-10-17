@@ -10,6 +10,7 @@
     "sourceMap": true,
     "outDir": "dist",
     "strict": true,
+    "removeComments": true,
     "noUnusedParameters": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

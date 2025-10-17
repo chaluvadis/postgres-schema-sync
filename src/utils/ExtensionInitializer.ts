@@ -24,7 +24,6 @@ import { RecoveryService } from '@/services/RecoveryService';
 import { QueryAnalyticsView } from '@/views/QueryAnalyticsView';
 import { TeamQueryLibraryView } from '@/views/TeamQueryLibraryView';
 import { ImportWizardView } from '@/views/ImportWizardView';
-import { ImportManagementView } from '@/views/ImportManagementView';
 import { Logger } from '@/utils/Logger';
 import { PostgreSqlExtension } from 'PostgreSqlExtension';
 
@@ -51,7 +50,6 @@ export interface ExtensionComponents {
     dataImportService?: DataImportService;
     recoveryService?: RecoveryService;
     importWizardView?: ImportWizardView;
-    importManagementView?: ImportManagementView;
     queryAnalyticsView?: QueryAnalyticsView;
     advancedMigrationPreviewView?: any;
     enhancedTreeProvider?: any;
@@ -134,8 +132,6 @@ export class ExtensionInitializer {
             const queryAnalyticsView = new QueryAnalyticsView(context, performanceMonitorService);
             const importWizardView = coreComponents.dataImportService ?
                 new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
-            const importManagementView = coreComponents.dataImportService ?
-                new ImportManagementView(coreComponents.dataImportService) : undefined;
 
             // Add optional components to the core components
             const components: ExtensionComponents = {
@@ -157,7 +153,6 @@ export class ExtensionInitializer {
                 dataImportService,
                 recoveryService,
                 importWizardView,
-                importManagementView,
                 queryAnalyticsView,
             };
 
@@ -220,10 +215,5 @@ export class ExtensionInitializer {
     }
     static getStatusBarProvider(): EnhancedStatusBarProvider {
         return EnhancedStatusBarProvider.getCurrentInstance();
-    }
-    static disposeImportManagementView(components: ExtensionComponents): void {
-        if (components.importManagementView) {
-            components.importManagementView.dispose();
-        }
     }
 }

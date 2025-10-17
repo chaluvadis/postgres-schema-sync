@@ -318,12 +318,6 @@
         "icon": "$(export)"
       },
       {
-        "command": "postgresql.importData",
-        "title": "Import Data",
-        "category": "PostgreSQL",
-        "icon": "$(arrow-right)"
-      },
-      {
         "command": "postgresql.createBackup",
         "title": "Create Backup",
         "category": "PostgreSQL",
@@ -362,18 +356,6 @@
       {
         "command": "postgresql.showValidationHistory",
         "title": "Migration Validation History",
-        "category": "PostgreSQL",
-        "icon": "$(history)"
-      },
-      {
-        "command": "postgresql.importDataWizard",
-        "title": "Import Data with Wizard",
-        "category": "PostgreSQL",
-        "icon": "$(arrow-right)"
-      },
-      {
-        "command": "postgresql.showImportHistory",
-        "title": "Import History",
         "category": "PostgreSQL",
         "icon": "$(history)"
       },
@@ -523,10 +505,6 @@
           "when": "workspaceState.postgresql.connectionsExist == true"
         },
         {
-          "command": "postgresql.importData",
-          "when": "workspaceState.postgresql.connectionsExist == true"
-        },
-        {
           "command": "postgresql.createBackup",
           "when": "workspaceState.postgresql.connectionsExist == true"
         },
@@ -552,14 +530,6 @@
         },
         {
           "command": "postgresql.showValidationHistory",
-          "when": "workspaceState.postgresql.connectionsExist == true"
-        },
-        {
-          "command": "postgresql.importDataWizard",
-          "when": "workspaceState.postgresql.connectionsExist == true"
-        },
-        {
-          "command": "postgresql.showImportHistory",
           "when": "workspaceState.postgresql.connectionsExist == true"
         },
         {
@@ -970,9 +940,16 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["csv", "json", "excel"]
+            "enum": [
+              "csv",
+              "json",
+              "excel"
+            ]
           },
-          "default": ["csv", "json"],
+          "default": [
+            "csv",
+            "json"
+          ],
           "description": "Available export formats for query results"
         },
         "postgresql.teamCollaboration.enabled": {
