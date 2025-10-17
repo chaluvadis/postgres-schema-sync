@@ -28,5 +28,3 @@ Thank you for your interest in contributing to **di-navigator**! We welcome cont
 ## License
 
 By contributing, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
-
-Happy Hacktoberfest! 🎉
