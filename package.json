@@ -4,7 +4,7 @@
   "displayName": "PostgreSQL Schema Compare & Sync",
   "description": "Advanced PostgreSQL schema comparison and synchronization extension for Visual Studio Code with enterprise-grade features",
   "version": "0.0.1",
-  "publisher": "postgresql-schema-sync",
+  "publisher": "nomad-in-code",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.104.0",
@@ -42,7 +42,7 @@
         {
           "id": "postgresql-team",
           "title": "PostgreSQL Team",
-          "icon": "resources/gray.png"
+          "icon": "resources/icon.png"
         }
       ]
     },
