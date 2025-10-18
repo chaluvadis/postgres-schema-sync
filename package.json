@@ -41,7 +41,7 @@
       "activitybar": [
         {
           "id": "postgresql-team",
-          "title": "PostgreSQL Team",
+          "title": "PostgreSQL Schema Sync",
           "icon": "resources/icon.png"
         }
       ]
@@ -1134,11 +1134,13 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "build:dotnet": "cd pg-drive/PostgreSqlSchemaCompareSync && dotnet build",
-    "build:dotnet:copy": "pnpm run build:dotnet && node scripts/copy-dll.js",
+    "build:dotnet:publish": "cd pg-drive/PostgreSqlSchemaCompareSync && dotnet publish --configuration Debug --output bin/Publish/net9.0",
+    "build:scripts": "tsc -p tsconfig.scripts.json",
+    "build:dotnet:copy": "pnpm run build:scripts && pnpm run build:dotnet && pnpm run build:dotnet:publish && node scripts/copy-dll.js",
     "build:all": "pnpm run build:dotnet:copy && pnpm run compile",
     "package": "pnpm run build:all && vsce package",
     "clean": "rimraf bin out",
-    "postinstall": "node scripts/check-edge.js"
+    "postinstall": "pnpm run build:scripts && node scripts/check-edge.js"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
