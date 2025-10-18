@@ -30,5 +30,5 @@ pg-drive
 jest.config.js
 eslint.config.mjs
 scripts/
-out/
 docs/
+bin/
