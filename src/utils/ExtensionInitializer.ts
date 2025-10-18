@@ -83,7 +83,7 @@ export class ExtensionInitializer {
             // Initialize core managers
             const connectionManager = new ConnectionManager(context);
             const queryExecutionService = new QueryExecutionService(connectionManager);
-            const validationFramework = new (require('../../core/ValidationFramework')).ValidationFramework();
+            const validationFramework = new ValidationFramework();
             const schemaManager = new ModularSchemaManager(connectionManager, queryExecutionService, validationFramework);
 
             // Initialize streamlined services (replaces legacy managers)
