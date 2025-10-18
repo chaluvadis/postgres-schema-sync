@@ -30,48 +30,6 @@ const esbuildProblemMatcherPlugin = {
   },
 };
 
-/**
- * @type {import('esbuild').Plugin}
- */
-const pathAliasPlugin = {
-  name: "path-alias-resolver",
-  setup(build) {
-    // Resolve @/* path aliases
-    build.onResolve({ filter: /^@\// }, (args) => {
-      const baseUrl = tsconfig.compilerOptions?.baseUrl || "./src";
-      const paths = tsconfig.compilerOptions?.paths || {};
-
-      // Find matching path pattern
-      for (const [alias, aliasPaths] of Object.entries(paths)) {
-        if (args.path.startsWith(alias.replace("/*", "/"))) {
-          const relativePath = args.path.replace(alias.replace("/*", "/"), "");
-          const fullPath = path.resolve(
-            process.cwd(),
-            baseUrl,
-            aliasPaths[0].replace("/*", ""),
-            relativePath
-          );
-
-          return {
-            path: fullPath,
-            external: false,
-          };
-        }
-      }
-
-      // Fallback to default resolution
-      const fallbackPath = path.resolve(
-        process.cwd(),
-        baseUrl,
-        args.path.replace("@/", "")
-      );
-      return {
-        path: fallbackPath,
-        external: false,
-      };
-    });
-  },
-};
 
 async function main() {
   // Create alias mappings from tsconfig paths
@@ -80,9 +38,18 @@ async function main() {
   const paths = tsconfig.compilerOptions?.paths || {};
 
   for (const [aliasPattern, aliasPaths] of Object.entries(paths)) {
-    const aliasKey = aliasPattern.replace("/*", "");
+    // Extract the alias name without @/ prefix
+    const aliasKey = aliasPattern.replace("@/", "").replace("/*", "");
     const aliasValue = aliasPaths[0].replace("/*", "");
-    alias[aliasKey] = path.resolve(process.cwd(), baseUrl, aliasValue);
+    const resolvedPath = path.resolve(process.cwd(), baseUrl, aliasValue);
+
+    // Only add alias if the resolved path actually exists
+    if (fs.existsSync(resolvedPath)) {
+      alias[aliasKey] = resolvedPath;
+      console.log(`[esbuild] Alias: ${aliasKey} -> ${resolvedPath}`);
+    } else {
+      console.warn(`[esbuild] Warning: Alias path does not exist: ${resolvedPath}`);
+    }
   }
 
   const ctx = await context({
@@ -95,10 +62,41 @@ async function main() {
     platform: "node",
     outfile: "dist/extension.js",
     external: ["vscode", "*.node"],
-    logLevel: "silent",
+    logLevel: "info", // Changed from silent to info for better debugging
     tsconfig: "tsconfig.json",
     alias: alias, // Use esbuild's built-in alias feature
-    plugins: [esbuildProblemMatcherPlugin],
+    plugins: [
+      esbuildProblemMatcherPlugin,
+      // Plugin to prevent copying the entire src directory
+      {
+        name: "prevent-src-copy",
+        setup(build) {
+          // Intercept any attempts to copy the src directory
+          build.onResolve({ filter: /^src$/ }, (args) => {
+            console.log(`[esbuild] Preventing src directory copy for: ${args.path}`);
+            return { path: args.path, external: true };
+          });
+
+          // Handle src subdirectories that shouldn't be copied
+          build.onResolve({ filter: /^src\/[^/]+$/ }, (args) => {
+            // Only allow specific src files that are actually imported
+            const allowedSrcFiles = ['extension.ts', 'PostgreSqlExtension.ts'];
+            if (allowedSrcFiles.includes(args.path.replace('src/', ''))) {
+              return null; // Allow these specific files
+            }
+            console.log(`[esbuild] Filtering src path: ${args.path}`);
+            return { path: args.path, external: true };
+          });
+        },
+      },
+    ],
+    // Add loader configuration for TypeScript files
+    loader: {
+      '.ts': 'ts',
+      '.js': 'js',
+    },
+    // Ensure we don't copy the entire src directory
+    absWorkingDir: process.cwd(),
   });
   if (watch) {
     await ctx.watch();
