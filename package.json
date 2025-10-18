@@ -28,7 +28,7 @@
   "main": "./dist/extension.js",
   "contributes": {
     "views": {
-      "explorer": [
+      "postgresql-team": [
         {
           "id": "postgresqlExplorer",
           "name": "PostgreSQL Explorer",
@@ -42,7 +42,7 @@
         {
           "id": "postgresql-team",
           "title": "PostgreSQL Team",
-          "icon": "$(organization)"
+          "icon": "resources/gray.png"
         }
       ]
     },
