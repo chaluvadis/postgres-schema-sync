@@ -37,6 +37,7 @@ async function main() {
         outfile: 'dist/extension.js',
         external: ['vscode', '*.node'],
         logLevel: 'silent',
+        tsconfig: 'tsconfig.json',
         plugins: [
             /* add to the end of plugins array */
             esbuildProblemMatcherPlugin,

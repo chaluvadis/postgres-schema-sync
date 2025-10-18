@@ -15,7 +15,18 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "declaration": false,
-    "sourceMap": false
+    "sourceMap": false,
+    "baseUrl": "./src",
+    "paths": {
+      "@/core/*": ["core/*"],
+      "@/services/*": ["services/*"],
+      "@/utils/*": ["utils/*"],
+      "@/managers/*": ["managers/*"],
+      "@/managers/schema/*": ["managers/schema/*"],
+      "@/providers/*": ["providers/*"],
+      "@/views/*": ["views/*"],
+      "@/extension/*": ["extension/*"]
+    }
   },
   "include": ["scripts/**/*"],
   "exclude": ["node_modules", "dist", "out"]
