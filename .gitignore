@@ -12,3 +12,4 @@ src/**.js.map
 .DS_Store
 **.vsix
 .vscode/
+scripts/**.js

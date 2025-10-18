@@ -49,35 +49,35 @@ const targetDllPath = path.join(
 const targetDir = path.join(process.cwd(), "out");
 
 console.log(
-  "🔄 Copying .NET DLL and runtime dependencies for Edge.js integration..."
+  "Copying .NET DLL and runtime dependencies for Edge.js integration..."
 );
 
 async function copyDlls(): Promise<void> {
   try {
     // Check if source DLL exists
     if (!fs.existsSync(sourceDllPath)) {
-      console.error("❌ Source DLL not found:", sourceDllPath);
-      console.error('💡 Make sure to run "pnpm run build:dotnet" first');
+      console.error("Source DLL not found:", sourceDllPath);
+      console.error('Make sure to run "pnpm run build:dotnet" first');
       process.exit(1);
     }
 
     // Check if publish directory exists with runtime DLLs
     if (!fs.existsSync(sourcePublishDir)) {
-      console.error("❌ Published DLLs not found:", sourcePublishDir);
-      console.error('💡 Make sure to run "pnpm run build:dotnet" first');
+      console.error("Published DLLs not found:", sourcePublishDir);
+      console.error('Make sure to run "pnpm run build:dotnet" first');
       process.exit(1);
     }
 
     // Create out directory if it doesn't exist
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });
-      console.log("📁 Created output directory:", targetDir);
+      console.log("Created output directory:", targetDir);
     }
 
     // Copy main DLL
     fs.copyFileSync(sourceDllPath, targetDllPath);
     const mainDllStats = fs.statSync(targetDllPath);
-    console.log("✅ Main DLL copied successfully:");
+    console.log("Main DLL copied successfully:");
     console.log("   From:", sourceDllPath);
     console.log("   To:", targetDllPath);
 
@@ -94,7 +94,7 @@ async function copyDlls(): Promise<void> {
         target: path.join(targetDir, file),
       }));
 
-    console.log(`🔄 Copying ${runtimeDlls.length} runtime DLLs...`);
+    console.log(`Copying ${runtimeDlls.length} runtime DLLs...`);
 
     // Copy all runtime DLLs
     let copiedCount = 0;
@@ -119,28 +119,28 @@ async function copyDlls(): Promise<void> {
       copiedCount++;
     }
 
-    console.log(`✅ Runtime DLLs copied successfully (${copiedCount} files)`);
+    console.log(`Runtime DLLs copied successfully (${copiedCount} files)`);
 
     // Verify main DLL copy
     if (fs.existsSync(targetDllPath)) {
-      console.log("✅ Main DLL verification successful");
+      console.log("Main DLL verification successful");
       console.log("   Size:", (mainDllStats.size / 1024).toFixed(2), "KB");
       console.log("   Modified:", mainDllStats.mtime.toISOString());
     } else {
-      console.error("❌ Main DLL copy failed");
+      console.error("Main DLL copy failed");
       process.exit(1);
     }
 
     // Verify runtime DLLs
     if (copiedRuntimeDlls.length === runtimeDlls.length) {
-      console.log("✅ All runtime DLLs verified successfully");
-      console.log("📋 Runtime DLLs copied:");
+      console.log("All runtime DLLs verified successfully");
+      console.log("Runtime DLLs copied:");
       copiedRuntimeDlls.forEach(({ name, size }) => {
         console.log(`   - ${name} (${(size / 1024).toFixed(2)} KB)`);
       });
     } else {
       console.error(
-        `❌ Some runtime DLLs failed to copy (${copiedRuntimeDlls.length}/${runtimeDlls.length} succeeded)`
+        `Some runtime DLLs failed to copy (${copiedRuntimeDlls.length}/${runtimeDlls.length} succeeded)`
       );
       process.exit(1);
     }
@@ -159,7 +159,7 @@ async function copyDlls(): Promise<void> {
       if (fs.existsSync(sourceConfigPath)) {
         fs.copyFileSync(sourceConfigPath, targetConfigPath);
         copiedConfigFiles.push({ name: configFile, copied: true });
-        console.log(`✅ Configuration file copied: ${configFile}`);
+        console.log(`Configuration file copied: ${configFile}`);
       } else {
         copiedConfigFiles.push({ name: configFile, copied: false });
       }
@@ -179,11 +179,11 @@ async function copyDlls(): Promise<void> {
     };
 
     console.log(
-      `🎉 .NET DLLs and runtime dependencies ready for Edge.js integration! (${result.totalFilesCopied} files copied)`
+      `.NET DLLs and runtime dependencies ready for Edge.js integration! (${result.totalFilesCopied} files copied)`
     );
   } catch (error) {
     console.error(
-      "❌ Error copying DLLs:",
+      "Error copying DLLs:",
       error instanceof Error ? error.message : String(error)
     );
     process.exit(1);
@@ -192,6 +192,6 @@ async function copyDlls(): Promise<void> {
 
 // Run the copy process
 copyDlls().catch((error: Error) => {
-  console.error("❌ Unexpected error:", error);
+  console.error("Unexpected error:", error);
   process.exit(1);
 });
