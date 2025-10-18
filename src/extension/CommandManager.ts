@@ -34,13 +34,15 @@ export class CommandManager {
         this.extension = extension;
         this.components = components;
     }
-    registerCommands(): void {
+    registerCommands(): vscode.Disposable[] {
         try {
             Logger.info('Registering PostgreSQL extension commands', 'CommandManager');
 
-            this.registerCoreCommands();
-            this.registerQueryCommands();
-            this.registerSQLFileCommands();
+            const disposables: vscode.Disposable[] = [];
+
+            this.registerCoreCommands(disposables);
+            this.registerQueryCommands(disposables);
+            this.registerSQLFileCommands(disposables);
 
             // Start command health monitoring
             this.startCommandMonitoring();
@@ -48,6 +50,8 @@ export class CommandManager {
             Logger.info('All PostgreSQL extension commands registered successfully', 'CommandManager', {
                 registeredCommands: this.registeredCommands.size
             });
+
+            return disposables;
 
         } catch (error) {
             Logger.error('Failed to register commands', error as Error, 'CommandManager');
@@ -72,7 +76,7 @@ export class CommandManager {
             Logger.info('Command health monitoring stopped', 'CommandManager');
         }
     }
-    private registerCoreCommands(): void {
+    private registerCoreCommands(disposables: vscode.Disposable[]): void {
         const coreCommands: CommandDefinition[] = [
             {
                 command: 'postgresql.editConnection',
@@ -88,11 +92,6 @@ export class CommandManager {
                 command: 'postgresql.executeMigration',
                 handler: (migration?: any) => this.handleExecuteMigration(migration),
                 description: 'Execute database migration'
-            },
-            {
-                command: 'postgresql.addConnection',
-                handler: () => this.handleAddConnection(),
-                description: 'Add new database connection'
             },
             {
                 command: 'postgresql.removeConnection',
@@ -153,7 +152,7 @@ export class CommandManager {
                     }
                 });
 
-                this.context.subscriptions.push(disposable);
+                disposables.push(disposable);
                 Logger.debug('Command registered successfully', 'CommandManager', { command, description });
             } catch (error) {
                 this.handleCommandError(command, error as Error, ['registration']);
@@ -161,134 +160,116 @@ export class CommandManager {
         });
 
         // Register UI-specific commands
-        this.registerUICommands();
+        this.registerUICommands(disposables);
     }
-    private registerUICommands(): void {
+    private registerUICommands(disposables: vscode.Disposable[]): void {
         // Dashboard command
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('postgresql.showDashboard', () => {
-                if (this.components.dashboardView) {
-                    this.components.dashboardView.showDashboard();
-                } else {
-                    vscode.window.showErrorMessage('Dashboard view not available');
-                }
-            })
-        );
+        disposables.push(vscode.commands.registerCommand('postgresql.showDashboard', () => {
+            if (this.components.dashboardView) {
+                this.components.dashboardView.showDashboard();
+            } else {
+                vscode.window.showErrorMessage('Dashboard view not available');
+            }
+        }));
 
         // Notification center command
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('postgresql.showNotifications', () => {
-                if (this.components.notificationManager) {
-                    this.components.notificationManager.showNotificationCenter();
-                } else {
-                    vscode.window.showErrorMessage('Notification manager not available');
-                }
-            })
-        );
+        disposables.push(vscode.commands.registerCommand('postgresql.showNotifications', () => {
+            if (this.components.notificationManager) {
+                this.components.notificationManager.showNotificationCenter();
+            } else {
+                vscode.window.showErrorMessage('Notification manager not available');
+            }
+        }));
 
         // Active operations command
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('postgresql.showActiveOperations', () => {
-                if (this.components.enhancedStatusBarProvider) {
-                    this.components.enhancedStatusBarProvider.showOperationDetails();
-                } else {
-                    vscode.window.showErrorMessage('Enhanced status bar not available');
-                }
-            })
-        );
+        disposables.push(vscode.commands.registerCommand('postgresql.showActiveOperations', () => {
+            if (this.components.enhancedStatusBarProvider) {
+                this.components.enhancedStatusBarProvider.showOperationDetails();
+            } else {
+                vscode.window.showErrorMessage('Enhanced status bar not available');
+            }
+        }));
 
         // Query analytics command
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('postgresql.showQueryAnalytics', async () => {
-                if (this.components.queryAnalyticsView) {
-                    await this.components.queryAnalyticsView.showAnalytics();
-                } else {
-                    vscode.window.showErrorMessage('Query analytics view not available');
-                }
-            })
-        );
+        disposables.push(vscode.commands.registerCommand('postgresql.showQueryAnalytics', async () => {
+            if (this.components.queryAnalyticsView) {
+                await this.components.queryAnalyticsView.showAnalytics();
+            } else {
+                vscode.window.showErrorMessage('Query analytics view not available');
+            }
+        }));
 
         // Quick connect command
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('postgresql.quickConnect', async () => {
-                const connectionName = await vscode.window.showInputBox({
-                    prompt: 'Enter connection name',
-                    placeHolder: 'My Database Connection'
-                });
+        disposables.push(vscode.commands.registerCommand('postgresql.quickConnect', async () => {
+            const connectionName = await vscode.window.showInputBox({
+                prompt: 'Enter connection name',
+                placeHolder: 'My Database Connection'
+            });
 
-                if (connectionName) {
-                    vscode.commands.executeCommand('postgresql.addConnection');
-                }
-            })
-        );
+            if (connectionName) {
+                vscode.commands.executeCommand('postgresql.addConnection');
+            }
+        }));
     }
-    private registerQueryCommands(): void {
+    private registerQueryCommands(disposables: vscode.Disposable[]): void {
         // Open query editor command
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('postgresql.openQueryEditor', async (connection) => {
-                if (this.components.queryEditorView) {
-                    await this.components.queryEditorView.showQueryEditor(connection?.id);
-                } else {
-                    vscode.window.showErrorMessage('Query editor not available');
-                }
-            })
-        );
+        disposables.push(vscode.commands.registerCommand('postgresql.openQueryEditor', async (connection) => {
+            if (this.components.queryEditorView) {
+                await this.components.queryEditorView.showQueryEditor(connection?.id);
+            } else {
+                vscode.window.showErrorMessage('Query editor not available');
+            }
+        }));
 
         // Execute query command
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('postgresql.executeQuery', async () => {
-                if (this.components.queryEditorView) {
-                    const connections = this.components.connectionManager.getConnections();
-                    if (connections.length === 0) {
-                        vscode.window.showErrorMessage('No database connections available. Please add a connection first.');
-                        return;
-                    }
-
-                    let selectedConnection = connections[0];
-                    if (connections.length > 1) {
-                        const connectionItems: ConnectionItem[] = connections.map((conn: any) => ({
-                            label: conn.name,
-                            detail: `${conn.host}:${conn.port}/${conn.database}`,
-                            connection: conn
-                        }));
-
-                        const selected = await vscode.window.showQuickPick(connectionItems, {
-                            placeHolder: 'Select a database connection'
-                        });
-
-                        if (!selected) return;
-                        selectedConnection = selected.connection;
-                    }
-
-                    await this.components.queryEditorView.showQueryEditor(selectedConnection.id);
-                } else {
-                    vscode.window.showErrorMessage('Query editor not available');
+        disposables.push(vscode.commands.registerCommand('postgresql.executeQuery', async () => {
+            if (this.components.queryEditorView) {
+                const connections = this.components.connectionManager.getConnections();
+                if (connections.length === 0) {
+                    vscode.window.showErrorMessage('No database connections available. Please add a connection first.');
+                    return;
                 }
-            })
-        );
+
+                let selectedConnection = connections[0];
+                if (connections.length > 1) {
+                    const connectionItems: ConnectionItem[] = connections.map((conn: any) => ({
+                        label: conn.name,
+                        detail: `${conn.host}:${conn.port}/${conn.database}`,
+                        connection: conn
+                    }));
+
+                    const selected = await vscode.window.showQuickPick(connectionItems, {
+                        placeHolder: 'Select a database connection'
+                    });
+
+                    if (!selected) return;
+                    selectedConnection = selected.connection;
+                }
+
+                await this.components.queryEditorView.showQueryEditor(selectedConnection.id);
+            } else {
+                vscode.window.showErrorMessage('Query editor not available');
+            }
+        }));
     }
-    private registerSQLFileCommands(): void {
+    private registerSQLFileCommands(disposables: vscode.Disposable[]): void {
         // Execute current file command
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('postgresql.executeCurrentFile', async () => {
-                try {
-                    await this.executeCurrentSQLFile();
-                } catch (error) {
-                    this.handleCommandError('postgresql.executeCurrentFile', error as Error);
-                }
-            })
-        );
+        disposables.push(vscode.commands.registerCommand('postgresql.executeCurrentFile', async () => {
+            try {
+                await this.executeCurrentSQLFile();
+            } catch (error) {
+                this.handleCommandError('postgresql.executeCurrentFile', error as Error);
+            }
+        }));
 
         // Format current file command
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('postgresql.formatCurrentFile', async () => {
-                try {
-                    await this.formatCurrentSQLFile();
-                } catch (error) {
-                    this.handleCommandError('postgresql.formatCurrentFile', error as Error);
-                }
-            })
-        );
+        disposables.push(vscode.commands.registerCommand('postgresql.formatCurrentFile', async () => {
+            try {
+                await this.formatCurrentSQLFile();
+            } catch (error) {
+                this.handleCommandError('postgresql.formatCurrentFile', error as Error);
+            }
+        }));
     }
     private async handleEditConnection(connection?: any): Promise<void> {
         if (!connection) {
