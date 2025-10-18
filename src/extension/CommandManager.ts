@@ -79,6 +79,11 @@ export class CommandManager {
     private registerCoreCommands(disposables: vscode.Disposable[]): void {
         const coreCommands: CommandDefinition[] = [
             {
+                command: 'postgresql.addConnection',
+                handler: () => this.handleAddConnection(),
+                description: 'Add a new database connection'
+            },
+            {
                 command: 'postgresql.editConnection',
                 handler: (connection?: any) => this.handleEditConnection(connection),
                 description: 'Edit an existing database connection'
