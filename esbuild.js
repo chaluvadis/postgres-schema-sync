@@ -38,8 +38,8 @@ async function main() {
   const paths = tsconfig.compilerOptions?.paths || {};
 
   for (const [aliasPattern, aliasPaths] of Object.entries(paths)) {
-    // Extract the alias name without @/ prefix
-    const aliasKey = aliasPattern.replace("@/", "").replace("/*", "");
+    // Keep the @/ prefix in the alias key for proper mapping
+    const aliasKey = aliasPattern.replace("/*", "");
     const aliasValue = aliasPaths[0].replace("/*", "");
     const resolvedPath = path.resolve(process.cwd(), baseUrl, aliasValue);
 
