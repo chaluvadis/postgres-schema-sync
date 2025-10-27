@@ -1,4 +1,8 @@
 using PostgreSqlSchemaCompareSync.Core.Models;
+using System;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 namespace PostgreSqlSchemaCompareSync;
 
@@ -202,6 +206,14 @@ public class PostgreSqlSchemaCompareSync : IDisposable
             _logger.LogInformation("Executing query for {ConnectionName}", connectionInfo.Name);
 
             using var command = connection.CreateCommand();
+            var injectionPatterns = new[] { "';", "--", "/*", "*/", "xp_", "sp_", "DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "EXEC", "UNION" };
+            foreach (var pattern in injectionPatterns)
+            {
+                if (query.ToUpper().Contains(pattern))
+                {
+                    throw new ArgumentException("Query contains potentially unsafe SQL patterns.");
+                }
+            }
             command.CommandText = query;
             command.CommandTimeout = options.TimeoutSeconds;
 

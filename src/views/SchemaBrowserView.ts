@@ -348,10 +348,16 @@ export class SchemaBrowserView {
         }
 
         try {
-            // TODO: Implement object details view
-            // For now, show object information in a quick info message
-            const objectInfo = `${object.type}: ${object.name}${object.schema ? ` (Schema: ${object.schema})` : ''}`;
-            vscode.window.showInformationMessage(`Object Details: ${objectInfo}`);
+            // Implement object details view
+            const panel = vscode.window.createWebviewPanel(
+                'objectDetails',
+                `Object Details: ${object.name}`,
+                vscode.ViewColumn.One,
+                { enableScripts: true }
+            );
+
+            const detailsHtml = this.generateObjectDetailsHtml(object);
+            panel.webview.html = detailsHtml;
 
             Logger.info('Viewing object details', 'handleViewObjectDetails', { object: object.name, type: object.type });
         } catch (error) {
@@ -370,7 +376,6 @@ export class SchemaBrowserView {
             vscode.window.showErrorMessage('Failed to refresh schema data');
         }
     }
-
 }
 
 interface SchemaBrowserData {
