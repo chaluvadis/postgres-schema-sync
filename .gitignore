@@ -10,3 +10,6 @@ test/
 src/**.js
 src/**.js.map
 .DS_Store
+**.vsix
+.vscode/
+scripts/**.js

@@ -231,7 +231,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
     public async Task<MigrationScript> GenerateMigrationScriptAsync(
         SchemaComparison comparison,
         MigrationOptions options,
-        IProgress<MigrationProgressReport> progress,
+        IProgress<MigrationProgressReport>? progress,
         CancellationToken cancellationToken = default)
     {
         var startTime = DateTime.UtcNow;
@@ -347,7 +347,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
     private async Task<(string sqlScript, string executionLog)> GenerateProgressEnabledSqlScriptAsync(
         List<SchemaDifference> differences,
         MigrationOptions options,
-        IProgress<MigrationProgressReport> progress,
+        IProgress<MigrationProgressReport>? progress,
         MigrationProgressReport progressReport,
         CancellationToken ct)
     {
@@ -440,7 +440,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
     private async Task<(string rollbackScript, string executionLog)> GenerateProgressEnabledRollbackScriptAsync(
         List<SchemaDifference> differences,
         MigrationOptions options,
-        IProgress<MigrationProgressReport> progress,
+        IProgress<MigrationProgressReport>? progress,
         MigrationProgressReport progressReport,
         CancellationToken ct)
     {
@@ -485,7 +485,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
                         executionLog.AppendLine($"[{DateTime.UtcNow:HH:mm:ss}] DEBUG: Generated rollback SQL for {difference.ObjectType} {difference.Schema}.{difference.ObjectName}");
 
                         // Update progress after each object
-                        progressReport.ProcessedDifferences = differences.Count + processedCount;
+                        progressReport.ProcessedDifferences = processedCount;
                         progressReport.ElapsedTime = DateTime.UtcNow - startTime;
                         progress?.Report(progressReport);
                     }
@@ -644,24 +644,54 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         }
     }
 
-    private static string GenerateDropSql(SchemaDifference difference)
+    internal static string GenerateDropSql(SchemaDifference difference)
     {
         var objectType = difference.ObjectType.ToString().ToUpperInvariant();
         var schema = string.IsNullOrEmpty(difference.Schema) ? "public" : difference.Schema;
         var objectName = difference.ObjectName;
+        var parentName = GetMetadataString(difference, "TableName", "ParentTable", "TargetTable", "SourceTable");
+        var signature = GetMetadataString(difference, "Signature");
 
         return difference.ObjectType switch
         {
             ObjectType.Table => $"-- Dropping table {schema}.{objectName}\nDROP TABLE IF EXISTS \"{schema}\".\"{objectName}\" CASCADE;",
             ObjectType.View => $"-- Dropping view {schema}.{objectName}\nDROP VIEW IF EXISTS \"{schema}\".\"{objectName}\" CASCADE;",
             ObjectType.Index => $"-- Dropping index {schema}.{objectName}\nDROP INDEX IF EXISTS \"{schema}\".\"{objectName}\" CASCADE;",
-            ObjectType.Function or ObjectType.Procedure => $"-- Dropping function {schema}.{objectName}\nDROP FUNCTION IF EXISTS \"{schema}\".\"{objectName}\" CASCADE;",
-            ObjectType.Trigger => $"-- Dropping trigger {objectName}\nDROP TRIGGER IF EXISTS \"{objectName}\" ON \"{schema}\".* CASCADE;",
+            ObjectType.Function or ObjectType.Procedure =>
+                $"-- Dropping {difference.ObjectType.ToString().ToLowerInvariant()} {schema}.{objectName}\n" +
+                $"DROP {difference.ObjectType.ToString().ToUpperInvariant()} IF EXISTS \"{schema}\".\"{objectName}\"{FormatFunctionSignature(signature)} CASCADE;",
+            ObjectType.Trigger when !string.IsNullOrWhiteSpace(parentName) =>
+                $"-- Dropping trigger {objectName}\nDROP TRIGGER IF EXISTS \"{objectName}\" ON \"{schema}\".\"{parentName}\" CASCADE;",
+            ObjectType.Trigger =>
+                $"-- Dropping trigger {objectName}\n-- WARNING: Parent table unknown, manual adjustment required\n-- Example: DROP TRIGGER IF EXISTS \"{objectName}\" ON \"{schema}\".\"<table_name>\" CASCADE;",
             ObjectType.Schema => $"-- Dropping schema {objectName}\nDROP SCHEMA IF EXISTS \"{objectName}\" CASCADE;",
             ObjectType.Type => $"-- Dropping type {schema}.{objectName}\nDROP TYPE IF EXISTS \"{schema}\".\"{objectName}\" CASCADE;",
             ObjectType.Sequence => $"-- Dropping sequence {schema}.{objectName}\nDROP SEQUENCE IF EXISTS \"{schema}\".\"{objectName}\" CASCADE;",
             _ => $"-- DROP {objectType} {schema}.{objectName} (manual review required)"
         };
+    }
+
+    private static string FormatFunctionSignature(string? signature)
+    {
+        if (signature is null)
+        {
+            return "()";
+        }
+
+        return string.IsNullOrWhiteSpace(signature) ? "()" : $"({signature})";
+    }
+
+    private static string? GetMetadataString(SchemaDifference difference, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (difference.Metadata.TryGetValue(key, out var value) && value is string stringValue && !string.IsNullOrWhiteSpace(stringValue))
+            {
+                return stringValue;
+            }
+        }
+
+        return null;
     }
 
 
@@ -702,7 +732,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         }
     }
 
-    private string GenerateCreateStatement(SchemaDifference difference, string schema, string objectName)
+    private static string GenerateCreateStatement(SchemaDifference difference, string schema, string objectName)
     {
         return difference.ObjectType switch
         {
@@ -719,7 +749,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         };
     }
 
-    private string GenerateAlterStatement(SchemaDifference difference)
+    private static string GenerateAlterStatement(SchemaDifference difference)
     {
         var schema = string.IsNullOrEmpty(difference.Schema) ? "public" : difference.Schema;
         var objectName = difference.ObjectName;
@@ -1056,7 +1086,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return ordered;
     }
 
-    private (bool IsValid, List<string> Errors) ValidateBusinessRules(List<SchemaDifference> differences)
+    private static (bool IsValid, List<string> Errors) ValidateBusinessRules(List<SchemaDifference> differences)
     {
         var errors = new List<string>();
 
@@ -1152,7 +1182,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         };
     }
 
-    private string EnhanceSqlForRealTimeExecution(string sql, SchemaDifference difference)
+    private static string EnhanceSqlForRealTimeExecution(string sql, SchemaDifference difference)
     {
         var enhanced = new StringBuilder();
 
@@ -1206,23 +1236,36 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
 
     private static string GenerateVerificationSql(SchemaDifference difference)
     {
+        ArgumentNullException.ThrowIfNull(difference, nameof(SchemaDifference));
         var schema = string.IsNullOrEmpty(difference.Schema) ? "public" : difference.Schema;
         var objectName = difference.ObjectName;
 
+        // Use PostgreSQL's quote_ident function to safely quote identifiers and prevent SQL injection
+        var safeSchema = $"quote_ident('{schema.Replace("'", "''")}')";
+        var safeObjectName = $"quote_ident('{objectName.Replace("'", "''")}')";
+
         return difference.ObjectType switch
         {
-            ObjectType.Table => $"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{objectName}';",
-            ObjectType.View => $"SELECT COUNT(*) FROM information_schema.views WHERE table_schema = '{schema}' AND table_name = '{objectName}';",
-            ObjectType.Function => $"SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema = '{schema}' AND routine_name = '{objectName}';",
-            ObjectType.Schema => $"SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = '{objectName}';",
-            ObjectType.Sequence => $"SELECT COUNT(*) FROM information_schema.sequences WHERE sequence_schema = '{schema}' AND sequence_name = '{objectName}';",
-            ObjectType.Type => $"SELECT COUNT(*) FROM pg_type WHERE typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '{schema}') AND typname = '{objectName}';",
-            ObjectType.Index => $"SELECT COUNT(*) FROM pg_indexes WHERE schemaname = '{schema}' AND indexname = '{objectName}';",
-            _ => null
+            ObjectType.Table => $"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = {safeSchema} AND table_name = {safeObjectName};",
+            ObjectType.View => $"SELECT COUNT(*) FROM information_schema.views WHERE table_schema = {safeSchema} AND table_name = {safeObjectName};",
+            ObjectType.Function => $"SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema = {safeSchema} AND routine_name = {safeObjectName};",
+            ObjectType.Procedure => $"SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema = {safeSchema} AND routine_name = {safeObjectName};",
+            ObjectType.Schema => $"SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = {safeObjectName};",
+            ObjectType.Sequence => $"SELECT COUNT(*) FROM information_schema.sequences WHERE sequence_schema = {safeSchema} AND sequence_name = {safeObjectName};",
+            ObjectType.Type => $"SELECT COUNT(*) FROM pg_type WHERE typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = {safeSchema}) AND typname = {safeObjectName};",
+            ObjectType.Domain => $"SELECT COUNT(*) FROM pg_type WHERE typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = {safeSchema}) AND typname = {safeObjectName};",
+            ObjectType.Index => $"SELECT COUNT(*) FROM pg_indexes WHERE schemaname = {safeSchema} AND indexname = {safeObjectName};",
+            ObjectType.Trigger => $"SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = {safeSchema} AND trigger_name = {safeObjectName};",
+            ObjectType.Constraint => $"SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema = {safeSchema} AND constraint_name = {safeObjectName};",
+            ObjectType.Collation => $"SELECT COUNT(*) FROM pg_collation WHERE collnamespace = (SELECT oid FROM pg_namespace WHERE nspname = {safeSchema}) AND collname = {safeObjectName};",
+            ObjectType.Extension => $"SELECT COUNT(*) FROM pg_extension WHERE extname = {safeObjectName};",
+            ObjectType.Role => $"SELECT COUNT(*) FROM pg_roles WHERE rolname = {safeObjectName};",
+            ObjectType.Tablespace => $"SELECT COUNT(*) FROM pg_tablespace WHERE spcname = {safeObjectName};",
+            _ => string.Empty
         };
     }
 
-    private string GenerateEnhancedCreateTableSql(SchemaDifference difference, string schema, string tableName)
+    private static string GenerateEnhancedCreateTableSql(SchemaDifference difference, string schema, string tableName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
             return $"-- Cannot create table {schema}.{tableName} - no definition available";
@@ -1261,7 +1304,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateViewSql(SchemaDifference difference, string schema, string viewName)
+    private static string GenerateEnhancedCreateViewSql(SchemaDifference difference, string schema, string viewName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
             return $"-- Cannot create view {schema}.{viewName} - no definition available";
@@ -1280,7 +1323,11 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateFunctionSql(SchemaDifference difference, string schema, string functionName)
+    private static string GenerateEnhancedCreateFunctionSql(
+        SchemaDifference difference,
+        string schema,
+        string functionName
+    )
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
             return $"-- Cannot create function {schema}.{functionName} - no definition available";
@@ -1298,7 +1345,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateProcedureSql(SchemaDifference difference, string schema, string procedureName)
+    private static string GenerateEnhancedCreateProcedureSql(SchemaDifference difference, string schema, string procedureName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
             return $"-- Cannot create procedure {schema}.{procedureName} - no definition available";
@@ -1315,7 +1362,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateIndexSql(SchemaDifference difference, string schema, string indexName)
+    private static string GenerateEnhancedCreateIndexSql(SchemaDifference difference, string schema, string indexName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
             return $"-- Cannot create index {schema}.{indexName} - no definition available";
@@ -1335,7 +1382,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateTriggerSql(SchemaDifference difference, string schema, string triggerName)
+    private static string GenerateEnhancedCreateTriggerSql(SchemaDifference difference, string schema, string triggerName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
             return $"-- Cannot create trigger {schema}.{triggerName} - no definition available";
@@ -1350,7 +1397,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateSequenceSql(SchemaDifference difference, string schema, string sequenceName)
+    private static string GenerateEnhancedCreateSequenceSql(SchemaDifference difference, string schema, string sequenceName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
             return $"-- Cannot create sequence {schema}.{sequenceName} - no definition available";
@@ -1365,7 +1412,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateTypeSql(SchemaDifference difference, string schema, string typeName)
+    private static string GenerateEnhancedCreateTypeSql(SchemaDifference difference, string schema, string typeName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
             return $"-- Cannot create type {schema}.{typeName} - no definition available";
@@ -1380,7 +1427,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateSchemaSql(SchemaDifference difference, string schema, string schemaName)
+    private static string GenerateEnhancedCreateSchemaSql(SchemaDifference difference, string schema, string schemaName)
     {
         var sql = new StringBuilder();
         sql.AppendLine($"-- Enhanced CREATE SCHEMA for real-time execution");
@@ -1394,7 +1441,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateDomainSql(SchemaDifference difference, string schema, string domainName)
+    private static string GenerateEnhancedCreateDomainSql(SchemaDifference difference, string schema, string domainName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
         {
@@ -1431,7 +1478,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateCollationSql(SchemaDifference difference, string schema, string collationName)
+    private static string GenerateEnhancedCreateCollationSql(SchemaDifference difference, string schema, string collationName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
         {
@@ -1468,7 +1515,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateExtensionSql(SchemaDifference difference, string schema, string extensionName)
+    private static string GenerateEnhancedCreateExtensionSql(SchemaDifference difference, string schema, string extensionName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
         {
@@ -1505,7 +1552,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateRoleSql(SchemaDifference difference, string schema, string roleName)
+    private static string GenerateEnhancedCreateRoleSql(SchemaDifference difference, string schema, string roleName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
         {
@@ -1542,7 +1589,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateEnhancedCreateTablespaceSql(SchemaDifference difference, string schema, string tablespaceName)
+    private static string GenerateEnhancedCreateTablespaceSql(SchemaDifference difference, string schema, string tablespaceName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
         {
@@ -1579,7 +1626,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         return sql.ToString();
     }
 
-    private string GenerateGenericCreateStatement(SchemaDifference difference, string schema, string objectName)
+    private static string GenerateGenericCreateStatement(SchemaDifference difference, string schema, string objectName)
     {
         if (string.IsNullOrEmpty(difference.TargetDefinition))
             return $"-- Cannot create {difference.ObjectType} {schema}.{objectName} - no definition available";

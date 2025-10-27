@@ -1,6 +1,6 @@
-# Contributing to di-navigator
+# Contributing to Postgres-Schema-Sync
 
-Thank you for your interest in contributing to **di-navigator**! We welcome contributions from everyone, especially during Hacktoberfest. Please follow the guidelines below to participate and make your experience smooth and enjoyable.
+Thank you for your interest in contributing to **postgres-schema-sync**! We welcome contributions from everyone, especially during Hacktoberfest. Please follow the guidelines below to participate and make your experience smooth and enjoyable.
 
 ## How to Contribute
 
@@ -22,8 +22,8 @@ Thank you for your interest in contributing to **di-navigator**! We welcome cont
 
 ## Getting Help
 
-- Check existing [issues](https://github.com/chaluvadis/di-navigator/issues) before opening a new one.
-- Use [Discussions](https://github.com/chaluvadis/di-navigator/discussions) or open a new issue for questions.
+- Check existing [issues](https://github.com/chaluvadis/postgres-schema-sync/issues) before opening a new one.
+- Use [Discussions](https://github.com/chaluvadis/postgres-schema-sync/discussions) or open a new issue for questions.
 
 ## License
 

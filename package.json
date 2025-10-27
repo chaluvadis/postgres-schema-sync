@@ -1,11 +1,10 @@
 {
-  "type": "module",
   "name": "postgresql-schema-sync",
   "displayName": "PostgreSQL Schema Compare & Sync",
   "description": "Advanced PostgreSQL schema comparison and synchronization extension for Visual Studio Code with enterprise-grade features",
-  "version": "0.0.1",
-  "publisher": "postgresql-schema-sync",
-  "icon": "resources/icon.png",
+  "version": "0.1.0",
+  "publisher": "nomad-in-code",
+  "icon": "./resources/icon.png",
   "engines": {
     "vscode": "^1.104.0",
     "node": ">=22.0.0"
@@ -24,11 +23,15 @@
     "migration",
     "sql"
   ],
-  "activationEvents": [],
-  "main": "./out/extension.js",
+  "activationEvents": [
+    "onCommand:postgresql.addConnection",
+    "onCommand:postgresql.refreshExplorer",
+    "onCommand:postgresql.compareSchemas"
+  ],
+  "main": "./dist/extension.js",
   "contributes": {
     "views": {
-      "explorer": [
+      "postgresql-team": [
         {
           "id": "postgresqlExplorer",
           "name": "PostgreSQL Explorer",
@@ -41,8 +44,8 @@
       "activitybar": [
         {
           "id": "postgresql-team",
-          "title": "PostgreSQL Team",
-          "icon": "$(organization)"
+          "title": "PostgreSQL Schema Sync",
+          "icon": ".resources/gray.png"
         }
       ]
     },
@@ -318,12 +321,6 @@
         "icon": "$(export)"
       },
       {
-        "command": "postgresql.importData",
-        "title": "Import Data",
-        "category": "PostgreSQL",
-        "icon": "$(arrow-right)"
-      },
-      {
         "command": "postgresql.createBackup",
         "title": "Create Backup",
         "category": "PostgreSQL",
@@ -362,18 +359,6 @@
       {
         "command": "postgresql.showValidationHistory",
         "title": "Migration Validation History",
-        "category": "PostgreSQL",
-        "icon": "$(history)"
-      },
-      {
-        "command": "postgresql.importDataWizard",
-        "title": "Import Data with Wizard",
-        "category": "PostgreSQL",
-        "icon": "$(arrow-right)"
-      },
-      {
-        "command": "postgresql.showImportHistory",
-        "title": "Import History",
         "category": "PostgreSQL",
         "icon": "$(history)"
       },
@@ -523,10 +508,6 @@
           "when": "workspaceState.postgresql.connectionsExist == true"
         },
         {
-          "command": "postgresql.importData",
-          "when": "workspaceState.postgresql.connectionsExist == true"
-        },
-        {
           "command": "postgresql.createBackup",
           "when": "workspaceState.postgresql.connectionsExist == true"
         },
@@ -552,14 +533,6 @@
         },
         {
           "command": "postgresql.showValidationHistory",
-          "when": "workspaceState.postgresql.connectionsExist == true"
-        },
-        {
-          "command": "postgresql.importDataWizard",
-          "when": "workspaceState.postgresql.connectionsExist == true"
-        },
-        {
-          "command": "postgresql.showImportHistory",
           "when": "workspaceState.postgresql.connectionsExist == true"
         },
         {
@@ -970,9 +943,16 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["csv", "json", "excel"]
+            "enum": [
+              "csv",
+              "json",
+              "excel"
+            ]
           },
-          "default": ["csv", "json"],
+          "default": [
+            "csv",
+            "json"
+          ],
           "description": "Available export formats for query results"
         },
         "postgresql.teamCollaboration.enabled": {
@@ -1157,11 +1137,13 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "build:dotnet": "cd pg-drive/PostgreSqlSchemaCompareSync && dotnet build",
-    "build:dotnet:copy": "pnpm run build:dotnet && node scripts/copy-dll.js",
+    "build:dotnet:publish": "cd pg-drive/PostgreSqlSchemaCompareSync && dotnet publish --configuration Debug --output bin/Publish/net9.0",
+    "build:scripts": "tsc -p tsconfig.scripts.json",
+    "build:dotnet:copy": "pnpm run build:scripts && pnpm run build:dotnet && pnpm run build:dotnet:publish && node scripts/copy-dll.js",
     "build:all": "pnpm run build:dotnet:copy && pnpm run compile",
     "package": "pnpm run build:all && vsce package",
     "clean": "rimraf bin out",
-    "postinstall": "node scripts/check-edge.js"
+    "postinstall": "pnpm run build:scripts && node scripts/check-edge.js"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

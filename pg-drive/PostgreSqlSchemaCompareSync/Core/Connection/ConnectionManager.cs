@@ -23,7 +23,7 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
             _connectionStringBuilder = connectionStringBuilder ?? throw new ArgumentNullException(nameof(connectionStringBuilder));
         }
 
-        public async Task<NpgsqlConnection> CreateConnectionAsync(
+        public async Task<PooledConnectionHandle> CreateConnectionAsync(
             ConnectionInfo connectionInfo,
             CancellationToken cancellationToken = default)
         {
@@ -40,7 +40,7 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
                 var connection = await _connectionPool.GetConnectionAsync(connectionInfo, cancellationToken);
 
                 _logger.LogInformation("Connection established to {Database}", connectionInfo.Database);
-                return connection;
+                return new PooledConnectionHandle(_connectionPool, connectionInfo, connection, _logger);
             }
             catch (NpgsqlException ex)
             {
@@ -71,7 +71,8 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
             try
             {
                 _logger.LogDebug("Testing connection to {Database}", connectionInfo.Database);
-                using var connection = await CreateConnectionAsync(connectionInfo, cancellationToken);
+                await using var connectionHandle = await CreateConnectionAsync(connectionInfo, cancellationToken);
+                var connection = connectionHandle.Connection;
                 // Test a simple query to ensure the database is responsive
                 using var command = connection.CreateCommand();
                 command.CommandText = "SELECT 1";
@@ -94,25 +95,15 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         /// Closes and disposes a connection
         /// </summary>
         public async Task CloseConnectionAsync(
-            NpgsqlConnection connection,
+            PooledConnectionHandle connection,
             CancellationToken cancellationToken = default)
         {
             if (connection == null)
                 throw new ArgumentNullException(nameof(connection));
-            try
-            {
-                if (connection.State != ConnectionState.Closed)
-                {
-                    await connection.CloseAsync();
-                }
-                await connection.DisposeAsync();
-                _logger.LogDebug("Connection closed and disposed");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error closing connection");
-                // Don't throw - closing errors shouldn't prevent disposal
-            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            await connection.DisposeAsync();
+            _logger.LogDebug("Connection returned to pool");
         }
         /// <summary>
         /// Gets connection health status

@@ -78,10 +78,10 @@ public class RoleMetadataExtractor(
                     ["BypassesRLS"] = reader.GetBoolean(7),
                     ["ConnectionLimit"] = reader.GetInt32(8),
                     ["HasPassword"] = !reader.IsDBNull(9),
-                    ["PasswordValidUntil"] = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10),
+                    ["PasswordValidUntil"] = reader.IsDBNull(10) ? string.Empty : reader.GetDateTime(10).ToString("O"),
                     ["RoleConfig"] = reader.IsDBNull(11) ? string.Empty : reader.GetString(11),
-                    ["MemberRoles"] = reader.IsDBNull(12) ? string.Empty : string.Join(", ", (string[])reader.GetValue(12)),
-                    ["GrantedRoles"] = reader.IsDBNull(13) ? string.Empty : string.Join(", ", (string[])reader.GetValue(13)),
+                    ["MemberRoles"] = FormatRoleList(reader.IsDBNull(12) ? null : reader.GetValue(12)),
+                    ["GrantedRoles"] = FormatRoleList(reader.IsDBNull(13) ? null : reader.GetValue(13)),
                     ["Description"] = reader.IsDBNull(14) ? string.Empty : reader.GetString(14)
                 }
             });
@@ -184,17 +184,19 @@ public class RoleMetadataExtractor(
                     result.Metadata["IsSuperuser"] = advReader.GetBoolean(0);
                     result.Metadata["CanLogin"] = advReader.GetBoolean(1);
                     result.Metadata["ConnectionLimit"] = advReader.GetInt32(2);
-                    result.Metadata["PasswordValidUntil"] = advReader.IsDBNull(3) ? (DateTime?)null : advReader.GetDateTime(3);
+                    result.Metadata["PasswordValidUntil"] = advReader.IsDBNull(3)
+                        ? string.Empty
+                        : advReader.GetDateTime(3).ToString("O");
                     result.Metadata["RoleConfig"] = advReader.IsDBNull(4) ? string.Empty : advReader.GetString(4);
                     result.Metadata["HasPassword"] = advReader.GetBoolean(5);
 
                     if (!advReader.IsDBNull(6))
                     {
-                        result.Metadata["MemberRoles"] = string.Join(", ", (string[])advReader.GetValue(6));
+                        result.Metadata["MemberRoles"] = FormatRoleList(advReader.GetValue(6));
                     }
                     if (!advReader.IsDBNull(7))
                     {
-                        result.Metadata["GrantedRoles"] = string.Join(", ", (string[])advReader.GetValue(7));
+                        result.Metadata["GrantedRoles"] = FormatRoleList(advReader.GetValue(7));
                     }
 
                     result.Metadata["MemberCount"] = advReader.GetInt64(8);
@@ -482,5 +484,19 @@ public class RoleMetadataExtractor(
             _logger.LogWarning(ex, "Error building role definition for {RoleName}", roleName);
             return $"CREATE ROLE \"{roleName}\";";
         }
+    }
+
+    private static string FormatRoleList(object? value)
+    {
+        return value switch
+        {
+            null => string.Empty,
+            string[] stringArray => string.Join(", ", stringArray.Where(s => !string.IsNullOrWhiteSpace(s))),
+            object[] objectArray => string.Join(", ", objectArray
+                .Select(item => item?.ToString())
+                .Where(s => !string.IsNullOrWhiteSpace(s))),
+            string text when !string.IsNullOrWhiteSpace(text) => text,
+            _ => value.ToString() ?? string.Empty
+        };
     }
 }

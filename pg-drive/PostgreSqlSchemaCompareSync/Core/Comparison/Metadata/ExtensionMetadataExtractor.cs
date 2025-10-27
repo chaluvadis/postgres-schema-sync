@@ -278,39 +278,38 @@ public class ExtensionMetadataExtractor(
         configCommand.Parameters.AddWithValue("@extensionName", details.Name);
 
         var configResult = await configCommand.ExecuteScalarAsync(cancellationToken);
-        if (configResult != null && !Convert.IsDBNull(configResult))
+        if (configResult is Array configArray && configArray.Length > 0)
         {
-            var configArray = (Array)configResult;
-            if (configArray.Length > 0)
+            var configTables = new List<string>();
+
+            foreach (var rawValue in configArray)
             {
-                var configTables = new List<string>();
-                for (int i = 0; i < configArray.Length; i++)
+                if (rawValue == null || rawValue == DBNull.Value)
                 {
-                    if (configArray.GetValue(i) != null && configArray.GetValue(i) != DBNull.Value)
-                    {
-                        var tableOid = (uint)configArray.GetValue(i);
-                        // Get table name from OID
-                        const string tableQuery = @"
+                    continue;
+                }
+
+                var tableOid = Convert.ToUInt32(rawValue);
+
+                const string tableQuery = @"
                             SELECT n.nspname || '.' || c.relname
                             FROM pg_class c
                             JOIN pg_namespace n ON c.relnamespace = n.oid
                             WHERE c.oid = @tableOid";
 
-                        using var tableCommand = new NpgsqlCommand(tableQuery, connection);
-                        tableCommand.Parameters.AddWithValue("@tableOid", (int)tableOid);
+                using var tableCommand = new NpgsqlCommand(tableQuery, connection);
+                tableCommand.Parameters.AddWithValue("@tableOid", (int)tableOid);
 
-                        var tableName = await tableCommand.ExecuteScalarAsync(cancellationToken);
-                        if (tableName != null)
-                        {
-                            configTables.Add(tableName.ToString());
-                        }
-                    }
-                }
-
-                if (configTables.Any())
+                var tableName = await tableCommand.ExecuteScalarAsync(cancellationToken);
+                if (tableName is string tableNameString && !string.IsNullOrWhiteSpace(tableNameString))
                 {
-                    details.AdditionalInfo["ConfigurationTables"] = string.Join(", ", configTables);
+                    configTables.Add(tableNameString);
                 }
+            }
+
+            if (configTables.Count != 0)
+            {
+                details.AdditionalInfo["ConfigurationTables"] = string.Join(", ", configTables);
             }
         }
     }

@@ -74,7 +74,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         realtimeMonitoringManager.updateTreeViewTitle(treeView);
 
         // Register all commands using the modular command manager
-        commandManager.registerCommands();
+        const commandDisposables = commandManager.registerCommands();
+
+        // Register all command disposables in the main extension context
+        commandDisposables.forEach(disposable => {
+            context.subscriptions.push(disposable);
+        });
+
+        // Register critical commands directly to avoid dynamic import issues
+        registerCriticalCommands(context, components);
 
         // Register all event handlers using the modular event handler manager
         eventHandlerManager.registerEventHandlers();
@@ -121,6 +129,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
 }
 
+function registerCriticalCommands(context: vscode.ExtensionContext, components: ExtensionComponents): void {
+    // Register the critical addConnection command directly to avoid dynamic import issues
+    const addConnectionCommand = vscode.commands.registerCommand('postgresql.addConnection', async () => {
+        try {
+            if (components.connectionManager) {
+                // Use connection management view for adding connections
+                const { ConnectionManagementView } = await import('./views/ConnectionManagementView');
+                const connectionView = new ConnectionManagementView(components.connectionManager);
+                await connectionView.showConnectionDialog();
+            } else {
+                vscode.window.showErrorMessage('Connection manager not available');
+            }
+        } catch (error) {
+            Logger.error('Failed to add connection', error as Error);
+            vscode.window.showErrorMessage(`Failed to add connection: ${(error as Error).message}`);
+        }
+    });
+
+    context.subscriptions.push(addConnectionCommand);
+    Logger.info('Critical commands registered successfully', 'Extension');
+}
+
 export function deactivate(): Thenable<void> | undefined {
     const deactivationContext = ErrorHandler.createEnhancedContext(
         'ExtensionDeactivation',
@@ -160,16 +190,6 @@ export function deactivate(): Thenable<void> | undefined {
             }
         }
 
-        if (components) {
-            try {
-                ExtensionInitializer.disposeImportManagementView(components);
-                promises.push(Promise.resolve());
-            } catch (error) {
-                Logger.warn('Error disposing import management view', 'deactivate', error as Error);
-                ErrorHandler.handleError(error, ErrorHandler.createContext('ImportManagementViewDisposal'));
-                promises.push(Promise.resolve()); // Don't fail deactivation for view disposal errors
-            }
-        }
 
         try {
             Logger.dispose();

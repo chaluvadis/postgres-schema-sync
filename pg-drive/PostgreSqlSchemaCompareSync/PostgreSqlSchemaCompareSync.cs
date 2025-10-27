@@ -1,5 +1,3 @@
-using PostgreSqlSchemaCompareSync.Core.Models;
-
 namespace PostgreSqlSchemaCompareSync;
 
 public class PostgreSqlSchemaCompareSync : IDisposable
@@ -67,7 +65,8 @@ public class PostgreSqlSchemaCompareSync : IDisposable
         try
         {
             var connectionManager = _serviceProvider.GetRequiredService<IConnectionManager>();
-            using var connection = await connectionManager.CreateConnectionAsync(connectionInfo, ct);
+            await using var connectionHandle = await connectionManager.CreateConnectionAsync(connectionInfo, ct);
+            _ = connectionHandle.Connection;
             _logger.LogInformation("Connection test successful for {ConnectionName}", connectionInfo.Name);
             return true;
         }
@@ -197,11 +196,34 @@ public class PostgreSqlSchemaCompareSync : IDisposable
         try
         {
             var connectionManager = _serviceProvider.GetRequiredService<IConnectionManager>();
-            using var connection = await connectionManager.CreateConnectionAsync(connectionInfo, ct);
+            await using var connectionHandle = await connectionManager.CreateConnectionAsync(connectionInfo, ct);
+            var connection = connectionHandle.Connection;
 
             _logger.LogInformation("Executing query for {ConnectionName}", connectionInfo.Name);
 
             using var command = connection.CreateCommand();
+            // Enhanced security validation for SQL injection prevention
+            var injectionPatterns = new[] { "';", "--", "/*", "*/", "xp_", "sp_", "DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "EXEC", "UNION", "EXECUTE", "SHUTDOWN", "RESTART", "BACKUP", "RESTORE" };
+            foreach (var pattern in injectionPatterns)
+            {
+                if (query.ToUpper().Contains(pattern))
+                {
+                    throw new ArgumentException($"Query contains potentially unsafe SQL patterns: {pattern}. Only SELECT queries are allowed.");
+                }
+            }
+
+            // Additional validation: Ensure query is read-only (starts with SELECT)
+            if (!query.Trim().ToUpper().StartsWith("SELECT"))
+            {
+                throw new ArgumentException("Only SELECT queries are allowed for security reasons.");
+            }
+
+            // Validate query length and complexity
+            if (query.Length > 10000)
+            {
+                throw new ArgumentException("Query is too long. Maximum length is 10000 characters.");
+            }
+
             command.CommandText = query;
             command.CommandTimeout = options.TimeoutSeconds;
 
@@ -220,14 +242,20 @@ public class PostgreSqlSchemaCompareSync : IDisposable
                 ExecutionPlan = options.IncludeExecutionPlan ? await GetExecutionPlanAsync(command) : null
             };
 
-            // Get column information
-            for (int i = 0; i < reader.FieldCount; i++)
+            var columnSchema = await reader.GetColumnSchemaAsync();
+            foreach (var column in columnSchema)
             {
+                var columnName = string.IsNullOrWhiteSpace(column.ColumnName)
+                    ? $"column_{result.Columns.Count}"
+                    : column.ColumnName!;
+
+                var dataType = column.DataTypeName ?? column.DataType?.Name ?? "unknown";
+
                 result.Columns.Add(new QueryColumn
                 {
-                    Name = reader.GetName(i),
-                    Type = reader.GetFieldType(i)?.Name ?? "unknown",
-                    Nullable = reader.IsDBNull(i)
+                    Name = columnName,
+                    Type = dataType,
+                    Nullable = column.AllowDBNull ?? true
                 });
             }
 

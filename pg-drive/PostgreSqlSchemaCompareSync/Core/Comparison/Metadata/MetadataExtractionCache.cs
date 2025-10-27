@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Options;
-
 namespace PostgreSqlSchemaCompareSync.Core.Comparison.Metadata;
 
 /// <summary>
