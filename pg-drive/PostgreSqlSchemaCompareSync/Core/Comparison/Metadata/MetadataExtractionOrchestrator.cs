@@ -1,7 +1,4 @@
-using System.Runtime.CompilerServices;
-
 namespace PostgreSqlSchemaCompareSync.Core.Comparison.Metadata;
-
 /// <summary>
 /// Orchestrates metadata extraction using specialized extractors with performance optimizations
 /// </summary>
@@ -14,7 +11,6 @@ public class MetadataExtractionOrchestrator(
     private readonly IConnectionManager _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
     private readonly IEnumerable<IMetadataExtractor> _extractors = extractors ?? throw new ArgumentNullException(nameof(extractors));
     private bool _disposed;
-
     /// <summary>
     /// Extracts metadata for specified object types with performance optimizations
     /// </summary>
@@ -25,40 +21,32 @@ public class MetadataExtractionOrchestrator(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connectionInfo);
-
         var objects = new List<DatabaseObject>();
         var extractionTasks = new List<Task<IEnumerable<DatabaseObject>>>();
-
         try
         {
             _logger.LogDebug("Extracting metadata for {Database} with schema filter: {SchemaFilter}",
                 connectionInfo.Database, schemaFilter ?? "all schemas");
-
-            using var connection = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
-
+            await using var connectionHandle = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
+            var connection = connectionHandle.Connection;
             // Get applicable extractors
             var applicableExtractors = GetApplicableExtractors(objectTypes);
-
             // Create extraction tasks for parallel processing
             foreach (var extractor in applicableExtractors)
             {
                 extractionTasks.Add(ExtractWithRetryAsync(extractor, connection, schemaFilter, cancellationToken));
             }
-
             // Wait for all extractions to complete
             if (extractionTasks.Count != 0)
             {
                 var results = await Task.WhenAll(extractionTasks);
-
                 foreach (var result in results)
                 {
                     objects.AddRange(result);
                 }
             }
-
             _logger.LogInformation("Extracted metadata for {ObjectCount} objects from {Database} ({SchemaFilter} schemas)",
                 objects.Count, connectionInfo.Database, schemaFilter ?? "all");
-
             return objects;
         }
         catch (NpgsqlException ex)
@@ -72,7 +60,6 @@ public class MetadataExtractionOrchestrator(
             throw new SchemaException($"Unexpected error extracting metadata: {ex.Message}", connectionInfo.Id, ex);
         }
     }
-
     /// <summary>
     /// Extracts metadata with streaming support for large datasets
     /// </summary>
@@ -83,25 +70,20 @@ public class MetadataExtractionOrchestrator(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connectionInfo);
-
-        using var connection = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
-
+        await using var connectionHandle = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
+        var connection = connectionHandle.Connection;
         var applicableExtractors = GetApplicableExtractors(objectTypes);
-
         foreach (var extractor in applicableExtractors)
         {
             var objects = await ExtractWithRetryAsync(extractor, connection, schemaFilter, cancellationToken);
-
             foreach (var obj in objects)
             {
                 if (cancellationToken.IsCancellationRequested)
                     yield break;
-
                 yield return obj;
             }
         }
     }
-
     /// <summary>
     /// Extracts detailed metadata for a specific object
     /// </summary>
@@ -113,25 +95,20 @@ public class MetadataExtractionOrchestrator(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connectionInfo);
-
         var extractor = GetExtractorForType(objectType);
         if (extractor is not IObjectMetadataExtractor detailExtractor)
         {
             throw new NotSupportedException($"Detailed extraction not supported for {objectType}");
         }
-
         try
         {
             _logger.LogDebug("Extracting detailed metadata for {ObjectType} {Schema}.{ObjectName}",
                 objectType, schema, objectName);
-
-            using var connection = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
-
+            await using var connectionHandle = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
+            var connection = connectionHandle.Connection;
             var details = await detailExtractor.ExtractDetailsAsync(connection, schema, objectName, cancellationToken);
-
             _logger.LogDebug("Extracted detailed metadata for {ObjectType} {Schema}.{ObjectName}",
                 objectType, schema, objectName);
-
             return details;
         }
         catch (Exception ex)
@@ -141,7 +118,6 @@ public class MetadataExtractionOrchestrator(
             throw new SchemaException($"Failed to extract object metadata: {ex.Message}", connectionInfo.Id, ex);
         }
     }
-
     /// <summary>
     /// Validates an object with enhanced error handling
     /// </summary>
@@ -152,32 +128,26 @@ public class MetadataExtractionOrchestrator(
     {
         ArgumentNullException.ThrowIfNull(connectionInfo);
         ArgumentNullException.ThrowIfNull(databaseObject);
-
         var extractor = GetExtractorForType(databaseObject.Type);
         if (extractor is not IObjectValidator validator)
         {
             throw new NotSupportedException($"Validation not supported for {databaseObject.Type}");
         }
-
         try
         {
             _logger.LogDebug("Validating {ObjectType} {Schema}.{ObjectName}",
                 databaseObject.Type, databaseObject.Schema, databaseObject.Name);
-
-            using var connection = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
-
+            await using var connectionHandle = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
+            var connection = connectionHandle.Connection;
             var result = await validator.ValidateAsync(connection, databaseObject, cancellationToken);
-
             _logger.LogDebug("Validation completed for {ObjectType} {Schema}.{ObjectName}: Valid={IsValid}",
                 databaseObject.Type, databaseObject.Schema, databaseObject.Name, result.IsValid);
-
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to validate {ObjectType} {Schema}.{ObjectName}",
                 databaseObject.Type, databaseObject.Schema, databaseObject.Name);
-
             return new ObjectValidationResult
             {
                 IsValid = false,
@@ -185,7 +155,6 @@ public class MetadataExtractionOrchestrator(
             };
         }
     }
-
     /// <summary>
     /// Gets extractors applicable for the specified object types
     /// </summary>
@@ -193,10 +162,8 @@ public class MetadataExtractionOrchestrator(
     {
         if (objectTypes == null || objectTypes.Count == 0)
             return _extractors;
-
         return _extractors.Where(extractor => objectTypes.Contains(extractor.ObjectType));
     }
-
     /// <summary>
     /// Gets the extractor for a specific object type
     /// </summary>
@@ -209,7 +176,6 @@ public class MetadataExtractionOrchestrator(
         }
         return extractor;
     }
-
     /// <summary>
     /// Extracts metadata with retry logic
     /// </summary>
@@ -221,7 +187,6 @@ public class MetadataExtractionOrchestrator(
     {
         const int maxRetries = 3;
         const int delayMs = 1000;
-
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
@@ -233,18 +198,15 @@ public class MetadataExtractionOrchestrator(
                 _logger.LogWarning(ex,
                     "Attempt {Attempt} failed for {ObjectType} extraction, retrying in {Delay}ms",
                     attempt, extractor.ObjectType, delayMs);
-
                 if (delayMs > 0)
                 {
                     await Task.Delay(delayMs * attempt, cancellationToken);
                 }
             }
         }
-
         // If we get here, all retries failed
         throw new SchemaException($"Failed to extract {extractor.ObjectType} metadata after {maxRetries} attempts");
     }
-
     /// <summary>
     /// Determines if an error is retryable
     /// </summary>
@@ -259,7 +221,6 @@ public class MetadataExtractionOrchestrator(
             _ => false
         };
     }
-
     public void Dispose()
     {
         if (!_disposed)

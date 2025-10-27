@@ -74,7 +74,8 @@ public class MigrationExecutor(
                 else
                 {
                     _logger.LogInformation("Executing migration for real: {MigrationId}", migration.Id);
-                    using var connection = await _connectionManager.CreateConnectionAsync(targetConnection, combinedToken);
+                    await using var connectionHandle = await _connectionManager.CreateConnectionAsync(targetConnection, combinedToken);
+                    var connection = connectionHandle.Connection;
                     // Execute statements in a transaction
                     using var transaction = await connection.BeginTransactionAsync(combinedToken);
                     try
@@ -245,6 +246,8 @@ public class MigrationExecutor(
 
         try
         {
+            ArgumentNullException.ThrowIfNull(targetConnection);
+
             // Business Rule 1: Validate migration script is not empty
             if (string.IsNullOrEmpty(migration.SqlScript))
             {
@@ -258,7 +261,8 @@ public class MigrationExecutor(
             }
 
             // Business Rule 3: Validate connection info
-            if (string.IsNullOrEmpty(targetConnection?.GetConnectionString()))
+            var connectionString = targetConnection.GetConnectionString();
+            if (string.IsNullOrEmpty(connectionString))
             {
                 errors.Add("Target connection information is missing or invalid");
             }
@@ -297,11 +301,14 @@ public class MigrationExecutor(
             }
 
             // Business Rule 9: Validate environment compatibility
-            var environmentCheck = await ValidateEnvironmentCompatibilityAsync(targetConnection, cancellationToken);
-            if (!environmentCheck.IsCompatible)
+            if (!string.IsNullOrEmpty(connectionString))
             {
-                errors.AddRange(environmentCheck.Errors);
-                warnings.AddRange(environmentCheck.Warnings);
+                var environmentCheck = await ValidateEnvironmentCompatibilityAsync(targetConnection, cancellationToken);
+                if (!environmentCheck.IsCompatible)
+                {
+                    errors.AddRange(environmentCheck.Errors);
+                    warnings.AddRange(environmentCheck.Warnings);
+                }
             }
 
             _logger.LogInformation("Migration validation completed: {MigrationId}, Valid: {IsValid}, Errors: {ErrorCount}, Warnings: {WarningCount}",
@@ -338,7 +345,8 @@ public class MigrationExecutor(
 
         try
         {
-            using var connection = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
+            await using var connectionHandle = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
+            var connection = connectionHandle.Connection;
 
             // Check database version compatibility
             using var command = new NpgsqlCommand("SELECT version()", connection);
@@ -387,16 +395,7 @@ public class MigrationExecutor(
         return (errors.Count == 0, errors, warnings);
     }
 
-    private static string[] ParseSqlStatements(string sqlScript)
-    {
-        if (string.IsNullOrEmpty(sqlScript))
-            return [];
-        var statements = Regex.Split(sqlScript, @";\s*$", RegexOptions.Multiline)
-            .Select(stmt => stmt.Trim())
-            .Where(stmt => !string.IsNullOrEmpty(stmt) && !stmt.StartsWith("--"))
-            .ToArray();
-        return statements;
-    }
+    private static string[] ParseSqlStatements(string sqlScript) => SqlStatementSplitter.SplitStatements(sqlScript);
     private MigrationProgress CreateProgressReport(
         int currentOperation,
         int totalOperations,

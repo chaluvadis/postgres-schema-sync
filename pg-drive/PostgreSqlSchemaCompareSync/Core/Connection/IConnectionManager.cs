@@ -2,7 +2,7 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection;
 
 public interface IConnectionManager : IDisposable
 {
-    Task<NpgsqlConnection> CreateConnectionAsync(
+    Task<PooledConnectionHandle> CreateConnectionAsync(
         ConnectionInfo connectionInfo,
         CancellationToken cancellationToken = default);
 
@@ -11,7 +11,7 @@ public interface IConnectionManager : IDisposable
         CancellationToken cancellationToken = default);
 
     Task CloseConnectionAsync(
-        NpgsqlConnection connection,
+        PooledConnectionHandle connection,
         CancellationToken cancellationToken = default);
 
     Task<ConnectionHealthStatus> GetConnectionHealthAsync(

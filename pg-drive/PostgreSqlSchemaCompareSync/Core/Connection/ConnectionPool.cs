@@ -18,8 +18,10 @@ public class ConnectionPool : IDisposable
     private readonly ConnectionStringBuilder _connectionStringBuilder;
     private readonly ConnectionValidator _connectionValidator;
     private readonly ConcurrentDictionary<string, ConcurrentBag<NpgsqlConnection>> _pools = new();
-    private readonly Timer? _cleanupTimer;
+    private readonly Timer? _cleanupTimer = null;
     private bool _disposed;
+
+    internal bool IsDisposed => _disposed;
 
     public ConnectionPool(
         ILogger<ConnectionPool> logger,

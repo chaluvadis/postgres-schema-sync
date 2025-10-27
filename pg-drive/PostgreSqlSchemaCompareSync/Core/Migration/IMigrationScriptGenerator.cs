@@ -10,7 +10,7 @@ public interface IMigrationScriptGenerator : IDisposable
     Task<MigrationScript> GenerateMigrationScriptAsync(
         SchemaComparison comparison,
         MigrationOptions options,
-        IProgress<MigrationProgressReport> progress,
+        IProgress<MigrationProgressReport>? progress,
         CancellationToken cancellationToken = default);
 }
 

@@ -22,22 +22,15 @@ public class SchemaMetadataExtractor(
 
         const string query = @"
             SELECT
-                s.schema_name,
-                s.schema_owner,
-                s.default_character_set_catalog,
-                s.default_character_set_schema,
-                s.default_character_set_name,
-                s.sql_path,
-                obj_description(s.oid, 'pg_namespace') as description,
-                s.nspacl as access_privileges,
-                n.oid as schema_oid,
-                n.nspowner as owner_oid,
-                n.nspcreated as creation_date
-            FROM information_schema.schemata s
-            JOIN pg_namespace n ON n.nspname = s.schema_name
-            WHERE (@schemaFilter IS NULL OR s.schema_name = @schemaFilter)
-              AND s.schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast', 'pg_temp_*')
-            ORDER BY s.schema_name";
+                n.nspname AS schema_name,
+                pg_get_userbyid(n.nspowner) AS owner_name,
+                obj_description(n.oid, 'pg_namespace') AS description,
+                n.oid AS schema_oid
+            FROM pg_namespace n
+            WHERE (@schemaFilter IS NULL OR n.nspname = @schemaFilter)
+              AND n.nspname NOT LIKE 'pg_%'
+              AND n.nspname <> 'information_schema'
+            ORDER BY n.nspname";
 
         using var command = new NpgsqlCommand(query, connection);
         command.Parameters.AddWithValue("@schemaFilter", schemaFilter ?? (object)DBNull.Value);
@@ -48,27 +41,25 @@ public class SchemaMetadataExtractor(
             var schemaName = reader.GetString(0);
             var owner = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
 
-            schemas.Add(new DatabaseObject
+            var databaseObject = new DatabaseObject
             {
                 Name = schemaName,
-                Schema = schemaName, // Schema name is both the object name and schema
+                Schema = schemaName,
                 Type = ObjectType.Schema,
                 Database = connection.Database,
                 Owner = owner,
-                Definition = await BuildSchemaDefinitionAsync(connection, schemaName, cancellationToken),
-                CreatedAt = reader.IsDBNull(10) ? DateTime.UtcNow : reader.GetDateTime(10),
-                Properties =
-                {
-                    ["DefaultCharacterSetCatalog"] = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
-                    ["DefaultCharacterSetSchema"] = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                    ["DefaultCharacterSetName"] = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
-                    ["SqlPath"] = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
-                    ["Description"] = reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
-                    ["AccessPrivileges"] = reader.IsDBNull(7) ? string.Empty : reader.GetString(7),
-                    ["SchemaOid"] = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
-                    ["OwnerOid"] = reader.IsDBNull(9) ? 0 : reader.GetInt32(9)
-                }
-            });
+                Definition = await BuildSchemaDefinitionAsync(connection, schemaName, owner, cancellationToken),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var description = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                databaseObject.Properties["Description"] = description;
+            }
+
+            databaseObject.Properties["SchemaOid"] = reader.GetInt32(3);
+            schemas.Add(databaseObject);
         }
 
         return schemas;
@@ -140,16 +131,14 @@ public class SchemaMetadataExtractor(
 
                 // Check for additional schema issues
                 const string advancedQuery = @"
-                    SELECT
-                        n.oid as schema_oid,
-                        n.nspowner as owner_oid,
-                        n.nspacl as access_privileges,
-                        n.nspcreated as creation_date,
-                        COUNT(c.oid) as object_count
-                    FROM pg_namespace n
-                    LEFT JOIN pg_class c ON c.relnamespace = n.oid
-                    WHERE n.nspname = @schemaName
-                    GROUP BY n.oid, n.nspowner, n.nspacl, n.nspcreated";
+                        SELECT
+                            n.oid AS schema_oid,
+                            pg_get_userbyid(n.nspowner) AS owner_name,
+                            COUNT(c.oid) AS object_count
+                        FROM pg_namespace n
+                        LEFT JOIN pg_class c ON c.relnamespace = n.oid
+                        WHERE n.nspname = @schemaName
+                        GROUP BY n.oid, n.nspowner";
 
                 using var advCommand = new NpgsqlCommand(advancedQuery, connection);
                 advCommand.Parameters.AddWithValue("@schemaName", schema.Name);
@@ -158,18 +147,19 @@ public class SchemaMetadataExtractor(
                 if (await advReader.ReadAsync(cancellationToken))
                 {
                     result.Metadata["SchemaOid"] = advReader.GetInt32(0);
-                    result.Metadata["OwnerOid"] = advReader.GetInt32(1);
-                    result.Metadata["AccessPrivileges"] = advReader.IsDBNull(2) ? string.Empty : advReader.GetString(2);
-                    result.Metadata["CreationDate"] = advReader.IsDBNull(3) ? DateTime.UtcNow : advReader.GetDateTime(3);
-                    result.Metadata["ObjectCount"] = advReader.GetInt64(4);
+                    result.Metadata["Owner"] = advReader.IsDBNull(1) ? string.Empty : advReader.GetString(1);
+                    result.Metadata["ObjectCount"] = advReader.GetInt64(2);
 
-                    // Add warnings for potential issues
-                    var objectCount = advReader.GetInt64(4);
+                    var objectCount = advReader.GetInt64(2);
                     if (objectCount == 0)
+                    {
                         result.Warnings.Add("Schema is empty - no objects found");
+                    }
 
                     if (objectCount > 10000)
+                    {
                         result.Warnings.Add($"Schema contains large number of objects ({objectCount}) - may impact performance");
+                    }
                 }
 
                 // Check schema permissions
@@ -234,21 +224,29 @@ public class SchemaMetadataExtractor(
         }
 
         // Get schema size information
-        const string sizeQuery = @"
-            SELECT
-                pg_size_pretty(pg_namespace_size(n.oid)) as total_size,
-                pg_namespace_size(n.oid) as size_bytes
-            FROM pg_namespace n
-            WHERE n.nspname = @schemaName";
-
-        using var sizeCommand = new NpgsqlCommand(sizeQuery, connection);
-        sizeCommand.Parameters.AddWithValue("@schemaName", details.Name);
-
-        using var sizeReader = await sizeCommand.ExecuteReaderAsync(cancellationToken);
-        if (await sizeReader.ReadAsync(cancellationToken))
+        try
         {
-            details.AdditionalInfo["TotalSize"] = sizeReader.GetString(0);
-            details.AdditionalInfo["SizeBytes"] = sizeReader.GetInt64(1);
+            const string sizeQuery = @"
+                SELECT
+                    pg_size_pretty(SUM(pg_total_relation_size(c.oid))) AS total_size,
+                    SUM(pg_total_relation_size(c.oid)) AS size_bytes
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = @schemaName";
+
+            using var sizeCommand = new NpgsqlCommand(sizeQuery, connection);
+            sizeCommand.Parameters.AddWithValue("@schemaName", details.Name);
+
+            using var sizeReader = await sizeCommand.ExecuteReaderAsync(cancellationToken);
+            if (await sizeReader.ReadAsync(cancellationToken) && !sizeReader.IsDBNull(0))
+            {
+                details.AdditionalInfo["TotalSize"] = sizeReader.GetString(0);
+                details.AdditionalInfo["SizeBytes"] = sizeReader.GetInt64(1);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Schema size calculation failed for {SchemaName}", details.Name);
         }
 
         // Get schema privileges
@@ -270,8 +268,9 @@ public class SchemaMetadataExtractor(
         {
             var grantee = privilegeReader.GetString(0);
             var privilege = privilegeReader.GetString(1);
-            var isGrantable = privilegeReader.GetBoolean(2);
-            privileges.Add($"{grantee}: {privilege}{(isGrantable ? " (grantable)" : "")}");
+            var isGrantable = !privilegeReader.IsDBNull(2) &&
+                               privilegeReader.GetString(2).Equals("YES", StringComparison.OrdinalIgnoreCase);
+            privileges.Add($"{grantee}: {privilege}{(isGrantable ? " (grantable)" : string.Empty)}");
         }
 
         if (privileges.Any())
@@ -325,23 +324,13 @@ public class SchemaMetadataExtractor(
     private async Task<string> BuildSchemaDefinitionAsync(
         NpgsqlConnection connection,
         string schemaName,
+        string owner,
         CancellationToken cancellationToken)
     {
         try
         {
-            // Get schema owner for CREATE statement
-            const string ownerQuery = @"
-                SELECT nspowner::regrole
-                FROM pg_namespace
-                WHERE nspname = @schemaName";
-
-            using var ownerCommand = new NpgsqlCommand(ownerQuery, connection);
-            ownerCommand.Parameters.AddWithValue("@schemaName", schemaName);
-
-            var ownerResult = await ownerCommand.ExecuteScalarAsync(cancellationToken);
-            var owner = ownerResult?.ToString() ?? "postgres";
-
-            return $"CREATE SCHEMA \"{schemaName}\" AUTHORIZATION {owner};";
+            var resolvedOwner = string.IsNullOrWhiteSpace(owner) ? "CURRENT_USER" : owner;
+            return $"CREATE SCHEMA IF NOT EXISTS \"{schemaName}\" AUTHORIZATION {resolvedOwner};";
         }
         catch (Exception ex)
         {

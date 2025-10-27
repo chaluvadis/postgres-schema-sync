@@ -97,8 +97,8 @@ public class SchemaComparisonEngine(
                 sourceObjects.Count, targetObjects.Count);
 
             // Create lookup maps for efficient comparison
-            var sourceMap = sourceObjects.ToDictionary(obj => $"{obj.Type}:{obj.Schema}:{obj.Name}");
-            var targetMap = targetObjects.ToDictionary(obj => $"{obj.Type}:{obj.Schema}:{obj.Name}");
+            var sourceMap = sourceObjects.ToDictionary(BuildObjectKey);
+            var targetMap = targetObjects.ToDictionary(BuildObjectKey);
 
             // Find added, removed, and modified objects
             foreach (var (key, sourceObj) in sourceMap)
@@ -123,7 +123,8 @@ public class SchemaComparisonEngine(
                         Schema = sourceObj.Schema,
                         SourceDefinition = sourceObj.Definition,
                         TargetDefinition = targetObj.Definition,
-                        DifferenceDetails = await GetDifferenceDetailsAsync(sourceConnection, targetConnection, sourceObj, targetObj, options, cancellationToken)
+                        DifferenceDetails = await GetDifferenceDetailsAsync(sourceConnection, targetConnection, sourceObj, targetObj, options, cancellationToken),
+                        Metadata = MergeMetadata(sourceObj.Properties, targetObj.Properties)
                     });
                 }
                 else
@@ -136,7 +137,8 @@ public class SchemaComparisonEngine(
                         ObjectName = sourceObj.Name,
                         Schema = sourceObj.Schema,
                         SourceDefinition = sourceObj.Definition,
-                        DifferenceDetails = ["Object exists in source but not in target"]
+                        DifferenceDetails = ["Object exists in source but not in target"],
+                        Metadata = CopyMetadata(sourceObj.Properties)
                     });
                 }
             }
@@ -155,7 +157,8 @@ public class SchemaComparisonEngine(
                         ObjectName = targetObj.Name,
                         Schema = targetObj.Schema,
                         TargetDefinition = targetObj.Definition,
-                        DifferenceDetails = ["Object exists in target but not in source"]
+                        DifferenceDetails = ["Object exists in target but not in source"],
+                        Metadata = CopyMetadata(targetObj.Properties)
                     });
                 }
             }
@@ -173,6 +176,23 @@ public class SchemaComparisonEngine(
             _logger.LogError(ex, "Object comparison failed");
             throw new SchemaException($"Object comparison failed: {ex.Message}", sourceConnection.Id, ex);
         }
+    }
+
+    private static string BuildObjectKey(DatabaseObject databaseObject)
+    {
+        var key = $"{databaseObject.Type}:{databaseObject.Schema}:{databaseObject.Name}";
+
+        if (databaseObject.Type is ObjectType.Function or ObjectType.Procedure)
+        {
+            if (databaseObject.Properties.TryGetValue("Signature", out var signatureObj) &&
+                signatureObj is string signature &&
+                !string.IsNullOrWhiteSpace(signature))
+            {
+                return $"{key}:{signature}";
+            }
+        }
+
+        return key;
     }
     public async Task<bool> AreObjectsEquivalentAsync(
         DatabaseObject sourceObject,
@@ -302,6 +322,38 @@ public class SchemaComparisonEngine(
             .Replace("  ", " ") // Collapse multiple spaces
             .Trim()
             .ToLowerInvariant();
+    }
+
+    private static Dictionary<string, object?> CopyMetadata(Dictionary<string, object> source)
+    {
+        var metadata = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (key, value) in source)
+        {
+            metadata[key] = value;
+        }
+
+        return metadata;
+    }
+
+    private static Dictionary<string, object?> MergeMetadata(Dictionary<string, object> source, Dictionary<string, object> target)
+    {
+        var metadata = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (key, value) in target)
+        {
+            metadata[key] = value;
+        }
+
+        foreach (var (key, value) in source)
+        {
+            if (!metadata.ContainsKey(key))
+            {
+                metadata[key] = value;
+            }
+        }
+
+        return metadata;
     }
 
     /// <summary>

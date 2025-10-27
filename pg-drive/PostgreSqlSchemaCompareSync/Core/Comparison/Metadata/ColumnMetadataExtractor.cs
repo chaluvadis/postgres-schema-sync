@@ -140,10 +140,20 @@ public class ColumnMetadataExtractor(
             Metadata = []
         };
 
+        string? tableSchema = null;
+        string? tableName = null;
+
         try
         {
+            if (!TryResolveColumnContext(column, out tableSchema, out tableName))
+            {
+                result.IsValid = false;
+                result.Errors.Add("Column metadata is missing parent table context");
+                return result;
+            }
+
             _logger.LogDebug("Validating column {Schema}.{TableName}.{ColumnName}",
-                column.Properties["TableSchema"], column.Properties["TableName"], column.Name);
+                tableSchema, tableName, column.Name);
 
             // Check if column exists and is accessible
             const string query = @"
@@ -155,8 +165,8 @@ public class ColumnMetadataExtractor(
                   AND c.column_name = @columnName";
 
             using var command = new NpgsqlCommand(query, connection);
-            command.Parameters.AddWithValue("@schema", column.Properties["TableSchema"]);
-            command.Parameters.AddWithValue("@tableName", column.Properties["TableName"]);
+            command.Parameters.AddWithValue("@schema", tableSchema);
+            command.Parameters.AddWithValue("@tableName", tableName);
             command.Parameters.AddWithValue("@columnName", column.Name);
 
             var countResult = await command.ExecuteScalarAsync(cancellationToken);
@@ -201,8 +211,8 @@ public class ColumnMetadataExtractor(
                       AND c.column_name = @columnName";
 
                 using var advCommand = new NpgsqlCommand(advancedQuery, connection);
-                advCommand.Parameters.AddWithValue("@schema", column.Properties["TableSchema"]);
-                advCommand.Parameters.AddWithValue("@tableName", column.Properties["TableName"]);
+                advCommand.Parameters.AddWithValue("@schema", tableSchema);
+                advCommand.Parameters.AddWithValue("@tableName", tableName);
                 advCommand.Parameters.AddWithValue("@columnName", column.Name);
 
                 using var advReader = await advCommand.ExecuteReaderAsync(cancellationToken);
@@ -248,29 +258,56 @@ public class ColumnMetadataExtractor(
                 }
 
                 // Validate column constraints
-                await ValidateColumnConstraintsAsync(connection, column.Properties["TableSchema"].ToString(), column.Properties["TableName"].ToString(), column.Name, result, cancellationToken);
+                await ValidateColumnConstraintsAsync(connection, tableSchema, tableName, column.Name, result, cancellationToken);
 
                 // Check for column dependencies
-                await ValidateColumnDependenciesAsync(connection, column.Properties["TableSchema"].ToString(), column.Properties["TableName"].ToString(), column.Name, result, cancellationToken);
+                await ValidateColumnDependenciesAsync(connection, tableSchema, tableName, column.Name, result, cancellationToken);
             }
 
             result.Metadata["ValidationDate"] = DateTime.UtcNow;
             result.Metadata["ObjectType"] = column.Type.ToString();
 
             _logger.LogDebug("Validation completed for column {Schema}.{TableName}.{ColumnName}: Valid={IsValid}",
-                column.Properties["TableSchema"], column.Properties["TableName"], column.Name, result.IsValid);
+                tableSchema, tableName, column.Name, result.IsValid);
 
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to validate column {Schema}.{TableName}.{ColumnName}",
-                column.Properties["TableSchema"], column.Properties["TableName"], column.Name);
+                tableSchema ?? ResolveColumnProperty(column, "TableSchema") ?? column.Schema,
+                tableName ?? ResolveColumnProperty(column, "TableName") ?? string.Empty,
+                column.Name);
 
             result.IsValid = false;
             result.Errors.Add($"Validation error: {ex.Message}");
             return result;
         }
+    }
+
+    private static bool TryResolveColumnContext(
+        DatabaseObject column,
+        out string tableSchema,
+        out string tableName)
+    {
+        tableSchema = ResolveColumnProperty(column, "TableSchema") ?? column.Schema;
+        tableName = ResolveColumnProperty(column, "TableName") ?? string.Empty;
+
+        return !string.IsNullOrWhiteSpace(tableSchema) && !string.IsNullOrWhiteSpace(tableName);
+    }
+
+    private static string? ResolveColumnProperty(DatabaseObject column, string propertyName)
+    {
+        if (!column.Properties.TryGetValue(propertyName, out var rawValue) || rawValue is null)
+        {
+            return null;
+        }
+
+        return rawValue switch
+        {
+            string stringValue when !string.IsNullOrWhiteSpace(stringValue) => stringValue,
+            _ => rawValue.ToString()
+        };
     }
 
     /// <summary>

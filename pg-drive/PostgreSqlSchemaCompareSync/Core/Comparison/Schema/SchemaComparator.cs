@@ -192,16 +192,18 @@ public class SchemaComparator(
 
         try
         {
-            using var connection = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
+            await using var connectionHandle = await _connectionManager.CreateConnectionAsync(connectionInfo, cancellationToken);
+            var connection = connectionHandle.Connection;
 
-            var schemaList = string.Join(",", schemas.Select(s => $"'{s}'"));
-            var query = $@"
+            // Use parameterized query to prevent SQL injection
+            var query = @"
                 SELECT nspname as schema_name
                 FROM pg_namespace
-                WHERE nspname IN ({schemaList})
+                WHERE nspname = ANY($1)
                   AND nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')";
 
             using var command = new NpgsqlCommand(query, connection);
+            command.Parameters.AddWithValue("$1", schemas.ToArray());
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
             var existingSchemas = new HashSet<string>();

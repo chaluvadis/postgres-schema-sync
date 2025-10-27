@@ -57,6 +57,7 @@ public class SchemaDifference
     public string? SourceDefinition { get; set; }
     public string? TargetDefinition { get; set; }
     public List<string> DifferenceDetails { get; set; } = [];
+    public Dictionary<string, object?> Metadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public class MigrationComparisonOptions

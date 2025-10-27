@@ -301,7 +301,11 @@ public class TablespaceMetadataExtractor(
         var fsResult = await fsCommand.ExecuteScalarAsync(cancellationToken);
         if (fsResult != null)
         {
-            details.AdditionalInfo["DataDirectory"] = fsResult.ToString();
+            var dataDirectory = fsResult.ToString();
+            if (!string.IsNullOrWhiteSpace(dataDirectory))
+            {
+                details.AdditionalInfo["DataDirectory"] = dataDirectory;
+            }
         }
     }
 
@@ -372,7 +376,22 @@ public class TablespaceMetadataExtractor(
             if (await reader.ReadAsync(cancellationToken))
             {
                 var objectTypeCount = reader.GetInt32(0);
-                var objectTypes = (string[])reader.GetValue(1);
+                var objectTypes = Array.Empty<string>();
+
+                if (!reader.IsDBNull(1))
+                {
+                    objectTypes = reader.GetValue(1) switch
+                    {
+                        string[] stringArray => stringArray,
+                        object[] objectArray => objectArray
+                            .Select(item => item?.ToString())
+                            .Where(s => !string.IsNullOrWhiteSpace(s))
+                            .Select(s => s!)
+                            .ToArray(),
+                        string single when !string.IsNullOrWhiteSpace(single) => new[] { single },
+                        _ => Array.Empty<string>()
+                    };
+                }
 
                 result.Metadata["ObjectTypeCount"] = objectTypeCount;
                 result.Metadata["ObjectTypes"] = string.Join(", ", objectTypes);
