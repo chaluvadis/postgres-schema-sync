@@ -67,7 +67,7 @@ public class MigrationExecutor(
                         {
                             operationsExecuted++;
                             progress?.Report(CreateProgressReport(operationsExecuted, statements.Length, statement, MigrationStatus.Running, DateTime.UtcNow - startTime));
-                            await Task.Delay(10, combinedToken); // Simulate execution time
+                            // Remove artificial delay - not needed for dry-run validation
                         }
                     }
                 }
@@ -268,18 +268,17 @@ public class MigrationExecutor(
             }
 
             // Business Rule 4: Check migration size (using reasonable defaults)
-            const int MaxScriptSize = 10 * 1024 * 1024; // 10MB limit
-            if (migration.SqlScript.Length > MaxScriptSize)
+            var securitySettings = _settings.Security;
+            if (migration.SqlScript.Length > securitySettings.MaxScriptSize)
             {
-                errors.Add($"Migration script size ({migration.SqlScript.Length}) exceeds maximum allowed size ({MaxScriptSize})");
+                errors.Add($"Migration script size ({migration.SqlScript.Length}) exceeds maximum allowed size ({securitySettings.MaxScriptSize})");
             }
 
             // Business Rule 5: Validate statement count
             var statements = ParseSqlStatements(migration.SqlScript);
-            const int MaxStatementCount = 1000; // Reasonable limit
-            if (statements.Length > MaxStatementCount)
+            if (statements.Length > securitySettings.MaxStatementCount)
             {
-                errors.Add($"Migration contains too many statements ({statements.Length}) - maximum allowed: {MaxStatementCount}");
+                errors.Add($"Migration contains too many statements ({statements.Length}) - maximum allowed: {securitySettings.MaxStatementCount}");
             }
 
             // Business Rule 6: Check for large transactions (warning only)

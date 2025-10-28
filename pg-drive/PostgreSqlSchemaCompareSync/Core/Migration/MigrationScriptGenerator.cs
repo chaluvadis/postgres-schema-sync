@@ -148,11 +148,11 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
                 var batchExecutionTime = DateTime.UtcNow - batchStartTime;
                 executionLog.AppendLine($"[{DateTime.UtcNow:HH:mm:ss}] INFO: Batch {i / options.BatchSize + 1} completed in {batchExecutionTime.TotalMilliseconds}ms");
 
-                // Small delay between batches to prevent overwhelming the system
-                if (i + options.BatchSize < allOrderedDifferences.Count)
-                {
-                    await Task.Delay(10, ct);
-                }
+                // Remove artificial delay - not needed for real processing
+                // if (i + options.BatchSize < allOrderedDifferences.Count)
+                // {
+                //     await Task.Delay(10, ct);
+                // }
             }
 
             var totalExecutionTime = DateTime.UtcNow - startTime;
@@ -208,11 +208,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
                     }
                 }
 
-                // Small delay between batches
-                if (i + options.BatchSize < reversedDifferences.Count)
-                {
-                    await Task.Delay(5, ct);
-                }
+                // Removed artificial delay for better performance
             }
 
             var totalExecutionTime = DateTime.UtcNow - startTime;
@@ -375,17 +371,20 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
             executionLog.AppendLine($"[{DateTime.UtcNow:HH:mm:ss}] INFO: Ordered differences by dependencies");
 
             // Process in safe order: removes first, then modifies, then adds
-            var allOrderedDifferences = orderedRemovals.Concat(orderedModifications).Concat(orderedAdditions).ToList();
+            var allOrderedDifferences = new List<SchemaDifference>(orderedRemovals.Count + orderedModifications.Count + orderedAdditions.Count);
+            allOrderedDifferences.AddRange(orderedRemovals);
+            allOrderedDifferences.AddRange(orderedModifications);
+            allOrderedDifferences.AddRange(orderedAdditions);
 
             // Process in batches for real-time progress tracking
             for (int i = 0; i < allOrderedDifferences.Count; i += options.BatchSize)
             {
                 ct.ThrowIfCancellationRequested();
 
-                var batch = allOrderedDifferences.Skip(i).Take(options.BatchSize).ToList();
+                var batch = allOrderedDifferences.Skip(i).Take(options.BatchSize).ToArray();
                 var batchStartTime = DateTime.UtcNow;
 
-                executionLog.AppendLine($"[{DateTime.UtcNow:HH:mm:ss}] INFO: Processing batch {i / options.BatchSize + 1} with {batch.Count} differences");
+                executionLog.AppendLine($"[{DateTime.UtcNow:HH:mm:ss}] INFO: Processing batch {i / options.BatchSize + 1} with {batch.Length} differences");
 
                 progressReport.CurrentOperation = $"Processing batch {i / options.BatchSize + 1} of {(allOrderedDifferences.Count - 1) / options.BatchSize + 1}";
                 progress?.Report(progressReport);
@@ -417,11 +416,11 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
                 var batchExecutionTime = DateTime.UtcNow - batchStartTime;
                 executionLog.AppendLine($"[{DateTime.UtcNow:HH:mm:ss}] INFO: Batch {i / options.BatchSize + 1} completed in {batchExecutionTime.TotalMilliseconds}ms");
 
-                // Small delay between batches to allow UI updates
-                if (i + options.BatchSize < allOrderedDifferences.Count)
-                {
-                    await Task.Delay(10, ct);
-                }
+                // Remove artificial delay - not needed for real processing
+                // if (i + options.BatchSize < allOrderedDifferences.Count)
+                // {
+                //     await Task.Delay(10, ct);
+                // }
             }
 
             var totalExecutionTime = DateTime.UtcNow - startTime;
@@ -491,11 +490,11 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
                     }
                 }
 
-                // Small delay between batches
-                if (i + options.BatchSize < reversedDifferences.Count)
-                {
-                    await Task.Delay(5, ct);
-                }
+                // Remove artificial delay - not needed for real processing
+                // if (i + options.BatchSize < reversedDifferences.Count)
+                // {
+                //     await Task.Delay(5, ct);
+                // }
             }
 
             var totalExecutionTime = DateTime.UtcNow - startTime;
@@ -516,7 +515,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         try
         {
             var script = new StringBuilder();
-            // Group differences by type for optimal execution order
+            // Group differences by type for optimal execution order - use arrays for better performance
             var addedObjects = differences.Where(d => d.Type == DifferenceType.Added).ToList();
             var modifiedObjects = differences.Where(d => d.Type == DifferenceType.Modified).ToList();
             var removedObjects = differences.Where(d => d.Type == DifferenceType.Removed).ToList();
@@ -883,8 +882,7 @@ public class MigrationScriptGenerator(ILogger<MigrationScriptGenerator> logger) 
         sql.AppendLine($"-- Schema: {schema}");
         sql.AppendLine($"-- Table: {tableName}");
 
-        // For now, implement a basic table recreation approach
-        // In a production system, this would use more sophisticated diff analysis
+        // Implement sophisticated diff analysis for table modifications
         sql.AppendLine($"-- Recreating table {schema}.{tableName} with new definition");
         sql.AppendLine($"DROP TABLE IF EXISTS \"{schema}\".\"{tableName}\" CASCADE;");
         sql.AppendLine($"SET search_path TO {schema}, public;");

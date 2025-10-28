@@ -51,4 +51,7 @@ public class SecuritySettings
     public bool AllowSelfSignedCertificates { get; set; } = false;
     public int MinCertificateKeySize { get; set; } = 2048;
     public int MaxCertificateValidityDays { get; set; } = 825; // ~2.25 years
+    public int MaxQueryLength { get; set; } = 10000;
+    public int MaxStatementCount { get; set; } = 1000;
+    public int MaxScriptSize { get; set; } = 10485760; // 10MB
 }

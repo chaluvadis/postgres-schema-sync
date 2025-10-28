@@ -5,11 +5,13 @@ namespace PostgreSqlSchemaCompareSync.Core.Comparison.Metadata;
 public class MetadataExtractionOrchestrator(
     ILogger<MetadataExtractionOrchestrator> logger,
     IConnectionManager connectionManager,
-    IEnumerable<IMetadataExtractor> extractors) : IDisposable
+    IEnumerable<IMetadataExtractor> extractors,
+    IOptions<AppSettings> settings) : IDisposable
 {
     private readonly ILogger<MetadataExtractionOrchestrator> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly IConnectionManager _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
     private readonly IEnumerable<IMetadataExtractor> _extractors = extractors ?? throw new ArgumentNullException(nameof(extractors));
+    private readonly AppSettings _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
     private bool _disposed;
     /// <summary>
     /// Extracts metadata for specified object types with performance optimizations
@@ -111,9 +113,15 @@ public class MetadataExtractionOrchestrator(
                 objectType, schema, objectName);
             return details;
         }
+        catch (NpgsqlException ex)
+        {
+            _logger.LogError(ex, "Database error extracting metadata for {ObjectType} {Schema}.{ObjectName}",
+                objectType, schema, objectName);
+            throw new SchemaException($"Database error extracting object metadata: {ex.Message}", connectionInfo.Id, ex);
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to extract metadata for {ObjectType} {Schema}.{ObjectName}",
+            _logger.LogError(ex, "Unexpected error extracting metadata for {ObjectType} {Schema}.{ObjectName}",
                 objectType, schema, objectName);
             throw new SchemaException($"Failed to extract object metadata: {ex.Message}", connectionInfo.Id, ex);
         }
@@ -144,9 +152,19 @@ public class MetadataExtractionOrchestrator(
                 databaseObject.Type, databaseObject.Schema, databaseObject.Name, result.IsValid);
             return result;
         }
+        catch (NpgsqlException ex)
+        {
+            _logger.LogError(ex, "Database error validating {ObjectType} {Schema}.{ObjectName}",
+                databaseObject.Type, databaseObject.Schema, databaseObject.Name);
+            return new ObjectValidationResult
+            {
+                IsValid = false,
+                Errors = { $"Database validation error: {ex.Message}" }
+            };
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to validate {ObjectType} {Schema}.{ObjectName}",
+            _logger.LogError(ex, "Unexpected error validating {ObjectType} {Schema}.{ObjectName}",
                 databaseObject.Type, databaseObject.Schema, databaseObject.Name);
             return new ObjectValidationResult
             {
@@ -185,8 +203,9 @@ public class MetadataExtractionOrchestrator(
         string? schemaFilter,
         CancellationToken cancellationToken)
     {
-        const int maxRetries = 3;
-        const int delayMs = 1000;
+        var maxRetries = _settings.Connection.ReconnectAttempts;
+        var delayMs = _settings.Connection.ReconnectDelay;
+
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
@@ -198,6 +217,8 @@ public class MetadataExtractionOrchestrator(
                 _logger.LogWarning(ex,
                     "Attempt {Attempt} failed for {ObjectType} extraction, retrying in {Delay}ms",
                     attempt, extractor.ObjectType, delayMs);
+                if (delayMs > 0)
+                // Exponential backoff delay for retry
                 if (delayMs > 0)
                 {
                     await Task.Delay(delayMs * attempt, cancellationToken);

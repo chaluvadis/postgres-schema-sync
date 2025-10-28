@@ -17,7 +17,7 @@ public class SchemaComparisonEngine(
         ConnectionInfo sourceConnection,
         ConnectionInfo targetConnection,
         MigrationComparisonOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sourceConnection);
         ArgumentNullException.ThrowIfNull(targetConnection);
@@ -31,8 +31,8 @@ public class SchemaComparisonEngine(
                 sourceConnection.Database, targetConnection.Database);
 
             // Get objects from both databases
-            var sourceObjects = await _schemaBrowser.GetDatabaseObjectsAsync(sourceConnection, null, cancellationToken);
-            var targetObjects = await _schemaBrowser.GetDatabaseObjectsAsync(targetConnection, null, cancellationToken);
+            var sourceObjects = await _schemaBrowser.GetDatabaseObjectsAsync(sourceConnection, null, ct);
+            var targetObjects = await _schemaBrowser.GetDatabaseObjectsAsync(targetConnection, null, ct);
 
             // Filter objects based on options
             var filteredSourceObjects = FilterObjects(sourceObjects, options);
@@ -45,7 +45,7 @@ public class SchemaComparisonEngine(
                 filteredSourceObjects,
                 filteredTargetObjects,
                 options,
-                cancellationToken);
+                ct);
 
             var executionTime = DateTime.UtcNow - startTime;
 
@@ -81,7 +81,7 @@ public class SchemaComparisonEngine(
         List<DatabaseObject> sourceObjects,
         List<DatabaseObject> targetObjects,
         MigrationComparisonOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sourceConnection);
         ArgumentNullException.ThrowIfNull(targetConnection);
@@ -103,12 +103,12 @@ public class SchemaComparisonEngine(
             // Find added, removed, and modified objects
             foreach (var (key, sourceObj) in sourceMap)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                ct.ThrowIfCancellationRequested();
 
                 if (targetMap.TryGetValue(key, out var targetObj))
                 {
                     // Object exists in both - check if modified
-                    if (await AreObjectsEquivalentAsync(sourceObj, targetObj, options, cancellationToken))
+                    if (await AreObjectsEquivalentAsync(sourceObj, targetObj, options, ct))
                     {
                         // Objects are equivalent - no difference
                         continue;
@@ -123,7 +123,7 @@ public class SchemaComparisonEngine(
                         Schema = sourceObj.Schema,
                         SourceDefinition = sourceObj.Definition,
                         TargetDefinition = targetObj.Definition,
-                        DifferenceDetails = await GetDifferenceDetailsAsync(sourceConnection, targetConnection, sourceObj, targetObj, options, cancellationToken),
+                        DifferenceDetails = await GetDifferenceDetailsAsync(sourceConnection, targetConnection, sourceObj, targetObj, options, ct),
                         Metadata = MergeMetadata(sourceObj.Properties, targetObj.Properties)
                     });
                 }
@@ -146,7 +146,7 @@ public class SchemaComparisonEngine(
             // Find added objects (exist only in target)
             foreach (var (key, targetObj) in targetMap)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                ct.ThrowIfCancellationRequested();
 
                 if (!sourceMap.ContainsKey(key))
                 {
@@ -198,7 +198,7 @@ public class SchemaComparisonEngine(
         DatabaseObject sourceObject,
         DatabaseObject targetObject,
         MigrationComparisonOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sourceObject);
         ArgumentNullException.ThrowIfNull(targetObject);
@@ -268,7 +268,7 @@ public class SchemaComparisonEngine(
         DatabaseObject sourceObject,
         DatabaseObject targetObject,
         MigrationComparisonOptions options,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         var details = new List<string>();
 
@@ -292,12 +292,12 @@ public class SchemaComparisonEngine(
             // Object-specific differences
             if (sourceObject.Type == ObjectType.Table && targetObject.Type == ObjectType.Table)
             {
-                var tableDifferences = await GetTableDifferencesAsync(sourceConnection, targetConnection, sourceObject, targetObject, options, cancellationToken);
+                var tableDifferences = await GetTableDifferencesAsync(sourceConnection, targetConnection, sourceObject, targetObject, options, ct);
                 details.AddRange(tableDifferences);
             }
             else if (sourceObject.Type == ObjectType.View && targetObject.Type == ObjectType.View)
             {
-                var viewDifferences = await GetViewDifferencesAsync(sourceConnection, targetConnection, sourceObject, targetObject, options, cancellationToken);
+                var viewDifferences = await GetViewDifferencesAsync(sourceConnection, targetConnection, sourceObject, targetObject, options, ct);
                 details.AddRange(viewDifferences);
             }
         }
@@ -365,7 +365,7 @@ public class SchemaComparisonEngine(
         DatabaseObject sourceObject,
         DatabaseObject targetObject,
         MigrationComparisonOptions options,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         var differences = new List<string>();
 
@@ -380,14 +380,14 @@ public class SchemaComparisonEngine(
                 ObjectType.Table,
                 sourceObject.Schema,
                 sourceObject.Name,
-                cancellationToken);
+                ct);
 
             var targetDetails = await _schemaBrowser.GetObjectDetailsAsync(
                 targetConnection,
                 ObjectType.Table,
                 targetObject.Schema,
                 targetObject.Name,
-                cancellationToken);
+                ct);
 
             // Compare columns
             var columnDifferences = CompareTableColumns(sourceDetails.Columns, targetDetails.Columns);
@@ -431,7 +431,7 @@ public class SchemaComparisonEngine(
         DatabaseObject sourceObject,
         DatabaseObject targetObject,
         MigrationComparisonOptions options,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         var differences = new List<string>();
 
@@ -446,14 +446,14 @@ public class SchemaComparisonEngine(
                 ObjectType.View,
                 sourceObject.Schema,
                 sourceObject.Name,
-                cancellationToken);
+                ct);
 
             var targetDetails = await _schemaBrowser.GetObjectDetailsAsync(
                 targetConnection,
                 ObjectType.View,
                 targetObject.Schema,
                 targetObject.Name,
-                cancellationToken);
+                ct);
 
             // Compare view columns if available
             if (sourceDetails.Columns.Count != 0 || targetDetails.Columns.Count != 0)
@@ -464,9 +464,9 @@ public class SchemaComparisonEngine(
 
             // Compare dependencies
             var sourceDependencies = await _schemaBrowser.GetObjectDependenciesAsync(
-                sourceConnection, ObjectType.View, sourceObject.Schema, sourceObject.Name, cancellationToken);
+                sourceConnection, ObjectType.View, sourceObject.Schema, sourceObject.Name, ct);
             var targetDependencies = await _schemaBrowser.GetObjectDependenciesAsync(
-                targetConnection, ObjectType.View, targetObject.Schema, targetObject.Name, cancellationToken);
+                targetConnection, ObjectType.View, targetObject.Schema, targetObject.Name, ct);
 
             var dependencyDifferences = CompareViewDependencies(sourceDependencies, targetDependencies);
             differences.AddRange(dependencyDifferences);
