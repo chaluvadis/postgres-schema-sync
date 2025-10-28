@@ -213,6 +213,8 @@ export class SchemaComparison {
                 mode: options.mode
             });
 
+            const comparisonStart = Date.now();
+
             // Get objects from both connections
             const [sourceObjects, targetObjects] = await Promise.all([
                 this.schemaOperations.getDatabaseObjectsWithCache(sourceConnectionId),
@@ -235,7 +237,7 @@ export class SchemaComparison {
                 differences,
                 comparisonMode: options.mode,
                 createdAt: new Date(),
-                executionTime: Date.now() - Date.now() // Will be updated when comparison completes
+                executionTime: Date.now() - comparisonStart
             };
 
             Logger.info('Schema comparison completed', 'compareSchemas', {

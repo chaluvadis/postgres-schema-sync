@@ -11,6 +11,7 @@
     <PackageTags>postgresql;database;schema;comparison;synchronization;vscode</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Akka" Version="1.5.15" />
     <PackageReference Include="Npgsql" Version="9.0.4" />
     <PackageReference Include="Npgsql.DependencyInjection" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.10" />

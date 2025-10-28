@@ -3,29 +3,21 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
     /// <summary>
     /// Manages database connections with pooling and health monitoring
     /// </summary>
-    public class ConnectionManager : IConnectionManager
+    public class ConnectionManager(
+        ILogger<ConnectionManager> logger,
+        IOptions<AppSettings> settings,
+        ConnectionPool connectionPool,
+        ConnectionStringBuilder connectionStringBuilder) : IConnectionManager
     {
-        private readonly ILogger<ConnectionManager> _logger;
-        private readonly ConnectionSettings _settings;
-        private readonly ConnectionPool _connectionPool;
-        private readonly ConnectionStringBuilder _connectionStringBuilder;
+        private readonly ILogger<ConnectionManager> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        private readonly ConnectionSettings _settings = settings?.Value?.Connection ?? throw new ArgumentNullException(nameof(settings));
+        private readonly ConnectionPool _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
+        private readonly ConnectionStringBuilder _connectionStringBuilder = connectionStringBuilder ?? throw new ArgumentNullException(nameof(connectionStringBuilder));
         private bool _disposed;
-
-        public ConnectionManager(
-            ILogger<ConnectionManager> logger,
-            IOptions<AppSettings> settings,
-            ConnectionPool connectionPool,
-            ConnectionStringBuilder connectionStringBuilder)
-        {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _settings = settings?.Value?.Connection ?? throw new ArgumentNullException(nameof(settings));
-            _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
-            _connectionStringBuilder = connectionStringBuilder ?? throw new ArgumentNullException(nameof(connectionStringBuilder));
-        }
 
         public async Task<PooledConnectionHandle> CreateConnectionAsync(
             ConnectionInfo connectionInfo,
-            CancellationToken cancellationToken = default)
+            CancellationToken ct = default)
         {
             ArgumentNullException.ThrowIfNull(connectionInfo);
             try
@@ -37,7 +29,7 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
                 ValidateConnectionInfo(connectionInfo);
 
                 // Use connection pool for better resource management
-                var connection = await _connectionPool.GetConnectionAsync(connectionInfo, cancellationToken);
+                var connection = await _connectionPool.GetConnectionAsync(connectionInfo, ct);
 
                 _logger.LogInformation("Connection established to {Database}", connectionInfo.Database);
                 return new PooledConnectionHandle(_connectionPool, connectionInfo, connection, _logger);
@@ -63,21 +55,20 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         /// </summary>
         public async Task<bool> TestConnectionAsync(
             ConnectionInfo connectionInfo,
-            CancellationToken cancellationToken = default)
+            CancellationToken ct = default)
         {
-            if (connectionInfo == null)
-                throw new ArgumentNullException(nameof(connectionInfo));
+            ArgumentNullException.ThrowIfNull(connectionInfo);
             var stopwatch = Stopwatch.StartNew();
             try
             {
                 _logger.LogDebug("Testing connection to {Database}", connectionInfo.Database);
-                await using var connectionHandle = await CreateConnectionAsync(connectionInfo, cancellationToken);
+                await using var connectionHandle = await CreateConnectionAsync(connectionInfo, ct);
                 var connection = connectionHandle.Connection;
                 // Test a simple query to ensure the database is responsive
                 using var command = connection.CreateCommand();
                 command.CommandText = "SELECT 1";
                 command.CommandTimeout = Math.Min(_settings.CommandTimeout, 10);
-                await command.ExecuteScalarAsync(cancellationToken);
+                await command.ExecuteScalarAsync(ct);
                 stopwatch.Stop();
                 _logger.LogInformation("Connection test successful for {Database} in {Elapsed}ms",
                     connectionInfo.Database, stopwatch.ElapsedMilliseconds);
@@ -94,14 +85,11 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         /// <summary>
         /// Closes and disposes a connection
         /// </summary>
-        public async Task CloseConnectionAsync(
-            PooledConnectionHandle connection,
-            CancellationToken cancellationToken = default)
+        public async Task CloseConnectionAsync(PooledConnectionHandle connection, CancellationToken ct = default)
         {
-            if (connection == null)
-                throw new ArgumentNullException(nameof(connection));
+            ArgumentNullException.ThrowIfNull(connection);
 
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
             await connection.DisposeAsync();
             _logger.LogDebug("Connection returned to pool");
         }
@@ -110,14 +98,13 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         /// </summary>
         public async Task<ConnectionHealthStatus> GetConnectionHealthAsync(
             ConnectionInfo connectionInfo,
-            CancellationToken cancellationToken = default)
+            CancellationToken ct = default)
         {
-            if (connectionInfo == null)
-                throw new ArgumentNullException(nameof(connectionInfo));
+            ArgumentNullException.ThrowIfNull(connectionInfo);
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                var isHealthy = await TestConnectionAsync(connectionInfo, cancellationToken);
+                var isHealthy = await TestConnectionAsync(connectionInfo, ct);
                 stopwatch.Stop();
                 return new ConnectionHealthStatus
                 {
@@ -171,7 +158,7 @@ namespace PostgreSqlSchemaCompareSync.Core.Connection
         /// <summary>
         /// Validates database name format
         /// </summary>
-        private bool IsValidDatabaseName(string databaseName)
+        private static bool IsValidDatabaseName(string databaseName)
         {
             if (string.IsNullOrEmpty(databaseName) || databaseName.Length > 63)
                 return false;
