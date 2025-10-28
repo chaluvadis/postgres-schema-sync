@@ -26,6 +26,8 @@ import { TeamQueryLibraryView } from '@/views/TeamQueryLibraryView';
 import { ImportWizardView } from '@/views/ImportWizardView';
 import { Logger } from '@/utils/Logger';
 import { PostgreSqlExtension } from 'PostgreSqlExtension';
+import { ReportingService } from '@/services/ReportingService';
+import { DriftReportView } from '@/views/DriftReportView';
 
 export interface ExtensionComponents {
     connectionManager: ConnectionManager;
@@ -53,6 +55,8 @@ export interface ExtensionComponents {
     queryAnalyticsView?: QueryAnalyticsView;
     advancedMigrationPreviewView?: any;
     enhancedTreeProvider?: any;
+    reportingService?: ReportingService;
+    driftReportView?: DriftReportView;
 }
 
 export class ExtensionInitializer {
@@ -132,6 +136,8 @@ export class ExtensionInitializer {
             const queryAnalyticsView = new QueryAnalyticsView(context, performanceMonitorService);
             const importWizardView = coreComponents.dataImportService ?
                 new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager) : undefined;
+            const reportingService = new ReportingService(context);
+            const driftReportView = new DriftReportView(context, reportingService);
 
             // Add optional components to the core components
             const components: ExtensionComponents = {
@@ -154,6 +160,8 @@ export class ExtensionInitializer {
                 recoveryService,
                 importWizardView,
                 queryAnalyticsView,
+                reportingService,
+                driftReportView,
             };
 
             Logger.info('Optional UI components initialized successfully');

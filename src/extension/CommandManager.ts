@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { PostgreSqlExtension } from '../PostgreSqlExtension';
 import { ExtensionComponents } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
+import { SchemaComparisonOptions, DetailedSchemaComparisonResult } from '@/managers/schema/SchemaComparison';
+import { DatabaseConnection } from '@/managers/ConnectionManager';
 interface CommandDefinition {
     command: string;
     handler: (...args: any[]) => any;
@@ -195,6 +197,15 @@ export class CommandManager {
             }
         }));
 
+        // Schema drift reporting command
+        disposables.push(vscode.commands.registerCommand('postgresql.showSchemaDriftReport', async (comparisonId?: string) => {
+            if (this.components.driftReportView && this.components.reportingService) {
+                await this.components.driftReportView.showReport(comparisonId);
+            } else {
+                vscode.window.showErrorMessage('Schema drift report view not available');
+            }
+        }));
+
         // Query analytics command
         disposables.push(vscode.commands.registerCommand('postgresql.showQueryAnalytics', async () => {
             if (this.components.queryAnalyticsView) {
@@ -379,22 +390,188 @@ export class CommandManager {
         }
     }
     private async handleCompareSchemas(source?: any, target?: any): Promise<void> {
+        let operationId: string | undefined;
+        const statusProvider = this.components.enhancedStatusBarProvider;
         try {
-            if (!source || !target) {
-                vscode.window.showErrorMessage('Source and target connections are required for schema comparison');
+            const connectionManager = this.components.connectionManager;
+            const schemaManager = this.components.schemaManager;
+            if (!connectionManager || !schemaManager) {
+                vscode.window.showErrorMessage('Schema comparison services unavailable');
                 return;
             }
 
-            if (this.components.schemaComparisonView) {
-                // SchemaComparisonView methods need to be checked
-                Logger.info('Schema comparison requested', 'CommandManager', { source: source.id, target: target.id });
-                vscode.window.showInformationMessage('Schema comparison feature coming soon');
-            } else {
-                vscode.window.showErrorMessage('Schema comparison view not available');
+            const availableConnections = connectionManager.getConnections();
+            if (availableConnections.length < 2) {
+                vscode.window.showErrorMessage('You need at least two connections to perform a schema comparison');
+                return;
+            }
+
+            const resolveConnection = async (
+                provided: any,
+                placeholder: string,
+                excludeId?: string
+            ): Promise<DatabaseConnection | undefined> => {
+                if (provided?.id) {
+                    return connectionManager.getConnection(provided.id);
+                }
+
+                const pickItems = availableConnections
+                    .filter(conn => conn.id !== excludeId)
+                    .map(conn => ({
+                        label: conn.name,
+                        description: `${conn.host}:${conn.port}/${conn.database}`,
+                        connection: conn
+                    }));
+
+                if (pickItems.length === 0) {
+                    return undefined;
+                }
+
+                const selection = await vscode.window.showQuickPick(pickItems, { placeHolder: placeholder });
+                return selection?.connection;
+            };
+
+            const sourceConnection = await resolveConnection(source, 'Select source environment for schema comparison');
+            if (!sourceConnection) {
+                vscode.window.showWarningMessage('Schema comparison cancelled: source environment not selected');
+                return;
+            }
+
+            const targetConnection = await resolveConnection(target, 'Select target environment for schema comparison', sourceConnection.id);
+            if (!targetConnection) {
+                vscode.window.showWarningMessage('Schema comparison cancelled: target environment not selected');
+                return;
+            }
+
+            if (sourceConnection.id === targetConnection.id) {
+                vscode.window.showErrorMessage('Select two different connections to run a schema comparison');
+                return;
+            }
+
+            const notificationManager = this.components.notificationManager;
+            const reportingService = this.components.reportingService;
+            const driftReportView = this.components.driftReportView;
+
+            operationId = `schema-compare-${Date.now()}`;
+            statusProvider?.startOperation(operationId, `Schema drift: ${sourceConnection.name} → ${targetConnection.name}`, {
+                message: 'Collecting metadata',
+                progress: 0
+            });
+
+            const comparisonOptions: SchemaComparisonOptions = {
+                mode: 'strict',
+                includeSystemObjects: false,
+                ignoreSchemas: ['pg_catalog', 'information_schema']
+            };
+
+            let comparisonResult: DetailedSchemaComparisonResult | undefined;
+
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Comparing ${sourceConnection.name} to ${targetConnection.name}`,
+                cancellable: false
+            }, async progress => {
+                progress.report({ increment: 10, message: 'Collecting metadata...' });
+                if (operationId) {
+                    statusProvider?.updateOperation(operationId, 'running', {
+                        progress: 10,
+                        message: 'Collecting metadata'
+                    });
+                }
+
+                const start = Date.now();
+                comparisonResult = await schemaManager.compareSchemasDetailed(
+                    sourceConnection.id,
+                    targetConnection.id,
+                    comparisonOptions
+                );
+                const execTime = Date.now() - start;
+
+                progress.report({ increment: 70, message: 'Analyzing differences...' });
+                if (operationId) {
+                    statusProvider?.updateOperation(operationId, 'running', {
+                        progress: 80,
+                        message: 'Analyzing differences'
+                    });
+                }
+
+                // Persist the execution time on the result for reporting consumers
+                if (comparisonResult) {
+                    comparisonResult.executionTime = comparisonResult.executionTime || execTime;
+                    comparisonResult.createdAt = comparisonResult.createdAt || new Date();
+                }
+
+                progress.report({ increment: 20, message: 'Preparing report...' });
+                if (operationId) {
+                    statusProvider?.updateOperation(operationId, 'running', {
+                        progress: 95,
+                        message: 'Preparing report'
+                    });
+                }
+            });
+
+            if (!comparisonResult) {
+                throw new Error('Comparison did not return any result');
+            }
+
+            if (operationId) {
+                statusProvider?.updateOperation(operationId, 'completed', {
+                    progress: 100,
+                    message: 'Schema comparison completed'
+                });
+            }
+
+            let recordedEntryId: string | undefined;
+            if (reportingService) {
+                const recordedEntry = await reportingService.recordComparison(comparisonResult, {
+                    sourceConnectionId: sourceConnection.id,
+                    targetConnectionId: targetConnection.id,
+                    sourceName: sourceConnection.name,
+                    targetName: targetConnection.name
+                });
+                recordedEntryId = recordedEntry.id;
+            }
+
+            const differenceCount = comparisonResult.differences?.length || 0;
+            const detailMessage = differenceCount === 0
+                ? 'No drift detected between the selected environments.'
+                : `${differenceCount} difference${differenceCount === 1 ? ' was' : 's were'} detected.`;
+
+            notificationManager?.showInformation(
+                'Schema comparison completed',
+                detailMessage,
+                'schema-comparison',
+                {
+                    actions: recordedEntryId ? [
+                        {
+                            id: 'view-report',
+                            label: 'View Drift Report',
+                            primary: true,
+                            action: () => {
+                                void vscode.commands.executeCommand('postgresql.showSchemaDriftReport', recordedEntryId);
+                            }
+                        }
+                    ] : undefined,
+                    category: 'Schema Drift'
+                }
+            );
+
+            const openReport = 'View drift report';
+            const userChoice = await vscode.window.showInformationMessage(
+                `Schema comparison finished. ${detailMessage}`,
+                openReport
+            );
+
+            if (userChoice === openReport && driftReportView) {
+                await driftReportView.showReport(recordedEntryId);
             }
         } catch (error) {
             Logger.error('Failed to compare schemas', error as Error);
             vscode.window.showErrorMessage(`Failed to compare schemas: ${(error as Error).message}`);
+        } finally {
+            if (statusProvider && operationId) {
+                statusProvider.completeOperation(operationId);
+            }
         }
     }
     private async handleGenerateMigration(comparison?: any): Promise<void> {

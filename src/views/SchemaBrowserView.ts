@@ -366,6 +366,94 @@ export class SchemaBrowserView {
         }
     }
 
+    private generateObjectDetailsHtml(object: DatabaseObject): string {
+        const metadataEntries = Object.entries(object.properties || {})
+            .map(([key, value]) => `
+                <tr>
+                    <td>${this.escapeHtml(key)}</td>
+                    <td>${this.escapeHtml(String(value ?? ''))}</td>
+                </tr>
+            `).join('');
+
+        const definitionSection = object.definition ? `
+            <section>
+                <h3>Definition</h3>
+                <pre>${this.escapeHtml(object.definition)}</pre>
+            </section>
+        ` : '';
+
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>${this.escapeHtml(object.name)} — Details</title>
+                <style>
+                    body {
+                        font-family: var(--vscode-font-family, Arial, sans-serif);
+                        padding: 16px;
+                        background: var(--vscode-editor-background, #1e1e1e);
+                        color: var(--vscode-editor-foreground, #cccccc);
+                    }
+                    h1 {
+                        margin-bottom: 4px;
+                    }
+                    table {
+                        border-collapse: collapse;
+                        width: 100%;
+                        margin: 16px 0;
+                    }
+                    th, td {
+                        border: 1px solid var(--vscode-panel-border, #3c3c3c);
+                        padding: 8px;
+                        vertical-align: top;
+                    }
+                    th {
+                        background: var(--vscode-editor-background, #252526);
+                        text-align: left;
+                        width: 160px;
+                    }
+                    pre {
+                        background: var(--vscode-editor-background, #252526);
+                        padding: 12px;
+                        border-radius: 4px;
+                        overflow-x: auto;
+                        white-space: pre-wrap;
+                    }
+                    section {
+                        margin-top: 20px;
+                    }
+                </style>
+            </head>
+            <body>
+                <h1>${this.escapeHtml(object.name)}</h1>
+                <div>Schema: ${this.escapeHtml(object.schema || 'unknown')}</div>
+                <div>Object Type: ${this.escapeHtml(object.type)}</div>
+
+                <section>
+                    <h3>Properties</h3>
+                    <table>
+                        <tbody>
+                            ${metadataEntries || '<tr><td colspan="2">No additional properties available.</td></tr>'}
+                        </tbody>
+                    </table>
+                </section>
+
+                ${definitionSection}
+            </body>
+            </html>
+        `;
+    }
+
+    private escapeHtml(value: string): string {
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     private async handleRefreshSchema(panel: vscode.WebviewPanel, connectionId: string, schemaName?: string): Promise<void> {
         try {
             const schemaData = await this.loadSchemaData(connectionId, schemaName);
