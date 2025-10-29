@@ -1,6 +1,6 @@
 import { ConnectionManager } from "../ConnectionManager";
 import { Logger } from "@/utils/Logger";
-import { DotNetIntegrationService } from "@/services/DotNetIntegrationService";
+import { PostgreSqlConnectionManager } from "@/services/PostgreSqlConnectionManager";
 import { ExtensionInitializer } from "@/utils/ExtensionInitializer";
 import { ConflictResolutionService } from "@/services/ConflictResolutionService";
 import { ValidationFramework } from "../../core/ValidationFramework";
@@ -100,7 +100,7 @@ export {
  */
 export class ModularSchemaManager {
   private connectionManager: ConnectionManager;
-  private dotNetService: DotNetIntegrationService;
+  private dotNetService: PostgreSqlConnectionManager;
   private queryService: QueryExecutionService;
   private validationFramework: ValidationFramework;
 
@@ -120,7 +120,7 @@ export class ModularSchemaManager {
     validationFramework: ValidationFramework
   ) {
     this.connectionManager = connectionManager;
-    this.dotNetService = DotNetIntegrationService.getInstance();
+    this.dotNetService = PostgreSqlConnectionManager.getInstance();
     this.queryService = queryService;
     this.validationFramework = validationFramework;
 

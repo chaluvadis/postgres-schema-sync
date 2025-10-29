@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ConnectionManager } from '@/managers/ConnectionManager';
-import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { PostgreSqlConnectionManager } from '@/services/PostgreSqlConnectionManager';
 import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
 
@@ -174,7 +174,7 @@ export interface ImportTemplate {
 export class DataImportService {
     private context: vscode.ExtensionContext;
     private connectionManager: ConnectionManager;
-    private dotNetService: DotNetIntegrationService;
+    private dotNetService: PostgreSqlConnectionManager;
     private importJobs: Map<string, ImportJob> = new Map();
     private importTemplates: Map<string, ImportTemplate> = new Map();
     private activeImports: Set<string> = new Set();
@@ -185,7 +185,7 @@ export class DataImportService {
     ) {
         this.context = context;
         this.connectionManager = connectionManager;
-        this.dotNetService = DotNetIntegrationService.getInstance();
+        this.dotNetService = PostgreSqlConnectionManager.getInstance();
         this.loadImportData();
     }
     private loadImportData(): void {

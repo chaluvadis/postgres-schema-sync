@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
-import { DotNetMigrationScript, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
+import { DotNetMigrationScript, DotNetConnectionInfo } from '@/services/PostgreSqlConnectionManager';
 export interface MigrationPreviewData {
     id: string;
     migrationScript: DotNetMigrationScript;

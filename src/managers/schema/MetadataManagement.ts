@@ -1,6 +1,6 @@
 import { SchemaOperations, DatabaseObject } from './SchemaOperations';
 import { Logger } from '@/utils/Logger';
-import { DotNetIntegrationService, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
+import { PostgreSqlConnectionManager, DotNetConnectionInfo } from '@/services/PostgreSqlConnectionManager';
 import { SecurityManager, DataClassification } from '@/services/SecurityManager';
 import { ConnectionManager, DatabaseConnection } from '../ConnectionManager';
 
@@ -143,7 +143,7 @@ export interface CacheRecommendation {
 
 export class MetadataManagement {
     private schemaOperations: SchemaOperations;
-    private dotNetService: DotNetIntegrationService;
+    private dotNetService: PostgreSqlConnectionManager;
     private connectionManager: ConnectionManager;
     private metadataCache: Map<string, MetadataCacheEntry> = new Map();
     private readonly METADATA_CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
@@ -155,7 +155,7 @@ export class MetadataManagement {
     ) {
         this.schemaOperations = schemaOperations;
         this.connectionManager = connectionManager;
-        this.dotNetService = DotNetIntegrationService.getInstance();
+        this.dotNetService = PostgreSqlConnectionManager.getInstance();
 
         // Initialize cache configuration with defaults
         this.cacheConfig = {

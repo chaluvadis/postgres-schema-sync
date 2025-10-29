@@ -268,9 +268,9 @@ export class RealtimeMonitoringManager {
     }
     private async testConnectionWithDotNet(dotNetConnection: any): Promise<boolean> {
         try {
-            // Import DotNetIntegrationService dynamically to avoid circular dependencies
-            const { DotNetIntegrationService } = await import('@/services/DotNetIntegrationService');
-            const dotNetService = DotNetIntegrationService.getInstance();
+            // Import PostgreSqlConnectionManager dynamically to avoid circular dependencies
+            const { PostgreSqlConnectionManager } = await import('@/services/PostgreSqlConnectionManager');
+            const dotNetService = PostgreSqlConnectionManager.getInstance();
 
             if (!dotNetService) {
                 Logger.error('DotNet service not available', 'testConnectionWithDotNet');

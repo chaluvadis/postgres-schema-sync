@@ -1060,8 +1060,8 @@ export class EventHandlerManager {
             }
 
             // Get DotNet service instance for real connection testing
-            const { DotNetIntegrationService } = await import('../services/DotNetIntegrationService');
-            const dotNetService = DotNetIntegrationService.getInstance();
+            const { PostgreSqlConnectionManager } = await import('../services/PostgreSqlConnectionManager');
+            const dotNetService = PostgreSqlConnectionManager.getInstance();
 
             // Ensure DotNet service is initialized
             if (!dotNetService) {

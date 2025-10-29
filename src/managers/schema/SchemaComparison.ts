@@ -1,6 +1,6 @@
 import { SchemaOperations, DatabaseObject } from './SchemaOperations';
 import { Logger } from '@/utils/Logger';
-import { DotNetIntegrationService, DotNetConnectionInfo, DotNetColumnMetadata, DotNetIndexMetadata, DotNetConstraintMetadata, DotNetViewMetadata } from '@/services/DotNetIntegrationService';
+import { PostgreSqlConnectionManager, DotNetConnectionInfo, DotNetColumnMetadata, DotNetIndexMetadata, DotNetConstraintMetadata, DotNetViewMetadata } from '@/services/PostgreSqlConnectionManager';
 
 // Schema comparison interfaces
 export interface SchemaComparisonOptions {
@@ -912,7 +912,7 @@ export class SchemaComparison {
         tableName: string,
         schema: string
     ): Promise<DotNetColumnMetadata[]> {
-        const dotNetService = DotNetIntegrationService.getInstance();
+        const dotNetService = PostgreSqlConnectionManager.getInstance();
         return await dotNetService.extractColumnMetadata(connection, tableName, schema);
     }
 
@@ -924,7 +924,7 @@ export class SchemaComparison {
         tableName: string,
         schema: string
     ): Promise<DotNetIndexMetadata[]> {
-        const dotNetService = DotNetIntegrationService.getInstance();
+        const dotNetService = PostgreSqlConnectionManager.getInstance();
         return await dotNetService.extractIndexMetadata(connection, tableName, schema);
     }
 
@@ -936,7 +936,7 @@ export class SchemaComparison {
         tableName: string,
         schema: string
     ): Promise<DotNetConstraintMetadata[]> {
-        const dotNetService = DotNetIntegrationService.getInstance();
+        const dotNetService = PostgreSqlConnectionManager.getInstance();
         return await dotNetService.extractConstraintMetadata(connection, tableName, schema);
     }
 
@@ -948,7 +948,7 @@ export class SchemaComparison {
         viewName: string,
         schema: string
     ): Promise<DotNetViewMetadata[]> {
-        const dotNetService = DotNetIntegrationService.getInstance();
+        const dotNetService = PostgreSqlConnectionManager.getInstance();
         return await dotNetService.extractViewMetadata(connection, viewName, schema);
     }
 

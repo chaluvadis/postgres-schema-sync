@@ -3,7 +3,7 @@ import { PostgreSqlExtension } from './PostgreSqlExtension';
 import { ExtensionInitializer, ExtensionComponents } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
 import { ErrorHandler } from '@/utils/ErrorHandler';
-import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { PostgreSqlConnectionManager } from './core/PostgreSqlConnectionManager';
 import { CommandManager } from '@/extension/CommandManager';
 import { EventHandlerManager } from '@/extension/EventHandlerManager';
 import { RealtimeMonitoringManager } from '@/extension/RealtimeMonitoringManager';
@@ -30,20 +30,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
         Logger.info('Activating PostgreSQL Schema Compare & Sync extension');
 
-        const isDotNetAvailable = await ExtensionInitializer.initializeDotNetService();
-
-        if (!isDotNetAvailable) {
-            vscode.window.showWarningMessage(
-                'PostgreSQL Schema Compare & Sync: .NET library not found. Some features may be limited.',
-                'View Setup Guide', 'Retry'
-            ).then(selection => {
-                if (selection === 'View Setup Guide') {
-                    vscode.commands.executeCommand('postgresql.showHelp');
-                } else if (selection === 'Retry') {
-                    vscode.commands.executeCommand('workbench.action.reloadWindow');
-                }
-            });
-        }
+        // Initialize PostgreSQL connection manager
+        const connectionManager = PostgreSqlConnectionManager.getInstance();
+        Logger.info('PostgreSQL connection manager initialized');
 
         // Initialize core components
         const coreComponents = ExtensionInitializer.initializeCoreComponents(context);
@@ -166,17 +155,17 @@ export function deactivate(): Thenable<void> | undefined {
         const promises: Thenable<void>[] = [];
 
         try {
-            const dotNetService = DotNetIntegrationService.getInstance();
+            const connectionManager = PostgreSqlConnectionManager.getInstance();
             try {
-                dotNetService.dispose();
+                connectionManager.closeAllPools();
                 promises.push(Promise.resolve());
             } catch (error) {
-                Logger.warn('Error disposing .NET service, continuing with other disposals', 'deactivate', error as Error);
-                ErrorHandler.handleError(error, ErrorHandler.createContext('DotNetServiceDisposal'));
-                promises.push(Promise.resolve()); // Don't fail deactivation for .NET disposal errors
+                Logger.warn('Error closing connection pools, continuing with other disposals', 'deactivate', error as Error);
+                ErrorHandler.handleError(error, ErrorHandler.createContext('ConnectionManagerDisposal'));
+                promises.push(Promise.resolve()); // Don't fail deactivation for connection disposal errors
             }
         } catch (error) {
-            Logger.warn('Failed to get .NET service instance during deactivation', 'deactivate', error as Error);
+            Logger.warn('Failed to get connection manager instance during deactivation', 'deactivate', error as Error);
         }
 
         if (extension) {

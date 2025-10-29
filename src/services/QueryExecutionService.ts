@@ -1,6 +1,6 @@
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { Logger } from '@/utils/Logger';
-import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { PostgreSqlConnectionManager } from '@/services/PostgreSqlConnectionManager';
 import { getUUId } from '@/utils/helper';
 
 export interface QueryResult {
@@ -36,11 +36,11 @@ export interface IntelliSenseSuggestion {
 
 export class QueryExecutionService {
     private connectionManager: ConnectionManager;
-    private dotNetService: DotNetIntegrationService;
+    private dotNetService: PostgreSqlConnectionManager;
 
     constructor(connectionManager: ConnectionManager) {
         this.connectionManager = connectionManager;
-        this.dotNetService = DotNetIntegrationService.getInstance();
+        this.dotNetService = PostgreSqlConnectionManager.getInstance();
     }
 
     async executeQuery(
