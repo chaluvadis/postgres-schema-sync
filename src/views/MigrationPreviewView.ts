@@ -1,377 +1,462 @@
-import * as vscode from 'vscode';
-import { Logger } from '@/utils/Logger';
-import { DotNetMigrationScript, DotNetConnectionInfo } from '@/services/PostgreSqlConnectionManager';
+import * as vscode from "vscode";
+import { Logger } from "@/utils/Logger";
+import { ConnectionInfo } from "@/core/PostgreSqlConnectionManager";
+
+// Define local interface since DotNetMigrationScript was removed
+export interface DotNetMigrationScript {
+  id: string;
+  sqlScript: string;
+  rollbackScript?: string;
+  description?: string;
+  createdAt: string;
+}
 export interface MigrationPreviewData {
-    id: string;
-    migrationScript: DotNetMigrationScript;
-    targetConnection: DotNetConnectionInfo;
-    previewOptions: MigrationPreviewOptions;
-    riskAssessment: RiskAssessment;
-    executionPlan: ExecutionStep[];
-    createdAt: string;
+  id: string;
+  migrationScript: DotNetMigrationScript;
+  targetConnection: ConnectionInfo;
+  previewOptions: MigrationPreviewOptions;
+  riskAssessment: RiskAssessment;
+  executionPlan: ExecutionStep[];
+  createdAt: string;
 }
 
 export interface MigrationPreviewOptions {
-    dryRun: boolean;
-    stopOnError: boolean;
-    transactionMode: 'all_or_nothing' | 'continue_on_error';
-    backupBeforeExecution: boolean;
-    parallelExecution: boolean;
-    maxExecutionTime: number; // in seconds
+  dryRun: boolean;
+  stopOnError: boolean;
+  transactionMode: "all_or_nothing" | "continue_on_error";
+  backupBeforeExecution: boolean;
+  parallelExecution: boolean;
+  maxExecutionTime: number; // in seconds
 }
 
 export interface RiskAssessment {
-    overallRisk: 'low' | 'medium' | 'high' | 'critical';
-    riskFactors: RiskFactor[];
-    estimatedDowntime: string;
-    rollbackComplexity: 'simple' | 'moderate' | 'complex';
-    dataLossPotential: 'none' | 'minimal' | 'moderate' | 'high';
+  overallRisk: "low" | "medium" | "high" | "critical";
+  riskFactors: RiskFactor[];
+  estimatedDowntime: string;
+  rollbackComplexity: "simple" | "moderate" | "complex";
+  dataLossPotential: "none" | "minimal" | "moderate" | "high";
 }
 
 export interface RiskFactor {
-    type: 'data_loss' | 'downtime' | 'dependency' | 'performance' | 'security';
-    severity: 'low' | 'medium' | 'high' | 'critical';
-    description: string;
-    mitigation?: string;
+  type: "data_loss" | "downtime" | "dependency" | "performance" | "security";
+  severity: "low" | "medium" | "high" | "critical";
+  description: string;
+  mitigation?: string;
 }
 
 export interface ExecutionStep {
-    id: string;
-    order: number;
-    type: 'backup' | 'pre_migration' | 'migration' | 'verification' | 'cleanup';
-    description: string;
-    estimatedDuration: string;
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
-    sql?: string;
-    rollbackSql?: string;
+  id: string;
+  order: number;
+  type: "backup" | "pre_migration" | "migration" | "verification" | "cleanup";
+  description: string;
+  estimatedDuration: string;
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  sql?: string;
+  rollbackSql?: string;
 }
 
 export class MigrationPreviewView {
-    private panel: vscode.WebviewPanel | undefined;
-    private previewData: MigrationPreviewData | undefined;
+  private panel: vscode.WebviewPanel | undefined;
+  private previewData: MigrationPreviewData | undefined;
 
-    constructor() { }
+  constructor() {}
 
-    async showPreview(migrationScript?: DotNetMigrationScript, targetConnection?: DotNetConnectionInfo): Promise<void> {
-        try {
-            Logger.info('Opening migration preview view');
+  async showPreview(
+    migrationScript?: DotNetMigrationScript,
+    targetConnection?: ConnectionInfo
+  ): Promise<void> {
+    try {
+      Logger.info("Opening migration preview view");
 
-            if (migrationScript && targetConnection) {
-                await this.generatePreview(migrationScript, targetConnection, {
-                    dryRun: true,
-                    stopOnError: true,
-                    transactionMode: 'all_or_nothing',
-                    backupBeforeExecution: true,
-                    parallelExecution: false,
-                    maxExecutionTime: 300
-                });
-            }
+      if (migrationScript && targetConnection) {
+        await this.generatePreview(migrationScript, targetConnection, {
+          dryRun: true,
+          stopOnError: true,
+          transactionMode: "all_or_nothing",
+          backupBeforeExecution: true,
+          parallelExecution: false,
+          maxExecutionTime: 300,
+        });
+      }
 
-            this.panel = vscode.window.createWebviewPanel(
-                'postgresqlMigrationPreview',
-                'Migration Preview',
-                vscode.ViewColumn.One,
-                {
-                    enableScripts: true,
-                    retainContextWhenHidden: true,
-                    localResourceRoots: [
-                        vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.parse(''), 'resources')
-                    ]
-                }
-            );
-
-            // Handle panel disposal
-            this.panel.onDidDispose(() => {
-                this.panel = undefined;
-                this.previewData = undefined;
-            });
-
-            // Generate and set HTML content
-            const htmlContent = await this.generatePreviewHtml(this.previewData);
-            if (this.panel) {
-                this.panel.webview.html = htmlContent;
-            }
-
-            // Handle messages from webview
-            if (this.panel) {
-                this.panel.webview.onDidReceiveMessage(async (message) => {
-                    await this.handleWebviewMessage(message);
-                });
-            }
-
-        } catch (error) {
-            Logger.error('Failed to show migration preview', error as Error, 'showPreview');
-            vscode.window.showErrorMessage(
-                `Failed to open migration preview: ${(error as Error).message}`
-            );
+      this.panel = vscode.window.createWebviewPanel(
+        "postgresqlMigrationPreview",
+        "Migration Preview",
+        vscode.ViewColumn.One,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [
+            vscode.Uri.joinPath(
+              vscode.workspace.workspaceFolders?.[0]?.uri ||
+                vscode.Uri.parse(""),
+              "resources"
+            ),
+          ],
         }
+      );
+
+      // Handle panel disposal
+      this.panel.onDidDispose(() => {
+        this.panel = undefined;
+        this.previewData = undefined;
+      });
+
+      // Generate and set HTML content
+      const htmlContent = await this.generatePreviewHtml(this.previewData);
+      if (this.panel) {
+        this.panel.webview.html = htmlContent;
+      }
+
+      // Handle messages from webview
+      if (this.panel) {
+        this.panel.webview.onDidReceiveMessage(async (message) => {
+          await this.handleWebviewMessage(message);
+        });
+      }
+    } catch (error) {
+      Logger.error(
+        "Failed to show migration preview",
+        error as Error,
+        "showPreview"
+      );
+      vscode.window.showErrorMessage(
+        `Failed to open migration preview: ${(error as Error).message}`
+      );
     }
+  }
 
-    async generatePreview(
-        migrationScript: DotNetMigrationScript,
-        targetConnection: DotNetConnectionInfo,
-        options: MigrationPreviewOptions
-    ): Promise<void> {
-        try {
-            Logger.info('Generating migration preview', 'generatePreview', {
-                migrationId: migrationScript.id,
-                targetConnection: targetConnection.name
-            });
+  async generatePreview(
+    migrationScript: DotNetMigrationScript,
+    targetConnection: ConnectionInfo,
+    options: MigrationPreviewOptions
+  ): Promise<void> {
+    try {
+      Logger.info("Generating migration preview", "generatePreview", {
+        migrationId: migrationScript.id,
+        targetConnection: targetConnection.name,
+      });
 
-            // Show progress indicator
-            const progressOptions: vscode.ProgressOptions = {
-                location: vscode.ProgressLocation.Notification,
-                title: 'Generating Migration Preview',
-                cancellable: true
-            };
+      // Show progress indicator
+      const progressOptions: vscode.ProgressOptions = {
+        location: vscode.ProgressLocation.Notification,
+        title: "Generating Migration Preview",
+        cancellable: true,
+      };
 
-            await vscode.window.withProgress(progressOptions, async (progress, token) => {
-                progress.report({ increment: 0, message: 'Analyzing migration script...' });
+      await vscode.window.withProgress(
+        progressOptions,
+        async (progress, token) => {
+          progress.report({
+            increment: 0,
+            message: "Analyzing migration script...",
+          });
 
-                if (token.isCancellationRequested) {
-                    throw new Error('Preview generation cancelled by user');
-                }
+          if (token.isCancellationRequested) {
+            throw new Error("Preview generation cancelled by user");
+          }
 
-                // Generate preview data
-                this.previewData = await this.generatePreviewData(migrationScript, targetConnection, options);
-
-                progress.report({ increment: 50, message: 'Assessing risks...' });
-
-                if (token.isCancellationRequested) {
-                    throw new Error('Preview generation cancelled by user');
-                }
-
-                // Perform risk assessment
-                await this.performRiskAssessment(this.previewData);
-
-                progress.report({ increment: 100, message: 'Preview complete' });
-
-                // Update the view with results
-                if (this.panel) {
-                    const htmlContent = await this.generatePreviewHtml(this.previewData);
-                    this.panel.webview.html = htmlContent;
-                }
-            });
-
-        } catch (error) {
-            Logger.error('Migration preview generation failed', error as Error, 'generatePreview');
-            vscode.window.showErrorMessage(
-                `Migration preview generation failed: ${(error as Error).message}`
-            );
-            throw error;
-        }
-    }
-
-    private async generatePreviewData(
-        migrationScript: DotNetMigrationScript,
-        targetConnection: DotNetConnectionInfo,
-        options?: MigrationPreviewOptions
-    ): Promise<MigrationPreviewData> {
-        const defaultOptions: MigrationPreviewOptions = {
-            dryRun: true,
-            stopOnError: true,
-            transactionMode: 'all_or_nothing',
-            backupBeforeExecution: true,
-            parallelExecution: false,
-            maxExecutionTime: 300
-        };
-
-        const previewOptions = options || defaultOptions;
-
-        // Parse SQL script to generate execution plan
-        const executionPlan = this.parseExecutionPlan(migrationScript.sqlScript);
-
-        // Generate risk assessment
-        const riskAssessment = this.assessMigrationRisk(migrationScript, executionPlan);
-
-        return {
-            id: `preview-${Date.now()}`,
+          // Generate preview data
+          this.previewData = await this.generatePreviewData(
             migrationScript,
             targetConnection,
-            previewOptions,
-            riskAssessment,
-            executionPlan,
-            createdAt: new Date().toISOString()
-        };
-    }
+            options
+          );
 
-    private generateUniqueId(prefix: string): string {
-        const timestamp = Date.now();
-        const random = Math.random().toString(36).substring(2, 8);
-        return `${prefix}-${timestamp}-${random}`;
-    }
+          progress.report({ increment: 50, message: "Assessing risks..." });
 
-    private parseExecutionPlan(sqlScript: string): ExecutionStep[] {
-        const steps: ExecutionStep[] = [];
-        const sqlStatements = sqlScript.split(';').filter(stmt => stmt.trim().length > 0);
+          if (token.isCancellationRequested) {
+            throw new Error("Preview generation cancelled by user");
+          }
 
-        // Backup step
-        steps.push({
-            id: this.generateUniqueId('backup'),
-            order: 1,
-            type: 'backup',
-            description: 'Create database backup before migration',
-            estimatedDuration: '30s - 2m',
-            status: 'pending'
-        });
+          // Perform risk assessment
+          await this.performRiskAssessment(this.previewData);
 
-        // Migration steps
-        sqlStatements.forEach((statement, index) => {
-            const trimmedStmt = statement.trim().toLowerCase();
+          progress.report({ increment: 100, message: "Preview complete" });
 
-            let stepType: ExecutionStep['type'] = 'migration';
-            let description = 'Execute SQL statement';
-
-            if (trimmedStmt.includes('create') && trimmedStmt.includes('table')) {
-                description = 'Create new table';
-            } else if (trimmedStmt.includes('alter') && trimmedStmt.includes('table')) {
-                description = 'Modify existing table';
-            } else if (trimmedStmt.includes('drop')) {
-                description = 'Drop database object';
-            } else if (trimmedStmt.includes('insert') || trimmedStmt.includes('update')) {
-                description = 'Modify data';
-                stepType = 'migration';
-            }
-
-            steps.push({
-                id: `migration-${index + 2}`,
-                order: index + 2,
-                type: stepType,
-                description,
-                estimatedDuration: this.estimateStepDuration(statement),
-                status: 'pending',
-                sql: statement.trim()
-            });
-        });
-
-        // Verification step
-        steps.push({
-            id: this.generateUniqueId('verification'),
-            order: steps.length + 1,
-            type: 'verification',
-            description: 'Verify migration completed successfully',
-            estimatedDuration: '15s',
-            status: 'pending'
-        });
-
-        return steps;
-    }
-
-    private estimateStepDuration(sqlStatement: string): string {
-        const trimmed = sqlStatement.trim().toLowerCase();
-
-        if (trimmed.includes('create index')) {
-            return '1m - 5m';
-        } else if (trimmed.includes('alter table') && trimmed.includes('add column')) {
-            return '30s - 2m';
-        } else if (trimmed.includes('drop')) {
-            return '5s - 30s';
-        } else if (trimmed.includes('create table')) {
-            return '15s - 1m';
-        } else {
-            return '5s - 30s';
+          // Update the view with results
+          if (this.panel) {
+            const htmlContent = await this.generatePreviewHtml(
+              this.previewData
+            );
+            this.panel.webview.html = htmlContent;
+          }
         }
+      );
+    } catch (error) {
+      Logger.error(
+        "Migration preview generation failed",
+        error as Error,
+        "generatePreview"
+      );
+      vscode.window.showErrorMessage(
+        `Migration preview generation failed: ${(error as Error).message}`
+      );
+      throw error;
+    }
+  }
+
+  private async generatePreviewData(
+    migrationScript: DotNetMigrationScript,
+    targetConnection: ConnectionInfo,
+    options?: MigrationPreviewOptions
+  ): Promise<MigrationPreviewData> {
+    const defaultOptions: MigrationPreviewOptions = {
+      dryRun: true,
+      stopOnError: true,
+      transactionMode: "all_or_nothing",
+      backupBeforeExecution: true,
+      parallelExecution: false,
+      maxExecutionTime: 300,
+    };
+
+    const previewOptions = options || defaultOptions;
+
+    // Parse SQL script to generate execution plan
+    const executionPlan = this.parseExecutionPlan(migrationScript.sqlScript);
+
+    // Generate risk assessment
+    const riskAssessment = this.assessMigrationRisk(
+      migrationScript,
+      executionPlan
+    );
+
+    return {
+      id: `preview-${Date.now()}`,
+      migrationScript,
+      targetConnection,
+      previewOptions,
+      riskAssessment,
+      executionPlan,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  private generateUniqueId(prefix: string): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    return `${prefix}-${timestamp}-${random}`;
+  }
+
+  private parseExecutionPlan(sqlScript: string): ExecutionStep[] {
+    const steps: ExecutionStep[] = [];
+    const sqlStatements = sqlScript
+      .split(";")
+      .filter((stmt) => stmt.trim().length > 0);
+
+    // Backup step
+    steps.push({
+      id: this.generateUniqueId("backup"),
+      order: 1,
+      type: "backup",
+      description: "Create database backup before migration",
+      estimatedDuration: "30s - 2m",
+      status: "pending",
+    });
+
+    // Migration steps
+    sqlStatements.forEach((statement, index) => {
+      const trimmedStmt = statement.trim().toLowerCase();
+
+      let stepType: ExecutionStep["type"] = "migration";
+      let description = "Execute SQL statement";
+
+      if (trimmedStmt.includes("create") && trimmedStmt.includes("table")) {
+        description = "Create new table";
+      } else if (
+        trimmedStmt.includes("alter") &&
+        trimmedStmt.includes("table")
+      ) {
+        description = "Modify existing table";
+      } else if (trimmedStmt.includes("drop")) {
+        description = "Drop database object";
+      } else if (
+        trimmedStmt.includes("insert") ||
+        trimmedStmt.includes("update")
+      ) {
+        description = "Modify data";
+        stepType = "migration";
+      }
+
+      steps.push({
+        id: `migration-${index + 2}`,
+        order: index + 2,
+        type: stepType,
+        description,
+        estimatedDuration: this.estimateStepDuration(statement),
+        status: "pending",
+        sql: statement.trim(),
+      });
+    });
+
+    // Verification step
+    steps.push({
+      id: this.generateUniqueId("verification"),
+      order: steps.length + 1,
+      type: "verification",
+      description: "Verify migration completed successfully",
+      estimatedDuration: "15s",
+      status: "pending",
+    });
+
+    return steps;
+  }
+
+  private estimateStepDuration(sqlStatement: string): string {
+    const trimmed = sqlStatement.trim().toLowerCase();
+
+    if (trimmed.includes("create index")) {
+      return "1m - 5m";
+    } else if (
+      trimmed.includes("alter table") &&
+      trimmed.includes("add column")
+    ) {
+      return "30s - 2m";
+    } else if (trimmed.includes("drop")) {
+      return "5s - 30s";
+    } else if (trimmed.includes("create table")) {
+      return "15s - 1m";
+    } else {
+      return "5s - 30s";
+    }
+  }
+
+  private assessMigrationRisk(
+    migrationScript: DotNetMigrationScript,
+    executionPlan: ExecutionStep[]
+  ): RiskAssessment {
+    const riskFactors: RiskFactor[] = [];
+    let overallRisk: RiskAssessment["overallRisk"] = "low";
+
+    // Analyze SQL script for risk factors
+    const sqlLower = migrationScript.sqlScript.toLowerCase();
+
+    // Check for data-dropping operations
+    if (sqlLower.includes("drop table") || sqlLower.includes("truncate")) {
+      riskFactors.push({
+        type: "data_loss",
+        severity: "critical",
+        description:
+          "Migration contains operations that may result in data loss",
+        mitigation:
+          "Ensure backup is created before execution and verify data integrity after migration",
+      });
+      overallRisk = "critical";
     }
 
-    private assessMigrationRisk(migrationScript: DotNetMigrationScript, executionPlan: ExecutionStep[]): RiskAssessment {
-        const riskFactors: RiskFactor[] = [];
-        let overallRisk: RiskAssessment['overallRisk'] = 'low';
-
-        // Analyze SQL script for risk factors
-        const sqlLower = migrationScript.sqlScript.toLowerCase();
-
-        // Check for data-dropping operations
-        if (sqlLower.includes('drop table') || sqlLower.includes('truncate')) {
-            riskFactors.push({
-                type: 'data_loss',
-                severity: 'critical',
-                description: 'Migration contains operations that may result in data loss',
-                mitigation: 'Ensure backup is created before execution and verify data integrity after migration'
-            });
-            overallRisk = 'critical';
-        }
-
-        // Check for large data modifications
-        if (sqlLower.includes('update') || sqlLower.includes('delete')) {
-            riskFactors.push({
-                type: 'data_loss',
-                severity: 'high',
-                description: 'Migration modifies existing data',
-                mitigation: 'Review all UPDATE and DELETE statements carefully'
-            });
-            if (overallRisk !== 'critical') { overallRisk = 'high'; }
-        }
-
-        // Check for schema changes that might cause downtime
-        if (sqlLower.includes('alter table') && (sqlLower.includes('drop column') || sqlLower.includes('alter column'))) {
-            riskFactors.push({
-                type: 'downtime',
-                severity: 'medium',
-                description: 'Schema changes may require brief downtime',
-                mitigation: 'Execute during maintenance window if possible'
-            });
-            if (overallRisk === 'low') { overallRisk = 'medium'; }
-        }
-
-        // Check for dependency risks
-        if (executionPlan.length > 10) {
-            riskFactors.push({
-                type: 'dependency',
-                severity: 'medium',
-                description: 'Complex migration with many steps increases failure risk',
-                mitigation: 'Test migration thoroughly in staging environment first'
-            });
-            if (overallRisk === 'low') { overallRisk = 'medium'; }
-        }
-
-        // Estimate downtime
-        const estimatedDowntime = this.estimateDowntime(executionPlan);
-
-        // Assess rollback complexity
-        const rollbackComplexity = this.assessRollbackComplexity(migrationScript);
-
-        return {
-            overallRisk,
-            riskFactors,
-            estimatedDowntime,
-            rollbackComplexity,
-            dataLossPotential: riskFactors.some(f => f.type === 'data_loss' && f.severity === 'critical') ? 'high' : 'minimal'
-        };
+    // Check for large data modifications
+    if (sqlLower.includes("update") || sqlLower.includes("delete")) {
+      riskFactors.push({
+        type: "data_loss",
+        severity: "high",
+        description: "Migration modifies existing data",
+        mitigation: "Review all UPDATE and DELETE statements carefully",
+      });
+      if (overallRisk !== "critical") {
+        overallRisk = "high";
+      }
     }
 
-    private estimateDowntime(executionPlan: ExecutionStep[]): string {
-        const totalSteps = executionPlan.filter(s => s.type === 'migration').length;
-        if (totalSteps <= 3) { return '< 1 minute'; }
-        if (totalSteps <= 10) { return '1-5 minutes'; }
-        return '5-15 minutes';
+    // Check for schema changes that might cause downtime
+    if (
+      sqlLower.includes("alter table") &&
+      (sqlLower.includes("drop column") || sqlLower.includes("alter column"))
+    ) {
+      riskFactors.push({
+        type: "downtime",
+        severity: "medium",
+        description: "Schema changes may require brief downtime",
+        mitigation: "Execute during maintenance window if possible",
+      });
+      if (overallRisk === "low") {
+        overallRisk = "medium";
+      }
     }
 
-    private assessRollbackComplexity(migrationScript: DotNetMigrationScript): 'simple' | 'moderate' | 'complex' {
-        if (!migrationScript.rollbackScript || migrationScript.rollbackScript.trim().length === 0) {
-            return 'complex';
-        }
-
-        const rollbackStatements = migrationScript.rollbackScript.split(';').length;
-        if (rollbackStatements <= 3) { return 'simple'; }
-        if (rollbackStatements <= 10) { return 'moderate'; }
-        return 'complex';
+    // Check for dependency risks
+    if (executionPlan.length > 10) {
+      riskFactors.push({
+        type: "dependency",
+        severity: "medium",
+        description: "Complex migration with many steps increases failure risk",
+        mitigation: "Test migration thoroughly in staging environment first",
+      });
+      if (overallRisk === "low") {
+        overallRisk = "medium";
+      }
     }
 
-    private async performRiskAssessment(previewData: MigrationPreviewData): Promise<void> {
-        // Additional risk assessment logic can be added here
-        // For now, we rely on the basic assessment in generatePreviewData
-        Logger.info('Risk assessment completed', 'performRiskAssessment', {
-            overallRisk: previewData.riskAssessment.overallRisk,
-            riskFactorCount: previewData.riskAssessment.riskFactors.length
-        });
+    // Estimate downtime
+    const estimatedDowntime = this.estimateDowntime(executionPlan);
+
+    // Assess rollback complexity
+    const rollbackComplexity = this.assessRollbackComplexity(migrationScript);
+
+    return {
+      overallRisk,
+      riskFactors,
+      estimatedDowntime,
+      rollbackComplexity,
+      dataLossPotential: riskFactors.some(
+        (f) => f.type === "data_loss" && f.severity === "critical"
+      )
+        ? "high"
+        : "minimal",
+    };
+  }
+
+  private estimateDowntime(executionPlan: ExecutionStep[]): string {
+    const totalSteps = executionPlan.filter(
+      (s) => s.type === "migration"
+    ).length;
+    if (totalSteps <= 3) {
+      return "< 1 minute";
+    }
+    if (totalSteps <= 10) {
+      return "1-5 minutes";
+    }
+    return "5-15 minutes";
+  }
+
+  private assessRollbackComplexity(
+    migrationScript: DotNetMigrationScript
+  ): "simple" | "moderate" | "complex" {
+    if (
+      !migrationScript.rollbackScript ||
+      migrationScript.rollbackScript.trim().length === 0
+    ) {
+      return "complex";
     }
 
-    private async generatePreviewHtml(data?: MigrationPreviewData): Promise<string> {
-        if (!data) {
-            return this.generateEmptyStateHtml();
-        }
+    const rollbackStatements = migrationScript.rollbackScript.split(";").length;
+    if (rollbackStatements <= 3) {
+      return "simple";
+    }
+    if (rollbackStatements <= 10) {
+      return "moderate";
+    }
+    return "complex";
+  }
 
-        return `
+  private async performRiskAssessment(
+    previewData: MigrationPreviewData
+  ): Promise<void> {
+    // Additional risk assessment logic can be added here
+    // For now, we rely on the basic assessment in generatePreviewData
+    Logger.info("Risk assessment completed", "performRiskAssessment", {
+      overallRisk: previewData.riskAssessment.overallRisk,
+      riskFactorCount: previewData.riskAssessment.riskFactors.length,
+    });
+  }
+
+  private async generatePreviewHtml(
+    data?: MigrationPreviewData
+  ): Promise<string> {
+    if (!data) {
+      return this.generateEmptyStateHtml();
+    }
+
+    return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -656,12 +741,16 @@ export class MigrationPreviewView {
                 <div class="header">
                     <div class="migration-info">
                         <h2>Migration Preview</h2>
-                        <span class="risk-badge risk-${data.riskAssessment.overallRisk}">
+                        <span class="risk-badge risk-${
+                          data.riskAssessment.overallRisk
+                        }">
                             ${data.riskAssessment.overallRisk.toUpperCase()} RISK
                         </span>
                     </div>
                     <div class="migration-meta">
-                        <small>Generated: ${new Date(data.createdAt).toLocaleString()}</small>
+                        <small>Generated: ${new Date(
+                          data.createdAt
+                        ).toLocaleString()}</small>
                     </div>
                 </div>
 
@@ -675,17 +764,38 @@ export class MigrationPreviewView {
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 15px;">
                                 <div>
                                     <div style="font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 5px;">Overall Risk</div>
-                                    <div style="font-size: 18px; font-weight: bold; color: var(--vscode-gitDecoration-${data.riskAssessment.overallRisk === 'critical' ? 'deletedResource' : data.riskAssessment.overallRisk === 'high' ? 'modifiedResource' : data.riskAssessment.overallRisk === 'medium' ? 'renamedResource' : 'addedResource'}Foreground);">
+                                    <div style="font-size: 18px; font-weight: bold; color: var(--vscode-gitDecoration-${
+                                      data.riskAssessment.overallRisk ===
+                                      "critical"
+                                        ? "deletedResource"
+                                        : data.riskAssessment.overallRisk ===
+                                          "high"
+                                        ? "modifiedResource"
+                                        : data.riskAssessment.overallRisk ===
+                                          "medium"
+                                        ? "renamedResource"
+                                        : "addedResource"
+                                    }Foreground);">
                                         ${data.riskAssessment.overallRisk.toUpperCase()}
                                     </div>
                                 </div>
                                 <div>
                                     <div style="font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 5px;">Estimated Downtime</div>
-                                    <div style="font-size: 18px; font-weight: bold;">${data.riskAssessment.estimatedDowntime}</div>
+                                    <div style="font-size: 18px; font-weight: bold;">${
+                                      data.riskAssessment.estimatedDowntime
+                                    }</div>
                                 </div>
                                 <div>
                                     <div style="font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 5px;">Rollback Complexity</div>
-                                    <div style="font-size: 18px; font-weight: bold; color: ${data.riskAssessment.rollbackComplexity === 'simple' ? 'var(--vscode-gitDecoration-addedResourceForeground)' : data.riskAssessment.rollbackComplexity === 'moderate' ? 'var(--vscode-gitDecoration-renamedResourceForeground)' : 'var(--vscode-gitDecoration-deletedResourceForeground)'};">${data.riskAssessment.rollbackComplexity.toUpperCase()}</div>
+                                    <div style="font-size: 18px; font-weight: bold; color: ${
+                                      data.riskAssessment.rollbackComplexity ===
+                                      "simple"
+                                        ? "var(--vscode-gitDecoration-addedResourceForeground)"
+                                        : data.riskAssessment
+                                            .rollbackComplexity === "moderate"
+                                        ? "var(--vscode-gitDecoration-renamedResourceForeground)"
+                                        : "var(--vscode-gitDecoration-deletedResourceForeground)"
+                                    };">${data.riskAssessment.rollbackComplexity.toUpperCase()}</div>
                                 </div>
                                 <div>
                                     <div style="font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 5px;">Data Loss Risk</div>
@@ -693,22 +803,38 @@ export class MigrationPreviewView {
                                 </div>
                             </div>
 
-                            ${data.riskAssessment.riskFactors.length > 0 ? `
+                            ${
+                              data.riskAssessment.riskFactors.length > 0
+                                ? `
                                 <div>
                                     <div style="font-size: 12px; font-weight: bold; margin-bottom: 10px;">Risk Factors</div>
                                     <div class="risk-factors">
-                                        ${data.riskAssessment.riskFactors.map(factor => `
+                                        ${data.riskAssessment.riskFactors
+                                          .map(
+                                            (factor) => `
                                             <div class="risk-factor">
-                                                <div class="risk-indicator risk-${factor.severity}"></div>
+                                                <div class="risk-indicator risk-${
+                                                  factor.severity
+                                                }"></div>
                                                 <div class="risk-content">
-                                                    <div class="risk-description">${factor.description}</div>
-                                                    ${factor.mitigation ? `<div class="risk-mitigation">Mitigation: ${factor.mitigation}</div>` : ''}
+                                                    <div class="risk-description">${
+                                                      factor.description
+                                                    }</div>
+                                                    ${
+                                                      factor.mitigation
+                                                        ? `<div class="risk-mitigation">Mitigation: ${factor.mitigation}</div>`
+                                                        : ""
+                                                    }
                                                 </div>
                                             </div>
-                                        `).join('')}
+                                        `
+                                          )
+                                          .join("")}
                                     </div>
                                 </div>
-                            ` : ''}
+                            `
+                                : ""
+                            }
                         </div>
                     </div>
 
@@ -720,7 +846,9 @@ export class MigrationPreviewView {
                             </div>
                             <div class="card-content">
                                 <div class="execution-plan">
-                                    ${data.executionPlan.map(step => `
+                                    ${data.executionPlan
+                                      .map(
+                                        (step) => `
                                         <div class="execution-step">
                                             <div class="step-number">${step.order}</div>
                                             <div class="step-content">
@@ -731,7 +859,9 @@ export class MigrationPreviewView {
                                                 </div>
                                             </div>
                                         </div>
-                                    `).join('')}
+                                    `
+                                      )
+                                      .join("")}
                                 </div>
                             </div>
                         </div>
@@ -756,13 +886,25 @@ export class MigrationPreviewView {
 
                 <div class="footer">
                     <div class="info">
-                        Target: ${data.targetConnection.name} • ${data.executionPlan.length} steps • ${data.previewOptions.dryRun ? 'Dry Run' : 'Live Execution'}
-                        ${data.migrationScript.rollbackScript && data.migrationScript.rollbackScript.trim().length > 0 ? '• ✅ Rollback Available' : '• ❌ No Rollback'}
+                        Target: ${data.targetConnection.name} • ${
+      data.executionPlan.length
+    } steps • ${data.previewOptions.dryRun ? "Dry Run" : "Live Execution"}
+                        ${
+                          data.migrationScript.rollbackScript &&
+                          data.migrationScript.rollbackScript.trim().length > 0
+                            ? "• ✅ Rollback Available"
+                            : "• ❌ No Rollback"
+                        }
                     </div>
                     <div class="actions">
                         <button class="btn btn-secondary" onclick="exportPreview()">Export</button>
                         <button class="btn btn-primary" onclick="proceedWithMigration()">Execute Migration</button>
-                        ${data.migrationScript.rollbackScript && data.migrationScript.rollbackScript.trim().length > 0 ? `<button class="btn btn-danger" onclick="rollbackMigration()">Rollback Migration</button>` : ''}
+                        ${
+                          data.migrationScript.rollbackScript &&
+                          data.migrationScript.rollbackScript.trim().length > 0
+                            ? `<button class="btn btn-danger" onclick="rollbackMigration()">Rollback Migration</button>`
+                            : ""
+                        }
                     </div>
                 </div>
 
@@ -772,7 +914,9 @@ export class MigrationPreviewView {
 
                     function toggleSqlView(type) {
                         const container = document.getElementById('sqlContainer');
-                        const migrationScript = ${JSON.stringify(data.migrationScript)};
+                        const migrationScript = ${JSON.stringify(
+                          data.migrationScript
+                        )};
 
                         if (type === 'migration') {
                             container.textContent = migrationScript.sqlScript;
@@ -806,17 +950,19 @@ export class MigrationPreviewView {
                     function rollbackMigration() {
                         vscode.postMessage({
                             command: 'rollbackMigration',
-                            migrationScript: ${JSON.stringify(data.migrationScript)}
+                            migrationScript: ${JSON.stringify(
+                              data.migrationScript
+                            )}
                         });
                     }
                 </script>
             </body>
             </html>
         `;
-    }
+  }
 
-    private generateEmptyStateHtml(): string {
-        return `
+  private generateEmptyStateHtml(): string {
+    return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -888,109 +1034,145 @@ export class MigrationPreviewView {
             </body>
             </html>
         `;
-    }
+  }
 
-    private async handleWebviewMessage(message: any): Promise<void> {
-        switch (message.command) {
-            case 'exportPreview':
-                await this.exportPreview(message.data);
-                break;
-            case 'proceedWithMigration':
-                await this.proceedWithMigration(message.previewData);
-                break;
-            case 'rollbackMigration':
-                await this.rollbackMigration(message.migrationScript);
-                break;
-            case 'generateNewMigration':
-                await vscode.commands.executeCommand('postgresql.generateMigration');
-                break;
+  private async handleWebviewMessage(message: any): Promise<void> {
+    switch (message.command) {
+      case "exportPreview":
+        await this.exportPreview(message.data);
+        break;
+      case "proceedWithMigration":
+        await this.proceedWithMigration(message.previewData);
+        break;
+      case "rollbackMigration":
+        await this.rollbackMigration(message.migrationScript);
+        break;
+      case "generateNewMigration":
+        await vscode.commands.executeCommand("postgresql.generateMigration");
+        break;
+    }
+  }
+
+  private async exportPreview(data: MigrationPreviewData): Promise<void> {
+    try {
+      const exportContent = this.generateExportContent(data);
+      const uri = await vscode.window.showSaveDialog({
+        filters: {
+          "JSON Files": ["json"],
+          "Text Files": ["txt"],
+          "All Files": ["*"],
+        },
+        defaultUri: vscode.Uri.file(
+          `migration-preview-${new Date().toISOString().split("T")[0]}.json`
+        ),
+      });
+
+      if (uri) {
+        await vscode.workspace.fs.writeFile(
+          uri,
+          Buffer.from(exportContent, "utf8")
+        );
+        vscode.window.showInformationMessage(
+          "Migration preview exported successfully"
+        );
+      }
+    } catch (error) {
+      Logger.error(
+        "Failed to export migration preview",
+        error as Error,
+        "exportPreview"
+      );
+      vscode.window.showErrorMessage("Failed to export migration preview");
+    }
+  }
+
+  private generateExportContent(data: MigrationPreviewData): string {
+    return JSON.stringify(
+      {
+        migrationPreview: {
+          id: data.id,
+          createdAt: data.createdAt,
+          targetConnection: data.targetConnection.name,
+          options: data.previewOptions,
+          riskAssessment: data.riskAssessment,
+          executionPlan: data.executionPlan,
+          sqlScript: data.migrationScript.sqlScript,
+          rollbackScript: data.migrationScript.rollbackScript,
+        },
+      },
+      null,
+      2
+    );
+  }
+
+  private async proceedWithMigration(
+    previewData: MigrationPreviewData
+  ): Promise<void> {
+    try {
+      // Show confirmation dialog for high-risk migrations
+      if (
+        previewData.riskAssessment.overallRisk === "critical" ||
+        previewData.riskAssessment.overallRisk === "high"
+      ) {
+        const confirmed = await vscode.window.showWarningMessage(
+          `This migration has been assessed as ${previewData.riskAssessment.overallRisk} risk. Do you want to proceed?`,
+          "Proceed Anyway",
+          "Cancel"
+        );
+
+        if (confirmed !== "Proceed Anyway") {
+          return;
         }
+      }
+
+      await vscode.commands.executeCommand(
+        "postgresql.executeMigration",
+        previewData.migrationScript
+      );
+    } catch (error) {
+      Logger.error(
+        "Failed to proceed with migration",
+        error as Error,
+        "proceedWithMigration"
+      );
+      vscode.window.showErrorMessage("Failed to execute migration");
     }
+  }
 
-    private async exportPreview(data: MigrationPreviewData): Promise<void> {
-        try {
-            const exportContent = this.generateExportContent(data);
-            const uri = await vscode.window.showSaveDialog({
-                filters: {
-                    'JSON Files': ['json'],
-                    'Text Files': ['txt'],
-                    'All Files': ['*']
-                },
-                defaultUri: vscode.Uri.file(`migration-preview-${new Date().toISOString().split('T')[0]}.json`)
-            });
+  private async rollbackMigration(
+    migrationScript: DotNetMigrationScript
+  ): Promise<void> {
+    try {
+      // Show confirmation dialog for rollback
+      const confirmed = await vscode.window.showWarningMessage(
+        `Are you sure you want to rollback this migration?\n\nMigration: ${migrationScript.id}\nThis action cannot be undone!`,
+        "Rollback Migration",
+        "Cancel"
+      );
 
-            if (uri) {
-                await vscode.workspace.fs.writeFile(uri, Buffer.from(exportContent, 'utf8'));
-                vscode.window.showInformationMessage('Migration preview exported successfully');
-            }
-        } catch (error) {
-            Logger.error('Failed to export migration preview', error as Error, 'exportPreview');
-            vscode.window.showErrorMessage('Failed to export migration preview');
-        }
+      if (confirmed !== "Rollback Migration") {
+        return;
+      }
+
+      await vscode.commands.executeCommand(
+        "postgresql.rollbackMigration",
+        migrationScript
+      );
+    } catch (error) {
+      Logger.error(
+        "Failed to initiate rollback",
+        error as Error,
+        "rollbackMigration"
+      );
+      vscode.window.showErrorMessage("Failed to rollback migration");
     }
+  }
 
-    private generateExportContent(data: MigrationPreviewData): string {
-        return JSON.stringify({
-            migrationPreview: {
-                id: data.id,
-                createdAt: data.createdAt,
-                targetConnection: data.targetConnection.name,
-                options: data.previewOptions,
-                riskAssessment: data.riskAssessment,
-                executionPlan: data.executionPlan,
-                sqlScript: data.migrationScript.sqlScript,
-                rollbackScript: data.migrationScript.rollbackScript
-            }
-        }, null, 2);
+  dispose(): void {
+    if (this.panel) {
+      this.panel.dispose();
+      this.panel = undefined;
     }
-
-    private async proceedWithMigration(previewData: MigrationPreviewData): Promise<void> {
-        try {
-            // Show confirmation dialog for high-risk migrations
-            if (previewData.riskAssessment.overallRisk === 'critical' || previewData.riskAssessment.overallRisk === 'high') {
-                const confirmed = await vscode.window.showWarningMessage(
-                    `This migration has been assessed as ${previewData.riskAssessment.overallRisk} risk. Do you want to proceed?`,
-                    'Proceed Anyway',
-                    'Cancel'
-                );
-
-                if (confirmed !== 'Proceed Anyway') {
-                    return;
-                }
-            }
-
-            await vscode.commands.executeCommand('postgresql.executeMigration', previewData.migrationScript);
-        } catch (error) {
-            Logger.error('Failed to proceed with migration', error as Error, 'proceedWithMigration');
-            vscode.window.showErrorMessage('Failed to execute migration');
-        }
-    }
-
-    private async rollbackMigration(migrationScript: DotNetMigrationScript): Promise<void> {
-        try {
-            // Show confirmation dialog for rollback
-            const confirmed = await vscode.window.showWarningMessage(
-                `Are you sure you want to rollback this migration?\n\nMigration: ${migrationScript.id}\nThis action cannot be undone!`,
-                'Rollback Migration',
-                'Cancel'
-            );
-
-            if (confirmed !== 'Rollback Migration') {
-                return;
-            }
-
-            await vscode.commands.executeCommand('postgresql.rollbackMigration', migrationScript);
-        } catch (error) {
-            Logger.error('Failed to initiate rollback', error as Error, 'rollbackMigration');
-            vscode.window.showErrorMessage('Failed to rollback migration');
-        }
-    }
-
-    dispose(): void {
-        if (this.panel) {
-            this.panel.dispose();
-            this.panel = undefined;
-        }
-        this.previewData = undefined;
-    }
+    this.previewData = undefined;
+  }
 }

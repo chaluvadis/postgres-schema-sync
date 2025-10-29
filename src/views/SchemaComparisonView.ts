@@ -1,302 +1,335 @@
-import * as vscode from 'vscode';
-import { Logger } from '@/utils/Logger';
-import { PostgreSqlConnectionManager, DotNetSchemaComparison, DotNetConnectionInfo } from '@/services/PostgreSqlConnectionManager';
-import { ModularSchemaManager } from '@/managers/schema';
-import { ConnectionManager } from '@/managers/ConnectionManager';
-import { QueryExecutionService } from '@/services/QueryExecutionService';
-import { ValidationFramework } from '@/core/ValidationFramework';
+import * as vscode from "vscode";
+import { Logger } from "@/utils/Logger";
+import { ConnectionInfo } from "@/core/PostgreSqlConnectionManager";
+import { ModularSchemaManager } from "@/managers/schema";
+import { ConnectionManager } from "@/managers/ConnectionManager";
+import { QueryExecutionService } from "@/services/QueryExecutionService";
+import { ValidationFramework } from "@/core/ValidationFramework";
 
 export interface SchemaComparisonData {
-    id: string;
-    sourceConnection: DotNetConnectionInfo;
-    targetConnection: DotNetConnectionInfo;
-    differences: SchemaDifference[];
-    comparisonOptions: ComparisonOptions;
-    createdAt: string;
-    executionTime: string;
+  id: string;
+  sourceConnection: ConnectionInfo;
+  targetConnection: ConnectionInfo;
+  differences: SchemaDifference[];
+  comparisonOptions: ComparisonOptions;
+  createdAt: string;
+  executionTime: string;
 }
 
 export interface SchemaDifference {
-    id: string;
-    type: 'Added' | 'Removed' | 'Modified' | 'Moved';
-    objectType: string;
-    objectName: string;
-    schema: string;
-    sourceDefinition?: string | undefined;
-    targetDefinition?: string | undefined;
-    differenceDetails: string[];
-    severity: 'low' | 'medium' | 'high' | 'critical';
-    conflictResolution?: ConflictResolution;
-    impactAnalysis?: ImpactAnalysis;
+  id: string;
+  type: "Added" | "Removed" | "Modified" | "Moved";
+  objectType: string;
+  objectName: string;
+  schema: string;
+  sourceDefinition?: string | undefined;
+  targetDefinition?: string | undefined;
+  differenceDetails: string[];
+  severity: "low" | "medium" | "high" | "critical";
+  conflictResolution?: ConflictResolution;
+  impactAnalysis?: ImpactAnalysis;
 }
 
 export interface ConflictResolution {
-    strategy: 'source_wins' | 'target_wins' | 'merge' | 'manual' | 'skip';
-    resolved: boolean;
-    customScript?: string;
-    notes?: string;
-    resolvedBy?: string;
-    resolvedAt?: Date;
+  strategy: "source_wins" | "target_wins" | "merge" | "manual" | "skip";
+  resolved: boolean;
+  customScript?: string;
+  notes?: string;
+  resolvedBy?: string;
+  resolvedAt?: Date;
 }
 
 export interface ImpactAnalysis {
-    riskLevel: 'low' | 'medium' | 'high' | 'critical';
-    affectedObjects: string[];
-    dataLossPotential: boolean;
-    breakingChanges: boolean;
-    dependencies: string[];
-    warnings: string[];
-    recommendations: string[];
+  riskLevel: "low" | "medium" | "high" | "critical";
+  affectedObjects: string[];
+  dataLossPotential: boolean;
+  breakingChanges: boolean;
+  dependencies: string[];
+  warnings: string[];
+  recommendations: string[];
 }
 
 export interface ComparisonOptions {
-    mode: 'strict' | 'lenient';
-    ignoreSchemas: string[];
-    includeSystemObjects: boolean;
-    caseSensitive: boolean;
+  mode: "strict" | "lenient";
+  ignoreSchemas: string[];
+  includeSystemObjects: boolean;
+  caseSensitive: boolean;
 }
 
 // Define missing types locally since they're not exported from schema module
 export interface DetailedSchemaComparisonResult {
-    comparisonId: string;
-    differences: SchemaDifference[];
-    columnComparisons?: Map<string, ColumnComparisonDetail[]>;
-    indexComparisons?: Map<string, IndexComparisonDetail[]>;
-    constraintComparisons?: Map<string, ConstraintDifference[]>;
-    viewDependencies?: Map<string, ViewDependencyNode>;
-    dependencyGraph?: any;
-    createdAt: Date;
-    executionTime: number;
+  comparisonId: string;
+  differences: SchemaDifference[];
+  columnComparisons?: Map<string, ColumnComparisonDetail[]>;
+  indexComparisons?: Map<string, IndexComparisonDetail[]>;
+  constraintComparisons?: Map<string, ConstraintDifference[]>;
+  viewDependencies?: Map<string, ViewDependencyNode>;
+  dependencyGraph?: any;
+  createdAt: Date;
+  executionTime: number;
 }
 
 export interface ColumnComparisonDetail {
-    columnName: string;
-    dataType: string;
-    isNullable: boolean;
-    defaultValue?: string;
-    changeType: 'added' | 'removed' | 'modified';
+  columnName: string;
+  dataType: string;
+  isNullable: boolean;
+  defaultValue?: string;
+  changeType: "added" | "removed" | "modified";
 }
 
 export interface IndexComparisonDetail {
-    indexName: string;
-    tableName: string;
-    columnNames: string[];
-    isUnique: boolean;
-    changeType: 'added' | 'removed' | 'modified';
+  indexName: string;
+  tableName: string;
+  columnNames: string[];
+  isUnique: boolean;
+  changeType: "added" | "removed" | "modified";
 }
 
 export interface ConstraintDifference {
-    constraintName: string;
-    tableName: string;
-    constraintType: string;
-    changeType: 'added' | 'removed' | 'modified';
+  constraintName: string;
+  tableName: string;
+  constraintType: string;
+  changeType: "added" | "removed" | "modified";
 }
 
 export interface ViewDependencyNode {
-    viewName: string;
-    dependencies: string[];
-    dependents: string[];
+  viewName: string;
+  dependencies: string[];
+  dependents: string[];
 }
 
 // Enhanced comparison interfaces for detailed analysis
 export interface EnhancedSchemaComparisonData extends SchemaComparisonData {
-    detailedComparison?: DetailedSchemaComparisonResult;
-    columnComparisons?: Map<string, ColumnComparisonDetail[]>;
-    indexComparisons?: Map<string, IndexComparisonDetail[]>;
-    constraintComparisons?: Map<string, ConstraintDifference[]>;
-    viewDependencies?: Map<string, ViewDependencyNode>;
-    dependencyGraph?: any;
+  detailedComparison?: DetailedSchemaComparisonResult;
+  columnComparisons?: Map<string, ColumnComparisonDetail[]>;
+  indexComparisons?: Map<string, IndexComparisonDetail[]>;
+  constraintComparisons?: Map<string, ConstraintDifference[]>;
+  viewDependencies?: Map<string, ViewDependencyNode>;
+  dependencyGraph?: any;
 }
 
 export interface ComparisonViewMode {
-    type: 'basic' | 'detailed' | 'dependency' | 'performance';
-    showColumnDetails: boolean;
-    showIndexDetails: boolean;
-    showConstraintDetails: boolean;
-    showViewDependencies: boolean;
-    groupByObjectType: boolean;
-    showPerformanceMetrics: boolean;
+  type: "basic" | "detailed" | "dependency" | "performance";
+  showColumnDetails: boolean;
+  showIndexDetails: boolean;
+  showConstraintDetails: boolean;
+  showViewDependencies: boolean;
+  groupByObjectType: boolean;
+  showPerformanceMetrics: boolean;
 }
 
 export interface ComparisonFilter {
-    objectTypes: string[];
-    schemas: string[];
-    severityLevels: string[];
-    changeTypes: string[];
-    showOnlyBreaking: boolean;
-    showOnlyDataLoss: boolean;
+  objectTypes: string[];
+  schemas: string[];
+  severityLevels: string[];
+  changeTypes: string[];
+  showOnlyBreaking: boolean;
+  showOnlyDataLoss: boolean;
 }
 
 export class SchemaComparisonView {
-    private panel: vscode.WebviewPanel | undefined;
-    private comparisonData: EnhancedSchemaComparisonData | undefined;
-    private schemaManager: ModularSchemaManager;
-    private currentViewMode: ComparisonViewMode;
-    private currentFilter: ComparisonFilter;
+  private panel: vscode.WebviewPanel | undefined;
+  private comparisonData: EnhancedSchemaComparisonData | undefined;
+  private schemaManager: ModularSchemaManager;
+  private currentViewMode: ComparisonViewMode;
+  private currentFilter: ComparisonFilter;
 
-    constructor(
-        private dotNetService: PostgreSqlConnectionManager,
-        private connectionManager: ConnectionManager
-    ) {
-        this.schemaManager = new ModularSchemaManager(connectionManager, new QueryExecutionService(connectionManager), new ValidationFramework());
-        this.currentViewMode = {
-            type: 'basic',
-            showColumnDetails: false,
-            showIndexDetails: false,
-            showConstraintDetails: false,
-            showViewDependencies: false,
-            groupByObjectType: true,
-            showPerformanceMetrics: false
-        };
-        this.currentFilter = {
-            objectTypes: [],
-            schemas: [],
-            severityLevels: [],
-            changeTypes: [],
-            showOnlyBreaking: false,
-            showOnlyDataLoss: false
-        };
-    }
+  constructor(
+    private connectionManager: ConnectionManager
+  ) {
+    this.schemaManager = new ModularSchemaManager(
+      connectionManager,
+      new QueryExecutionService(connectionManager),
+      new ValidationFramework()
+    );
+    this.currentViewMode = {
+      type: "basic",
+      showColumnDetails: false,
+      showIndexDetails: false,
+      showConstraintDetails: false,
+      showViewDependencies: false,
+      groupByObjectType: true,
+      showPerformanceMetrics: false,
+    };
+    this.currentFilter = {
+      objectTypes: [],
+      schemas: [],
+      severityLevels: [],
+      changeTypes: [],
+      showOnlyBreaking: false,
+      showOnlyDataLoss: false,
+    };
+  }
 
-    async showComparison(comparisonData?: SchemaComparisonData): Promise<void> {
-        try {
-            Logger.info('Opening enhanced schema comparison view');
+  async showComparison(comparisonData?: SchemaComparisonData): Promise<void> {
+    try {
+      Logger.info("Opening enhanced schema comparison view");
 
-            if (comparisonData) {
-                this.comparisonData = comparisonData as EnhancedSchemaComparisonData;
-            }
+      if (comparisonData) {
+        this.comparisonData = comparisonData as EnhancedSchemaComparisonData;
+      }
 
-            this.panel = vscode.window.createWebviewPanel(
-                'postgresqlSchemaComparison',
-                'Schema Comparison',
-                vscode.ViewColumn.One,
-                {
-                    enableScripts: true,
-                    retainContextWhenHidden: true,
-                    localResourceRoots: [
-                        vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.parse(''), 'resources')
-                    ]
-                }
-            );
-
-            // Handle panel disposal
-            this.panel.onDidDispose(() => {
-                this.panel = undefined;
-                this.comparisonData = undefined;
-            });
-
-            // Generate and set HTML content
-            const htmlContent = await this.generateEnhancedComparisonHtml(this.comparisonData);
-            this.panel.webview.html = htmlContent;
-
-            // Handle messages from webview
-            this.panel.webview.onDidReceiveMessage(async (message) => {
-                await this.handleWebviewMessage(message);
-            });
-
-        } catch (error) {
-            Logger.error('Failed to show schema comparison', error as Error);
-            vscode.window.showErrorMessage(
-                `Failed to open schema comparison: ${(error as Error).message}`
-            );
+      this.panel = vscode.window.createWebviewPanel(
+        "postgresqlSchemaComparison",
+        "Schema Comparison",
+        vscode.ViewColumn.One,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [
+            vscode.Uri.joinPath(
+              vscode.workspace.workspaceFolders?.[0]?.uri ||
+                vscode.Uri.parse(""),
+              "resources"
+            ),
+          ],
         }
+      );
+
+      // Handle panel disposal
+      this.panel.onDidDispose(() => {
+        this.panel = undefined;
+        this.comparisonData = undefined;
+      });
+
+      // Generate and set HTML content
+      const htmlContent = await this.generateEnhancedComparisonHtml(
+        this.comparisonData
+      );
+      this.panel.webview.html = htmlContent;
+
+      // Handle messages from webview
+      this.panel.webview.onDidReceiveMessage(async (message) => {
+        await this.handleWebviewMessage(message);
+      });
+    } catch (error) {
+      Logger.error("Failed to show schema comparison", error as Error);
+      vscode.window.showErrorMessage(
+        `Failed to open schema comparison: ${(error as Error).message}`
+      );
     }
+  }
 
-    async performDetailedComparison(
-        sourceConnection: DotNetConnectionInfo,
-        targetConnection: DotNetConnectionInfo,
-        options: ComparisonOptions
-    ): Promise<void> {
-        try {
-            Logger.info('Performing detailed schema comparison', 'performDetailedComparison', {
-                source: sourceConnection.name,
-                target: targetConnection.name
-            });
-
-            // Show progress indicator
-            const progressOptions: vscode.ProgressOptions = {
-                location: vscode.ProgressLocation.Notification,
-                title: 'Performing Detailed Schema Comparison',
-                cancellable: true
-            };
-
-            await vscode.window.withProgress(progressOptions, async (progress, token) => {
-                progress.report({ increment: 0, message: 'Extracting detailed metadata...' });
-
-                if (token.isCancellationRequested) {
-                    throw new Error('Detailed comparison cancelled by user');
-                }
-
-                // Get connection IDs for SchemaManager
-                const sourceConnectionId = sourceConnection.id;
-                const targetConnectionId = targetConnection.id;
-
-                // Perform detailed comparison using SchemaManager
-                const detailedResult = await this.schemaManager.compareSchemasDetailed(
-                    sourceConnectionId,
-                    targetConnectionId,
-                    options
-                );
-
-                progress.report({ increment: 50, message: 'Analyzing detailed differences...' });
-
-                if (token.isCancellationRequested) {
-                    throw new Error('Detailed comparison cancelled by user');
-                }
-
-                // Convert detailed result to enhanced view format
-                this.comparisonData = this.convertDetailedComparison(detailedResult, sourceConnection, targetConnection, options);
-
-                progress.report({ increment: 100, message: 'Detailed comparison complete' });
-
-                // Update the view with enhanced results
-                if (this.panel) {
-                    const htmlContent = await this.generateEnhancedComparisonHtml(this.comparisonData);
-                    this.panel.webview.html = htmlContent;
-                }
-            });
-
-        } catch (error) {
-            Logger.error('Detailed schema comparison failed', error as Error);
-            vscode.window.showErrorMessage(
-                `Detailed schema comparison failed: ${(error as Error).message}`
-            );
-            throw error;
+  async performDetailedComparison(
+    sourceConnection: ConnectionInfo,
+    targetConnection: ConnectionInfo,
+    options: ComparisonOptions
+  ): Promise<void> {
+    try {
+      Logger.info(
+        "Performing detailed schema comparison",
+        "performDetailedComparison",
+        {
+          source: sourceConnection.name,
+          target: targetConnection.name,
         }
-    }
+      );
 
-    private convertDetailedComparison(
-        detailedResult: any,
-        sourceConnection: DotNetConnectionInfo,
-        targetConnection: DotNetConnectionInfo,
-        options: ComparisonOptions
-    ): EnhancedSchemaComparisonData {
-        return {
-            id: detailedResult.comparisonId,
+      // Show progress indicator
+      const progressOptions: vscode.ProgressOptions = {
+        location: vscode.ProgressLocation.Notification,
+        title: "Performing Detailed Schema Comparison",
+        cancellable: true,
+      };
+
+      await vscode.window.withProgress(
+        progressOptions,
+        async (progress, token) => {
+          progress.report({
+            increment: 0,
+            message: "Extracting detailed metadata...",
+          });
+
+          if (token.isCancellationRequested) {
+            throw new Error("Detailed comparison cancelled by user");
+          }
+
+          // Get connection IDs for SchemaManager
+          const sourceConnectionId = sourceConnection.id;
+          const targetConnectionId = targetConnection.id;
+
+          // Perform detailed comparison using SchemaManager
+          const detailedResult =
+            await this.schemaManager.compareSchemasDetailed(
+              sourceConnectionId,
+              targetConnectionId,
+              options
+            );
+
+          progress.report({
+            increment: 50,
+            message: "Analyzing detailed differences...",
+          });
+
+          if (token.isCancellationRequested) {
+            throw new Error("Detailed comparison cancelled by user");
+          }
+
+          // Convert detailed result to enhanced view format
+          this.comparisonData = this.convertDetailedComparison(
+            detailedResult,
             sourceConnection,
             targetConnection,
-            differences: detailedResult.differences,
-            comparisonOptions: options,
-            createdAt: detailedResult.createdAt.toISOString(),
-            executionTime: detailedResult.executionTime.toString(),
-            detailedComparison: detailedResult,
-            columnComparisons: detailedResult.columnComparisons,
-            indexComparisons: detailedResult.indexComparisons,
-            constraintComparisons: detailedResult.constraintComparisons,
-            viewDependencies: detailedResult.viewDependencies,
-            dependencyGraph: detailedResult.dependencyGraph
-        };
+            options
+          );
+
+          progress.report({
+            increment: 100,
+            message: "Detailed comparison complete",
+          });
+
+          // Update the view with enhanced results
+          if (this.panel) {
+            const htmlContent = await this.generateEnhancedComparisonHtml(
+              this.comparisonData
+            );
+            this.panel.webview.html = htmlContent;
+          }
+        }
+      );
+    } catch (error) {
+      Logger.error("Detailed schema comparison failed", error as Error);
+      vscode.window.showErrorMessage(
+        `Detailed schema comparison failed: ${(error as Error).message}`
+      );
+      throw error;
+    }
+  }
+
+  private convertDetailedComparison(
+    detailedResult: any,
+    sourceConnection: ConnectionInfo,
+    targetConnection: ConnectionInfo,
+    options: ComparisonOptions
+  ): EnhancedSchemaComparisonData {
+    return {
+      id: detailedResult.comparisonId,
+      sourceConnection,
+      targetConnection,
+      differences: detailedResult.differences,
+      comparisonOptions: options,
+      createdAt: detailedResult.createdAt.toISOString(),
+      executionTime: detailedResult.executionTime.toString(),
+      detailedComparison: detailedResult,
+      columnComparisons: detailedResult.columnComparisons,
+      indexComparisons: detailedResult.indexComparisons,
+      constraintComparisons: detailedResult.constraintComparisons,
+      viewDependencies: detailedResult.viewDependencies,
+      dependencyGraph: detailedResult.dependencyGraph,
+    };
+  }
+
+  private async generateEnhancedComparisonHtml(
+    data?: EnhancedSchemaComparisonData
+  ): Promise<string> {
+    if (!data) {
+      return this.generateEmptyStateHtml();
     }
 
-    private async generateEnhancedComparisonHtml(data?: EnhancedSchemaComparisonData): Promise<string> {
-        if (!data) {
-            return this.generateEmptyStateHtml();
-        }
+    const differencesByType = this.groupDifferencesByType(data.differences);
+    const hasDetailedData = data.detailedComparison !== undefined;
 
-        const differencesByType = this.groupDifferencesByType(data.differences);
-        const hasDetailedData = data.detailedComparison !== undefined;
-
-        return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
@@ -573,19 +606,31 @@ export class SchemaComparisonView {
             <div class="header">
                 <div class="comparison-info">
                     <h2>Enhanced Schema Comparison Results</h2>
-                    <span class="connection-badge source-badge">Source: ${data.sourceConnection.name}</span>
-                    <span class="connection-badge target-badge">Target: ${data.targetConnection.name}</span>
+                    <span class="connection-badge source-badge">Source: ${
+                      data.sourceConnection.name
+                    }</span>
+                    <span class="connection-badge target-badge">Target: ${
+                      data.targetConnection.name
+                    }</span>
                 </div>
                 <div class="view-mode-selector">
-                    <button class="view-mode-btn ${!hasDetailedData ? 'active' : ''}" onclick="switchViewMode('basic')">Basic</button>
-                    <button class="view-mode-btn ${hasDetailedData ? 'active' : ''}" onclick="switchViewMode('detailed')" ${!hasDetailedData ? 'disabled' : ''}>Detailed</button>
+                    <button class="view-mode-btn ${
+                      !hasDetailedData ? "active" : ""
+                    }" onclick="switchViewMode('basic')">Basic</button>
+                    <button class="view-mode-btn ${
+                      hasDetailedData ? "active" : ""
+                    }" onclick="switchViewMode('detailed')" ${
+      !hasDetailedData ? "disabled" : ""
+    }>Detailed</button>
                     <button class="view-mode-btn" onclick="switchViewMode('dependency')">Dependencies</button>
                     <button class="view-mode-btn" onclick="switchViewMode('performance')">Performance</button>
                 </div>
             </div>
 
             <div class="content-area">
-                ${hasDetailedData ? `
+                ${
+                  hasDetailedData
+                    ? `
                     <div class="detailed-analysis-section">
                         <div class="section-header">
                             <div class="section-title">Detailed Analysis</div>
@@ -601,7 +646,9 @@ export class SchemaComparisonView {
                             ${this.generateOverviewTab(data)}
                         </div>
                     </div>
-                ` : ''}
+                `
+                    : ""
+                }
 
                 <div class="summary-cards">
                     <div class="summary-card">
@@ -623,7 +670,9 @@ export class SchemaComparisonView {
                         <div class="summary-label">Modified</div>
                     </div>
                     <div class="summary-card">
-                        <div class="summary-number">${data.differences.length}</div>
+                        <div class="summary-number">${
+                          data.differences.length
+                        }</div>
                         <div class="summary-label">Total</div>
                     </div>
                 </div>
@@ -631,8 +680,10 @@ export class SchemaComparisonView {
 
             <div class="footer">
                 <div class="info">
-                    ${data.differences.length} differences found • Mode: ${data.comparisonOptions.mode}
-                    ${hasDetailedData ? '• Enhanced analysis available' : ''}
+                    ${data.differences.length} differences found • Mode: ${
+      data.comparisonOptions.mode
+    }
+                    ${hasDetailedData ? "• Enhanced analysis available" : ""}
                 </div>
                 <div class="actions">
                     <button class="btn btn-secondary" onclick="exportComparison()">Export</button>
@@ -642,7 +693,9 @@ export class SchemaComparisonView {
 
             <script>
                 const vscode = acquireVsCodeApi();
-                let currentViewMode = '${hasDetailedData ? 'detailed' : 'basic'}';
+                let currentViewMode = '${
+                  hasDetailedData ? "detailed" : "basic"
+                }';
 
                 function switchViewMode(mode) {
                     if (mode === 'basic' && !${hasDetailedData}) {
@@ -670,7 +723,9 @@ export class SchemaComparisonView {
 
                     switch (tabName) {
                         case 'overview':
-                            contentDiv.innerHTML = \`${this.generateOverviewTab(data)}\`;
+                            contentDiv.innerHTML = \`${this.generateOverviewTab(
+                              data
+                            )}\`;
                             break;
                         case 'columns':
                             contentDiv.innerHTML = generateColumnsTab(data);
@@ -776,32 +831,34 @@ export class SchemaComparisonView {
             </script>
         </body>
         </html>`;
-    }
+  }
 
-    private generateEmptyStateHtml(): string {
-        return `
+  private generateEmptyStateHtml(): string {
+    return `
             <div style="text-align: center; padding: 50px; color: var(--vscode-descriptionForeground);">
                 <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
                 <div style="font-size: 18px; margin-bottom: 10px;">No Comparison Data</div>
                 <div style="font-size: 14px;">Run a schema comparison to see detailed results here</div>
             </div>
         `;
+  }
+
+  private groupDifferencesByType(
+    differences: SchemaDifference[]
+  ): Record<string, number> {
+    return differences.reduce((acc, diff) => {
+      acc[diff.type] = (acc[diff.type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+  }
+
+  private generateOverviewTab(data: EnhancedSchemaComparisonData): string {
+    const detailedComparison = data.detailedComparison;
+    if (!detailedComparison) {
+      return '<div class="analysis-content">No detailed comparison data available</div>';
     }
 
-    private groupDifferencesByType(differences: SchemaDifference[]): Record<string, number> {
-        return differences.reduce((acc, diff) => {
-            acc[diff.type] = (acc[diff.type] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
-    }
-
-    private generateOverviewTab(data: EnhancedSchemaComparisonData): string {
-        const detailedComparison = data.detailedComparison;
-        if (!detailedComparison) {
-            return '<div class="analysis-content">No detailed comparison data available</div>';
-        }
-
-        return `
+    return `
             <div class="analysis-content">
                 <div class="metrics-grid">
                     <div class="metric-item">
@@ -834,55 +891,72 @@ export class SchemaComparisonView {
                 </div>
             </div>
         `;
+  }
+  private async handleWebviewMessage(message: any): Promise<void> {
+    switch (message.command) {
+      case "exportComparison":
+        await this.exportComparison(message.data);
+        break;
+      case "generateMigration":
+        await this.generateMigrationFromComparison(message.comparisonData);
+        break;
+      case "startNewComparison":
+        await vscode.commands.executeCommand("postgresql.compareSchemas");
+        break;
     }
-    private async handleWebviewMessage(message: any): Promise<void> {
-        switch (message.command) {
-            case 'exportComparison':
-                await this.exportComparison(message.data);
-                break;
-            case 'generateMigration':
-                await this.generateMigrationFromComparison(message.comparisonData);
-                break;
-            case 'startNewComparison':
-                await vscode.commands.executeCommand('postgresql.compareSchemas');
-                break;
-        }
-    }
+  }
 
-    private async exportComparison(data: EnhancedSchemaComparisonData): Promise<void> {
-        try {
-            const exportContent = JSON.stringify(data, null, 2);
-            const uri = await vscode.window.showSaveDialog({
-                filters: {
-                    'JSON Files': ['json'],
-                    'All Files': ['*']
-                },
-                defaultUri: vscode.Uri.file(`enhanced-schema-comparison-\${new Date().toISOString().split('T')[0]}.json`)
-            });
+  private async exportComparison(
+    data: EnhancedSchemaComparisonData
+  ): Promise<void> {
+    try {
+      const exportContent = JSON.stringify(data, null, 2);
+      const uri = await vscode.window.showSaveDialog({
+        filters: {
+          "JSON Files": ["json"],
+          "All Files": ["*"],
+        },
+        defaultUri: vscode.Uri.file(
+          `enhanced-schema-comparison-\${new Date().toISOString().split('T')[0]}.json`
+        ),
+      });
 
-            if (uri) {
-                await vscode.workspace.fs.writeFile(uri, Buffer.from(exportContent, 'utf8'));
-                vscode.window.showInformationMessage('Enhanced schema comparison exported successfully');
-            }
-        } catch (error) {
-            Logger.error('Failed to export comparison', error as Error);
-            vscode.window.showErrorMessage('Failed to export comparison');
-        }
+      if (uri) {
+        await vscode.workspace.fs.writeFile(
+          uri,
+          Buffer.from(exportContent, "utf8")
+        );
+        vscode.window.showInformationMessage(
+          "Enhanced schema comparison exported successfully"
+        );
+      }
+    } catch (error) {
+      Logger.error("Failed to export comparison", error as Error);
+      vscode.window.showErrorMessage("Failed to export comparison");
     }
+  }
 
-    private async generateMigrationFromComparison(comparisonData: EnhancedSchemaComparisonData): Promise<void> {
-        try {
-            await vscode.commands.executeCommand('postgresql.generateMigration', comparisonData);
-        } catch (error) {
-            Logger.error('Failed to generate migration from comparison', error as Error);
-            vscode.window.showErrorMessage('Failed to generate migration');
-        }
+  private async generateMigrationFromComparison(
+    comparisonData: EnhancedSchemaComparisonData
+  ): Promise<void> {
+    try {
+      await vscode.commands.executeCommand(
+        "postgresql.generateMigration",
+        comparisonData
+      );
+    } catch (error) {
+      Logger.error(
+        "Failed to generate migration from comparison",
+        error as Error
+      );
+      vscode.window.showErrorMessage("Failed to generate migration");
     }
-    dispose(): void {
-        if (this.panel) {
-            this.panel.dispose();
-            this.panel = undefined;
-        }
-        this.comparisonData = undefined;
+  }
+  dispose(): void {
+    if (this.panel) {
+      this.panel.dispose();
+      this.panel = undefined;
     }
-};
+    this.comparisonData = undefined;
+  }
+}

@@ -155,7 +155,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.table_name,
       schema: row.table_schema,
       type: ObjectType.Table,
-      database: handle.connection.database,
+      database: 'unknown', // PoolClient doesn't expose database name
       owner: row.owner,
       sizeInBytes: parseInt(row.size_bytes) || undefined,
       definition: `CREATE TABLE "${row.table_schema}"."${row.table_name}" (...);`, // Simplified
@@ -195,7 +195,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.table_name,
       schema: row.table_schema,
       type: ObjectType.View,
-      database: connectionInfo.database,
+      database: 'unknown', // connectionInfo not available in scope
       owner: row.owner,
       definition: row.view_definition || '',
       properties: {
@@ -272,7 +272,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.sequence_name,
       schema: row.sequence_schema,
       type: ObjectType.Sequence,
-      database: handle.connection.database,
+      database: 'unknown', // PoolClient doesn't expose database name
       owner: row.owner,
       definition: `CREATE SEQUENCE "${row.sequence_schema}"."${row.sequence_name}";`,
       properties: {
@@ -309,7 +309,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.type_name,
       schema: row.type_schema,
       type: ObjectType.Type,
-      database: handle.connection.database,
+      database: 'unknown', // PoolClient doesn't expose database name
       owner: row.owner,
       definition: `CREATE TYPE "${row.type_schema}"."${row.type_name}" (...);`,
       properties: {
@@ -350,7 +350,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.index_name,
       schema: row.index_schema,
       type: ObjectType.Index,
-      database: handle.connection.database,
+      database: 'unknown', // PoolClient doesn't expose database name
       owner: row.owner,
       definition: `CREATE INDEX "${row.index_name}" ON "${row.index_schema}"."${row.table_name}" (...);`,
       properties: {
@@ -390,7 +390,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.trigger_name,
       schema: row.trigger_schema,
       type: ObjectType.Trigger,
-      database: handle.connection.database,
+      database: 'unknown', // PoolClient doesn't expose database name
       owner: row.owner,
       definition: `CREATE TRIGGER "${row.trigger_name}" ...;`,
       properties: {
@@ -430,7 +430,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.constraint_name,
       schema: row.constraint_schema,
       type: ObjectType.Constraint,
-      database: handle.connection.database,
+      database: 'unknown', // PoolClient doesn't expose database name
       owner: row.owner,
       definition: `ALTER TABLE "${row.constraint_schema}"."${row.table_name}" ADD CONSTRAINT "${row.constraint_name}" ...;`,
       properties: {

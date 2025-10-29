@@ -4,6 +4,9 @@ import { ExtensionComponents } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
 import { SchemaComparisonOptions, DetailedSchemaComparisonResult } from '@/managers/schema/SchemaComparison';
 import { DatabaseConnection } from '@/managers/ConnectionManager';
+import { MigrationManagement } from '@/managers/schema/MigrationManagement';
+import { SchemaOperations } from '@/managers/schema/SchemaOperations';
+import { ValidationFramework } from '@/core/ValidationFramework';
 interface CommandDefinition {
     command: string;
     handler: (...args: any[]) => any;
@@ -27,6 +30,8 @@ export class CommandManager {
     private components: ExtensionComponents;
     private commandErrors: CommandError[] = [];
     private registeredCommands: Set<string> = new Set();
+    private migrationManager: MigrationManagement;
+    private schemaOperations: SchemaOperations;
     constructor(
         context: vscode.ExtensionContext,
         extension: PostgreSqlExtension,
@@ -35,6 +40,13 @@ export class CommandManager {
         this.context = context;
         this.extension = extension;
         this.components = components;
+
+        // Initialize managers
+        this.migrationManager = new MigrationManagement(
+            this.components.queryExecutionService!,
+            new ValidationFramework()
+        );
+        this.schemaOperations = new SchemaOperations(this.components.connectionManager);
     }
     registerCommands(): vscode.Disposable[] {
         try {
@@ -582,9 +594,24 @@ export class CommandManager {
             }
 
             if (this.components.migrationPreviewView) {
-                // MigrationPreviewView uses showPreview method
-                Logger.info('Migration generation requested', 'CommandManager');
-                vscode.window.showInformationMessage('Migration generation feature coming soon');
+                // Generate migration script from comparison data with real-time validation
+                const enhancedScript = await this.migrationManager.generateEnhancedMigrationScript(
+                    comparison.sourceConnectionId,
+                    comparison.targetConnectionId,
+                    comparison.differences || []
+                );
+
+                // Convert EnhancedMigrationScript to DotNetMigrationScript for compatibility
+                const migrationScript = {
+                    id: enhancedScript.id,
+                    sqlScript: enhancedScript.migrationSteps.map(step => step.sqlScript).join(';\n'),
+                    rollbackScript: enhancedScript.rollbackScript.steps.map(step => step.description).join(';\n') || undefined,
+                    description: enhancedScript.description,
+                    createdAt: enhancedScript.generatedAt.toISOString()
+                };
+
+                await this.components.migrationPreviewView.showPreview(migrationScript);
+                Logger.info('Migration script generated and preview shown with real-time validation', 'CommandManager');
             } else {
                 vscode.window.showErrorMessage('Migration preview view not available');
             }
@@ -601,9 +628,9 @@ export class CommandManager {
             }
 
             if (this.components.migrationPreviewView) {
-                // MigrationPreviewView uses showPreview method
-                Logger.info('Migration preview requested', 'CommandManager');
-                vscode.window.showInformationMessage('Migration preview feature coming soon');
+                // Show migration preview with real-time validation
+                await this.components.migrationPreviewView.showPreview(migration);
+                Logger.info('Migration preview displayed with real-time validation', 'CommandManager');
             } else {
                 vscode.window.showErrorMessage('Migration preview view not available');
             }
@@ -620,10 +647,15 @@ export class CommandManager {
             }
 
             if (this.components.schemaBrowserView) {
-                // SchemaBrowserView doesn't have showObjectDetails, show info message instead
-                const objectInfo = `${databaseObject.type || 'Object'}: ${databaseObject.name}${databaseObject.schema ? ` (Schema: ${databaseObject.schema})` : ''}`;
-                vscode.window.showInformationMessage(`Object Details: ${objectInfo}`);
-                Logger.info('Object details requested', 'CommandManager', { object: databaseObject.name });
+                // Show detailed object information with real-time metadata
+                const objectDetails = await this.schemaOperations.getObjectDetails(
+                    databaseObject.connectionId,
+                    databaseObject.type,
+                    databaseObject.schema,
+                    databaseObject.name
+                );
+                await this.components.schemaBrowserView.showSchemaBrowser(databaseObject.connectionId, databaseObject.schema);
+                Logger.info('Object details displayed with real-time metadata', 'CommandManager', { object: databaseObject.name });
             } else {
                 vscode.window.showErrorMessage('Schema browser not available');
             }

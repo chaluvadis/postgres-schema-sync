@@ -139,7 +139,6 @@ function registerCriticalCommands(context: vscode.ExtensionContext, components: 
     context.subscriptions.push(addConnectionCommand);
     Logger.info('Critical commands registered successfully', 'Extension');
 }
-
 export function deactivate(): Thenable<void> | undefined {
     const deactivationContext = ErrorHandler.createEnhancedContext(
         'ExtensionDeactivation',
