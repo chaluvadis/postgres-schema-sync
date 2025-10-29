@@ -224,14 +224,14 @@
           "group": "navigation"
         },
         {
-          "command": "postgresql.viewObjectDetails",
-          "when": "view == postgresqlExplorer && viewItem =~ /^(table|view|function|procedure|sequence|type|domain|collation|extension|role|tablespace)$/",
-          "group": "details"
-        },
-        {
           "command": "postgresql.openQueryEditor",
           "when": "view == postgresqlExplorer && viewItem == connection",
           "group": "query"
+        },
+        {
+          "command": "postgresql.viewObjectDetails",
+          "when": "view == postgresqlExplorer && viewItem =~ /^(table|view|function|procedure|sequence|type|domain|collation|extension|role|tablespace)$/",
+          "group": "details"
         }
       ]
     }
@@ -694,17 +694,16 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "build:all": "pnpm run compile",
-    "package": "pnpm run build:all && vsce package",
+    "package": "pnpm run compile && vsce package",
     "clean": "rimraf bin out"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/mocha": "^10.0.10",
-    "@types/node": "24.7.2",
+    "@types/node": "24.9.2",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.105.0",
-    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
@@ -716,7 +715,7 @@
     "sinon": "^21.0.0",
     "ts-jest": "^29.4.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3",
+    "@typescript/native-preview": "^7.0.0-dev.20251029.1",
     "@types/pg": "^8.15.6"
   },
   "repository": {

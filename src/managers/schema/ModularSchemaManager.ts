@@ -1,6 +1,6 @@
 import { ConnectionManager } from "../ConnectionManager";
 import { Logger } from "@/utils/Logger";
-import { PostgreSqlConnectionManager } from "@/services/PostgreSqlConnectionManager";
+import { PostgreSqlConnectionManager } from "@/core/PostgreSqlConnectionManager";
 import { ExtensionInitializer } from "@/utils/ExtensionInitializer";
 import { ConflictResolutionService } from "@/services/ConflictResolutionService";
 import { ValidationFramework } from "../../core/ValidationFramework";
@@ -91,8 +91,8 @@ export {
   PerformanceAlert,
   PerformanceBaseline,
   BaselineMetric,
-  SystemBaselineMetric
-} from './PerformanceAnalysis';
+  SystemBaselineMetric,
+} from "./PerformanceAnalysis";
 
 /**
  * ModularSchemaManager - Simplified schema manager using consolidated services
@@ -790,5 +790,4 @@ export class ModularSchemaManager {
   getPerformanceAnalysis(): PerformanceAnalysis {
     return this.performanceAnalysis;
   }
-
 }

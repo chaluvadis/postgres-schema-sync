@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { PerformanceMonitorService, PerformanceAlert, QueryPerformanceMetrics } from '@/services/PerformanceMonitorService';
+import { PerformanceMonitorService, PerformanceAlert } from '@/services/PerformanceMonitorService';
 import { Logger } from '@/utils/Logger';
 
 export interface AlertRule {
