@@ -694,31 +694,30 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "build:scripts": "tsc -p tsconfig.scripts.json",
     "build:all": "pnpm run compile",
     "package": "pnpm run build:all && vsce package",
-    "clean": "rimraf bin out",
-    "postinstall": "pnpm run build:scripts"
+    "clean": "rimraf bin out"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/mocha": "^10.0.10",
-    "@types/node": "24.7.0",
+    "@types/node": "24.7.2",
     "@types/sinon": "^17.0.4",
-    "@types/vscode": "^1.104.0",
+    "@types/vscode": "^1.105.0",
     "@typescript-eslint/eslint-plugin": "^8.46.0",
-    "@typescript-eslint/parser": "^8.46.0",
-    "@vscode/test-cli": "^0.0.11",
+    "@typescript-eslint/parser": "^8.46.2",
+    "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.6.2",
-    "esbuild": "^0.25.10",
-    "eslint": "^9.37.0",
+    "esbuild": "^0.25.11",
+    "eslint": "^9.38.0",
     "npm-run-all": "^4.1.5",
     "rimraf": "^6.0.1",
     "sinon": "^21.0.0",
-    "ts-jest": "^29.4.4",
+    "ts-jest": "^29.4.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@types/pg": "^8.15.6"
   },
   "repository": {
     "type": "git",
@@ -728,7 +727,6 @@
     "url": "https://github.com/chaluvadis/postgresql-schema-sync/issues"
   },
   "dependencies": {
-    "@types/pg": "^8.15.6",
     "pg": "^8.16.3"
   }
 }
