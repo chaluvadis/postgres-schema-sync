@@ -694,14 +694,11 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "build:dotnet": "cd pg-drive/PostgreSqlSchemaCompareSync && dotnet build",
-    "build:dotnet:publish": "cd pg-drive/PostgreSqlSchemaCompareSync && dotnet publish --configuration Debug --output bin/Publish/net9.0",
     "build:scripts": "tsc -p tsconfig.scripts.json",
-    "build:dotnet:copy": "pnpm run build:scripts && pnpm run build:dotnet && pnpm run build:dotnet:publish && node scripts/copy-dll.js",
-    "build:all": "pnpm run build:dotnet:copy && pnpm run compile",
+    "build:all": "pnpm run compile",
     "package": "pnpm run build:all && vsce package",
     "clean": "rimraf bin out",
-    "postinstall": "pnpm run build:scripts && node scripts/check-edge.js"
+    "postinstall": "pnpm run build:scripts"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
@@ -714,7 +711,6 @@
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.6.2",
-    "edge-js": "^24.0.5",
     "esbuild": "^0.25.10",
     "eslint": "^9.37.0",
     "npm-run-all": "^4.1.5",
@@ -730,5 +726,9 @@
   },
   "bugs": {
     "url": "https://github.com/chaluvadis/postgresql-schema-sync/issues"
+  },
+  "dependencies": {
+    "@types/pg": "^8.15.6",
+    "pg": "^8.16.3"
   }
 }

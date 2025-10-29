@@ -1,6 +1,6 @@
 import { ConnectionManager } from '../ConnectionManager';
 import { Logger } from '@/utils/Logger';
-import { DotNetIntegrationService, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
+import { PostgreSqlConnectionManager, DotNetConnectionInfo } from '@/services/PostgreSqlConnectionManager';
 import { SecurityManager, DataClassification } from '@/services/SecurityManager';
 import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 
@@ -57,13 +57,13 @@ export interface ConnectionComparisonMetadata {
  */
 export class SchemaOperations {
     private connectionManager: ConnectionManager;
-    private dotNetService: DotNetIntegrationService;
+    private dotNetService: PostgreSqlConnectionManager;
     private schemaCache: Map<string, SchemaCache> = new Map();
     private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
     constructor(connectionManager: ConnectionManager) {
         this.connectionManager = connectionManager;
-        this.dotNetService = DotNetIntegrationService.getInstance();
+        this.dotNetService = PostgreSqlConnectionManager.getInstance();
     }
 
     /**

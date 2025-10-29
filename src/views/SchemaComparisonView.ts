@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
-import { DotNetIntegrationService, DotNetSchemaComparison, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
+import { PostgreSqlConnectionManager, DotNetSchemaComparison, DotNetConnectionInfo } from '@/services/PostgreSqlConnectionManager';
 import { ModularSchemaManager } from '@/managers/schema';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { QueryExecutionService } from '@/services/QueryExecutionService';
@@ -135,7 +135,7 @@ export class SchemaComparisonView {
     private currentFilter: ComparisonFilter;
 
     constructor(
-        private dotNetService: DotNetIntegrationService,
+        private dotNetService: PostgreSqlConnectionManager,
         private connectionManager: ConnectionManager
     ) {
         this.schemaManager = new ModularSchemaManager(connectionManager, new QueryExecutionService(connectionManager), new ValidationFramework());

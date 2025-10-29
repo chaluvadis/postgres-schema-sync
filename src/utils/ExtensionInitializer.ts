@@ -13,7 +13,7 @@ import { SettingsView } from '@/views/SettingsView';
 import { DashboardView } from '@/views/DashboardView';
 import { ErrorDisplayView } from '@/views/ErrorDisplayView';
 import { NotificationManager } from '@/views/NotificationManager';
-import { DotNetIntegrationService } from '@/services/DotNetIntegrationService';
+import { PostgreSqlConnectionManager } from '@/services/PostgreSqlConnectionManager';
 import { QueryExecutionService } from '@/services/QueryExecutionService';
 import { ValidationFramework } from '@/core/ValidationFramework';
 import { QueryEditorView } from '@/views/QueryEditorView';
@@ -60,12 +60,12 @@ export interface ExtensionComponents {
 }
 
 export class ExtensionInitializer {
-    private static dotNetService: DotNetIntegrationService;
+    private static dotNetService: PostgreSqlConnectionManager;
     static async initializeDotNetService(): Promise<boolean> {
         try {
             Logger.info('Initializing .NET integration service');
 
-            this.dotNetService = DotNetIntegrationService.getInstance();
+            this.dotNetService = PostgreSqlConnectionManager.getInstance();
             const initialized = await this.dotNetService.initialize();
 
             if (initialized) {
@@ -215,7 +215,7 @@ export class ExtensionInitializer {
             }
         }
     }
-    static getDotNetService(): DotNetIntegrationService {
+    static getDotNetService(): PostgreSqlConnectionManager {
         if (!this.dotNetService) {
             throw new Error('.NET integration service not initialized');
         }

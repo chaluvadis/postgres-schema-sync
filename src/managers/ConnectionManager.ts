@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
-import { DotNetIntegrationService, DotNetConnectionInfo } from '@/services/DotNetIntegrationService';
+import { PostgreSqlConnectionManager, DotNetConnectionInfo } from '@/services/PostgreSqlConnectionManager';
 import { SecurityManager, DataClassification } from '@/services/SecurityManager';
 import { ActivityBarProvider } from '@/providers/ActivityBarProvider';
 
@@ -53,12 +53,12 @@ export class ConnectionManager {
     private reconnectionTimers: Map<string, NodeJS.Timeout> = new Map();
     private healthCheckInterval?: NodeJS.Timeout;
     private secrets: vscode.SecretStorage | undefined;
-    private dotNetService: DotNetIntegrationService;
+    private dotNetService: PostgreSqlConnectionManager;
     private activityBarProvider?: ActivityBarProvider | undefined;
 
     constructor(context: vscode.ExtensionContext, activityBarProvider?: ActivityBarProvider) {
         this.context = context;
-        this.dotNetService = DotNetIntegrationService.getInstance();
+        this.dotNetService = PostgreSqlConnectionManager.getInstance();
         this.activityBarProvider = activityBarProvider;
         this.loadConnections();
         this.secrets = context.secrets;

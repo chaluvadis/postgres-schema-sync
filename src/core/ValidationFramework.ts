@@ -329,8 +329,8 @@ export class ValidationFramework {
             }
 
             // Use DotNet service directly with connection info from context
-            const { DotNetIntegrationService } = await import('../services/DotNetIntegrationService');
-            const dotNetService = DotNetIntegrationService.getInstance();
+            const { PostgreSqlConnectionManager } = await import('../services/PostgreSqlConnectionManager');
+            const dotNetService = PostgreSqlConnectionManager.getInstance();
 
             // Get connection info from context or use a default approach
             let dotNetConnection: any = null;
@@ -420,8 +420,8 @@ export class ValidationFramework {
             }
 
             // Import services for database access
-            const { DotNetIntegrationService } = await import('../services/DotNetIntegrationService');
-            const dotNetService = DotNetIntegrationService.getInstance();
+            const { PostgreSqlConnectionManager } = await import('../services/PostgreSqlConnectionManager');
+            const dotNetService = PostgreSqlConnectionManager.getInstance();
 
             // Get connection info
             let dotNetConnection: any = null;
@@ -506,8 +506,8 @@ export class ValidationFramework {
             }
 
             // Import services for database access
-            const { DotNetIntegrationService } = await import('../services/DotNetIntegrationService');
-            const dotNetService = DotNetIntegrationService.getInstance();
+            const { PostgreSqlConnectionManager } = await import('../services/PostgreSqlConnectionManager');
+            const dotNetService = PostgreSqlConnectionManager.getInstance();
 
             // Get connection info
             let dotNetConnection: any = null;
@@ -1150,8 +1150,8 @@ export class ValidationFramework {
                 case 'sql_condition':
                     // Execute SQL condition check
                     if (context?.targetConnection) {
-                        const { DotNetIntegrationService } = await import('../services/DotNetIntegrationService');
-                        const dotNetService = DotNetIntegrationService.getInstance();
+                        const { PostgreSqlConnectionManager } = await import('../services/PostgreSqlConnectionManager');
+                        const dotNetService = PostgreSqlConnectionManager.getInstance();
 
                         const conditionResult = await this.executeQueryWithTimeout(
                             dotNetService,

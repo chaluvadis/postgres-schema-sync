@@ -14,6 +14,7 @@ import { ConnectionService } from './ConnectionService';
 import { ProgressTracker } from './ProgressTracker';
 import { ValidationFramework } from './ValidationFramework';
 import { MigrationOrchestrator } from './MigrationOrchestrator';
+import { PostgreSqlSchemaBrowser } from './PostgreSqlSchemaBrowser';
 
 export class CoreServices {
     private static instance: CoreServices | null = null;
@@ -52,10 +53,12 @@ export class CoreServices {
 
     get migrationOrchestrator(): MigrationOrchestrator {
         if (!this._migrationOrchestrator) {
+            const schemaBrowser = new PostgreSqlSchemaBrowser();
             this._migrationOrchestrator = new MigrationOrchestrator(
                 this.connectionService,
                 this.progressTracker,
-                this.validationFramework
+                this.validationFramework,
+                schemaBrowser
             );
         }
         return this._migrationOrchestrator;

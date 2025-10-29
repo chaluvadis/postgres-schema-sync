@@ -1,9 +1,9 @@
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { Logger } from '@/utils/Logger';
 import {
-    DotNetIntegrationService,
-    DotNetConnectionInfo
-} from '@/services/DotNetIntegrationService';
+    PostgreSqlConnectionManager,
+    ConnectionInfo as DotNetConnectionInfo
+} from './PostgreSqlConnectionManager';
 import { SecurityManager, DataClassification } from '@/services/SecurityManager';
 import { ValidationFramework, ValidationRequest } from './ValidationFramework';
 export interface ConnectionInfo {
@@ -28,7 +28,7 @@ export interface ConnectionServiceOptions {
 }
 export class ConnectionService {
     private connectionManager: ConnectionManager;
-    private dotNetService: DotNetIntegrationService;
+    private dotNetService: PostgreSqlConnectionManager;
     private validationFramework: ValidationFramework;
     private options: Required<ConnectionServiceOptions>;
 
@@ -39,7 +39,7 @@ export class ConnectionService {
     ) {
         this.connectionManager = connectionManager;
         this.validationFramework = validationFramework;
-        this.dotNetService = DotNetIntegrationService.getInstance();
+        this.dotNetService = PostgreSqlConnectionManager.getInstance();
         this.options = {
             retryAttempts: 3,
             connectionTimeout: 30000,
