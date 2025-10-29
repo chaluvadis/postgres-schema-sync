@@ -1,4 +1,4 @@
-# VSCode Extension - PostgreSQL Schema Compare & Sync
+# PostgreSQL Schema Compare & Sync
 
 **PostgreSQL schema management in VSCode**
 
@@ -76,7 +76,8 @@ Manage PostgreSQL schemas without leaving VSCode. Visual schema comparison, migr
                               |
                               |
                 +-------------V---------------+
-                |  Extension Backend (.NET)   |
+                |  Extension Backend          |
+                |  (TypeScript/Node.js)       |
                 |  - Controller/Coordinator   |
                 |  - Schema Compare Module    |
                 |  - Migration Generator      |
@@ -101,7 +102,7 @@ flowchart TD
         Tree --> Backend
         Cmd --> Backend
     end
-    subgraph Extension Backend (.NET)
+    subgraph Extension Backend
         Backend[Controller/Coordinator]
         Compare[Schema Comparison Module]
         Migrate[Migration Generator]
@@ -151,21 +152,21 @@ flowchart TD
 
 ## Development
 
-**Prerequisites:** .NET 9.0+, Node.js 22.0+, PostgreSQL 12+
+**Prerequisites:** Node.js 22.0+, PostgreSQL 12+
 
 **Setup:**
 ```bash
 git clone https://github.com/yourusername/postgres-schema-sync.git
 cd postgres-schema-sync
-npm install && npm run build:dotnet
+npm install
 npm run compile
 ```
 
-**Project Structure:** VSCode extension (TypeScript) + .NET backend (C#) with comprehensive testing
+**Project Structure:** VSCode extension (TypeScript) with comprehensive testing
 
 ## Contributing
 
-**Contribute:** Fork repository, create feature branch, add tests, submit PR
+**Contribute:** Fork the repository, create a feature branch, add tests, and submit a pull request.
 
 **Areas:** Database objects, performance, cloud integration, UI improvements
 
