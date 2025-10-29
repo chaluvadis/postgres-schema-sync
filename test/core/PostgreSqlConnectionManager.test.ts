@@ -91,8 +91,9 @@ describe('PostgreSqlConnectionManager', () => {
                 password: 'invalid'
             };
 
-            await expect(connectionManager.testConnection(invalidConnectionInfo))
-                .rejects.toThrow();
+            // The testConnection method returns a boolean, not throws
+            const result = await connectionManager.testConnection(invalidConnectionInfo);
+            expect(result).toBe(false);
         });
     });
 
