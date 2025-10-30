@@ -182,6 +182,18 @@
         "title": "Format Current SQL File",
         "category": "PostgreSQL",
         "icon": "$(edit)"
+      },
+      {
+        "command": "postgresql.showHelp",
+        "title": "Show Help",
+        "category": "PostgreSQL",
+        "icon": "$(question)"
+      },
+      {
+        "command": "postgresql.openSettings",
+        "title": "Open Settings",
+        "category": "PostgreSQL",
+        "icon": "$(settings-gear)"
       }
     ],
     "menus": {
