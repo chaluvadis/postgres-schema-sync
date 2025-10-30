@@ -84,14 +84,19 @@ export class ConnectionManager {
         id: this.generateId(),
       };
 
-      // Store password securely using VS Code Secret Storage
+      // Store password securely with additional encryption layer
       if (connectionInfo.password && this.secrets) {
+        const securityManager = SecurityManager.getInstance(this.secrets);
+        const encryptedPassword = await securityManager.encryptSensitiveData(
+          connectionInfo.password,
+          DataClassification.RESTRICTED
+        );
         await this.secrets.store(
           `connection_${connection.id}_password`,
-          connectionInfo.password
+          encryptedPassword
         );
         Logger.info(
-          `Password stored securely for connection: ${connection.id}`
+          `Password encrypted and stored securely for connection: ${connection.id}`
         );
       }
 
@@ -129,17 +134,22 @@ export class ConnectionManager {
         throw new Error(`Connection with id ${id} not found`);
       }
 
-      // Handle password update securely
+      // Handle password update securely with encryption
       if (connectionInfo.password) {
         if (this.secrets) {
           // Delete old password if it exists
           await this.secrets.delete(`connection_${id}_password`);
-          // Store new password securely
+          // Encrypt and store new password securely
+          const securityManager = SecurityManager.getInstance(this.secrets);
+          const encryptedPassword = await securityManager.encryptSensitiveData(
+            connectionInfo.password,
+            DataClassification.RESTRICTED
+          );
           await this.secrets.store(
             `connection_${id}_password`,
-            connectionInfo.password
+            encryptedPassword
           );
-          Logger.info(`Password updated securely for connection: ${id}`);
+          Logger.info(`Password encrypted and updated securely for connection: ${id}`);
         } else {
           Logger.warn("Secret storage not available, password not updated");
         }
@@ -213,10 +223,14 @@ export class ConnectionManager {
         return false;
       }
 
-      // Retrieve password securely from VS Code Secret Storage
+      // Retrieve and decrypt password securely from VS Code Secret Storage
       let password = "";
       if (this.secrets) {
-        password = (await this.secrets.get(`connection_${id}_password`)) || "";
+        const encryptedPassword = (await this.secrets.get(`connection_${id}_password`)) || "";
+        if (encryptedPassword) {
+          const securityManager = SecurityManager.getInstance(this.secrets);
+          password = await securityManager.decryptSensitiveData(encryptedPassword);
+        }
       }
 
       if (!password) {
@@ -303,12 +317,8 @@ export class ConnectionManager {
         }
       }
 
-      // Encrypt password for secure transmission to DotNet service
-      const securityManager = SecurityManager.getInstance();
-      const encryptedPassword = await securityManager.encryptSensitiveData(
-        password,
-        DataClassification.RESTRICTED
-      );
+      // Password is already encrypted from storage, use as-is for DotNet service
+      const encryptedPassword = password;
 
       const dotNetConnection: ConnectionInfo = {
         id: connection.id,
@@ -404,12 +414,8 @@ export class ConnectionManager {
         return false;
       }
 
-      // Encrypt password for secure transmission to DotNet service
-      const securityManager = SecurityManager.getInstance();
-      const encryptedPassword = await securityManager.encryptSensitiveData(
-        connectionData.password,
-        DataClassification.RESTRICTED
-      );
+      // Password is already encrypted from storage, use as-is for DotNet service
+      const encryptedPassword = connectionData.password;
 
       const dotNetConnection: ConnectionInfo = {
         id: "temp-" + Date.now(), // Temporary ID for testing
@@ -452,7 +458,11 @@ export class ConnectionManager {
   }
   async getConnectionPassword(id: string): Promise<string | undefined> {
     if (this.secrets) {
-      return await this.secrets.get(`connection_${id}_password`);
+      const encryptedPassword = await this.secrets.get(`connection_${id}_password`);
+      if (encryptedPassword) {
+        const securityManager = SecurityManager.getInstance(this.secrets);
+        return await securityManager.decryptSensitiveData(encryptedPassword);
+      }
     }
     return undefined;
   }

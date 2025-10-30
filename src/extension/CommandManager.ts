@@ -103,11 +103,6 @@ export class CommandManager {
     private registerCoreCommands(disposables: vscode.Disposable[]): void {
         const coreCommands: CommandDefinition[] = [
             {
-                command: 'postgresql.addConnection',
-                handler: () => this.handleAddConnection(),
-                description: 'Add a new database connection'
-            },
-            {
                 command: 'postgresql.editConnection',
                 handler: (connection?: any) => this.handleEditConnection(connection),
                 description: 'Edit an existing database connection'
@@ -170,6 +165,11 @@ export class CommandManager {
         ];
 
         coreCommands.forEach(({ command, handler, description }) => {
+            // Skip postgresql.addConnection as it's registered separately in extension.ts
+            if (command === 'postgresql.addConnection') {
+                return;
+            }
+
             try {
                 const disposable = vscode.commands.registerCommand(command, async (...args: any[]) => {
                     try {
@@ -190,13 +190,72 @@ export class CommandManager {
 
         // Register UI-specific commands
         this.registerUICommands(disposables);
+
+        // Register additional commands
+        this.registerAdditionalCommands(disposables);
+
+        // Register manage connections command
+        this.registerManageConnectionsCommand(disposables);
+    }
+
+    private registerAdditionalCommands(disposables: vscode.Disposable[]): void {
+        // Show Help command
+        disposables.push(vscode.commands.registerCommand('postgresql.showHelp', async () => {
+            try {
+                const helpUrl = 'https://github.com/chaluvadis/postgresql-schema-sync#readme';
+                const success = await vscode.env.openExternal(vscode.Uri.parse(helpUrl));
+                if (success) {
+                    Logger.info('Help documentation opened successfully', 'CommandManager');
+                } else {
+                    Logger.warn('Help documentation may not have opened', 'CommandManager');
+                    vscode.window.showWarningMessage('Help documentation may not have opened. Please check your default browser.');
+                }
+            } catch (error) {
+                Logger.error('Failed to open help', error as Error, 'CommandManager');
+                vscode.window.showErrorMessage('Failed to open help documentation');
+            }
+        }));
+
+        // Open Settings command
+        disposables.push(vscode.commands.registerCommand('postgresql.openSettings', async () => {
+            try {
+                await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:nomad-in-code.postgresql-schema-sync');
+                Logger.info('Extension settings opened successfully', 'CommandManager');
+            } catch (error) {
+                Logger.error('Failed to open settings', error as Error, 'CommandManager');
+                vscode.window.showErrorMessage('Failed to open extension settings');
+            }
+        }));
+    }
+
+    private registerManageConnectionsCommand(disposables: vscode.Disposable[]): void {
+        // Manage Connections command
+        disposables.push(vscode.commands.registerCommand('postgresql.manageConnections', async () => {
+            try {
+                if (this.components.connectionManager) {
+                    // Use connection management view for managing connections
+                    const { ConnectionManagementView } = await import('../views/ConnectionManagementView');
+                    const connectionView = new ConnectionManagementView(this.components.connectionManager);
+                    await connectionView.showConnectionDialog();
+                    Logger.info('Connection management opened successfully', 'CommandManager');
+                } else {
+                    Logger.warn('Connection manager not available', 'CommandManager');
+                    vscode.window.showErrorMessage('Connection manager not available');
+                }
+            } catch (error) {
+                Logger.error('Failed to open connection management', error as Error, 'CommandManager');
+                vscode.window.showErrorMessage(`Failed to open connection management: ${(error as Error).message}`);
+            }
+        }));
     }
     private registerUICommands(disposables: vscode.Disposable[]): void {
         // Dashboard command
         disposables.push(vscode.commands.registerCommand('postgresql.showDashboard', () => {
             if (this.components.dashboardView) {
                 this.components.dashboardView.showDashboard();
+                Logger.info('Dashboard opened successfully', 'CommandManager');
             } else {
+                Logger.warn('Dashboard view not available', 'CommandManager');
                 vscode.window.showErrorMessage('Dashboard view not available');
             }
         }));
@@ -205,7 +264,9 @@ export class CommandManager {
         disposables.push(vscode.commands.registerCommand('postgresql.showNotifications', () => {
             if (this.components.notificationManager) {
                 this.components.notificationManager.showNotificationCenter();
+                Logger.info('Notification center opened successfully', 'CommandManager');
             } else {
+                Logger.warn('Notification manager not available', 'CommandManager');
                 vscode.window.showErrorMessage('Notification manager not available');
             }
         }));
@@ -214,7 +275,9 @@ export class CommandManager {
         disposables.push(vscode.commands.registerCommand('postgresql.showActiveOperations', () => {
             if (this.components.enhancedStatusBarProvider) {
                 this.components.enhancedStatusBarProvider.showOperationDetails();
+                Logger.info('Active operations view opened successfully', 'CommandManager');
             } else {
+                Logger.warn('Enhanced status bar not available', 'CommandManager');
                 vscode.window.showErrorMessage('Enhanced status bar not available');
             }
         }));
@@ -222,8 +285,15 @@ export class CommandManager {
         // Schema drift reporting command
         disposables.push(vscode.commands.registerCommand('postgresql.showSchemaDriftReport', async (comparisonId?: string) => {
             if (this.components.driftReportView && this.components.reportingService) {
+                if (!comparisonId) {
+                    Logger.warn('No comparisonId provided for schema drift report', 'CommandManager');
+                    vscode.window.showErrorMessage('Comparison ID is required to show schema drift report');
+                    return;
+                }
                 await this.components.driftReportView.showReport(comparisonId);
+                Logger.info('Schema drift report opened successfully', 'CommandManager', { comparisonId });
             } else {
+                Logger.warn('Schema drift report view or reporting service not available', 'CommandManager');
                 vscode.window.showErrorMessage('Schema drift report view not available');
             }
         }));
@@ -232,7 +302,9 @@ export class CommandManager {
         disposables.push(vscode.commands.registerCommand('postgresql.showQueryAnalytics', async () => {
             if (this.components.queryAnalyticsView) {
                 await this.components.queryAnalyticsView.showAnalytics();
+                Logger.info('Query analytics opened successfully', 'CommandManager');
             } else {
+                Logger.warn('Query analytics view not available', 'CommandManager');
                 vscode.window.showErrorMessage('Query analytics view not available');
             }
         }));
@@ -245,7 +317,10 @@ export class CommandManager {
             });
 
             if (connectionName) {
-                vscode.commands.executeCommand('postgresql.addConnection');
+                await vscode.commands.executeCommand('postgresql.addConnection');
+                Logger.info('Quick connect initiated with name', 'CommandManager', { connectionName });
+            } else {
+                Logger.info('Quick connect cancelled - no name provided', 'CommandManager');
             }
         }));
     }
@@ -254,7 +329,9 @@ export class CommandManager {
         disposables.push(vscode.commands.registerCommand('postgresql.openQueryEditor', async (connection) => {
             if (this.components.queryEditorView) {
                 await this.components.queryEditorView.showQueryEditor(connection?.id);
+                Logger.info('Query editor opened successfully', 'CommandManager', { connectionId: connection?.id });
             } else {
+                Logger.warn('Query editor view not available', 'CommandManager');
                 vscode.window.showErrorMessage('Query editor not available');
             }
         }));
@@ -333,24 +410,10 @@ export class CommandManager {
 
         await this.extension.executeMigration(migration);
     }
-    private async handleAddConnection(): Promise<void> {
-        try {
-            if (this.components.connectionManager) {
-                // Use connection management view for adding connections
-                const { ConnectionManagementView } = await import('../views/ConnectionManagementView');
-                const connectionView = new ConnectionManagementView(this.components.connectionManager);
-                await connectionView.showConnectionDialog();
-            } else {
-                vscode.window.showErrorMessage('Connection manager not available');
-            }
-        } catch (error) {
-            Logger.error('Failed to add connection', error as Error);
-            vscode.window.showErrorMessage(`Failed to add connection: ${(error as Error).message}`);
-        }
-    }
     private async handleRemoveConnection(connection?: any): Promise<void> {
         try {
             if (!connection) {
+                Logger.warn('No connection provided for removal', 'CommandManager');
                 vscode.window.showErrorMessage('No connection provided for removal');
                 return;
             }
@@ -368,16 +431,20 @@ export class CommandManager {
                     // Refresh the tree view to update the UI
                     if (this.components.treeProvider) {
                         this.components.treeProvider.refresh();
+                        Logger.info('Tree view refreshed after connection removal', 'CommandManager');
+                    } else {
+                        Logger.warn('Tree provider not available for refresh after connection removal', 'CommandManager');
                     }
 
                     Logger.info('Connection removed successfully', 'CommandManager', { connectionId: connection.id });
                     vscode.window.showInformationMessage(`Connection "${connection.name}" removed successfully`);
                 }
             } else {
+                Logger.warn('Connection manager not available', 'CommandManager');
                 vscode.window.showErrorMessage('Connection manager not available');
             }
         } catch (error) {
-            Logger.error('Failed to remove connection', error as Error);
+            Logger.error('Failed to remove connection', error as Error, 'CommandManager');
             vscode.window.showErrorMessage(`Failed to remove connection: ${(error as Error).message}`);
         }
     }
@@ -386,28 +453,33 @@ export class CommandManager {
             if (this.components.treeProvider) {
                 this.components.treeProvider.refresh();
                 vscode.window.showInformationMessage('Database explorer refreshed');
+                Logger.info('Database explorer refreshed successfully', 'CommandManager');
             } else {
+                Logger.warn('Tree provider not available for refresh', 'CommandManager');
                 vscode.window.showErrorMessage('Tree provider not available');
             }
         } catch (error) {
-            Logger.error('Failed to refresh explorer', error as Error);
+            Logger.error('Failed to refresh explorer', error as Error, 'CommandManager');
             vscode.window.showErrorMessage(`Failed to refresh explorer: ${(error as Error).message}`);
         }
     }
     private async handleBrowseSchema(connectionId?: string, schemaName?: string): Promise<void> {
         try {
             if (!connectionId) {
+                Logger.warn('Connection ID is required to browse schema', 'CommandManager');
                 vscode.window.showErrorMessage('Connection ID is required to browse schema');
                 return;
             }
 
             if (this.components.schemaBrowserView) {
                 await this.components.schemaBrowserView.showSchemaBrowser(connectionId, schemaName);
+                Logger.info('Schema browser opened successfully', 'CommandManager', { connectionId, schemaName });
             } else {
+                Logger.warn('Schema browser view not available', 'CommandManager');
                 vscode.window.showErrorMessage('Schema browser not available');
             }
         } catch (error) {
-            Logger.error('Failed to browse schema', error as Error);
+            Logger.error('Failed to browse schema', error as Error, 'CommandManager');
             vscode.window.showErrorMessage(`Failed to browse schema: ${(error as Error).message}`);
         }
     }
@@ -733,7 +805,7 @@ ${recentErrorsText}
 Generated at: ${new Date().toLocaleString()}
         `.trim();
 
-        Logger.info('Command Statistics Report', 'CommandManager', {
+        Logger.info('Command Statistics Report displayed', 'CommandManager', {
             registeredCommands: stats.registeredCommands,
             totalErrors: stats.totalErrors,
             successRate: stats.successRate,
@@ -814,24 +886,34 @@ Generated at: ${new Date().toLocaleString()}
     private async executeCurrentSQLFile(): Promise<void> {
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) {
+            Logger.warn('No active SQL file to execute', 'CommandManager');
             vscode.window.showErrorMessage('No active SQL file to execute');
             return;
         }
 
         const document = activeEditor.document;
         if (document.languageId !== 'sql' && document.languageId !== 'postgresql') {
+            Logger.warn('Current file is not a SQL file', 'CommandManager', { languageId: document.languageId });
             vscode.window.showErrorMessage('Current file is not a SQL file');
             return;
         }
 
         const sqlContent = document.getText().trim();
         if (!sqlContent) {
+            Logger.warn('SQL file is empty', 'CommandManager');
             vscode.window.showErrorMessage('SQL file is empty');
+            return;
+        }
+
+        if (!this.components.connectionManager) {
+            Logger.warn('Connection manager not available', 'CommandManager');
+            vscode.window.showErrorMessage('Connection manager not available');
             return;
         }
 
         const connections = this.components.connectionManager.getConnections();
         if (connections.length === 0) {
+            Logger.warn('No database connections available', 'CommandManager');
             vscode.window.showErrorMessage('No database connections available. Please add a connection first.');
             return;
         }
@@ -843,6 +925,7 @@ Generated at: ${new Date().toLocaleString()}
             const detectedConnection = connections.find(c => c.id === detectedConnectionId);
             if (detectedConnection) {
                 targetConnection = detectedConnection;
+                Logger.info('Using detected connection for file execution', 'CommandManager', { connectionId: detectedConnectionId });
             }
         } else if (connections.length > 1) {
             const connectionItems: ConnectionItem[] = connections.map((conn: any) => ({
@@ -855,23 +938,38 @@ Generated at: ${new Date().toLocaleString()}
                 placeHolder: 'Select a database connection'
             });
 
-            if (!selected) return;
+            if (!selected) {
+                Logger.info('File execution cancelled - no connection selected', 'CommandManager');
+                return;
+            }
             targetConnection = selected.connection;
         }
 
-        // Import and use SQL execution logic
-        const { executeSQLContent } = await import('./SQLExecutionManager');
-        await executeSQLContent(sqlContent, targetConnection.id, this.components);
+        try {
+            // Import and use SQL execution logic
+            const { executeSQLContent } = await import('./SQLExecutionManager');
+            await executeSQLContent(sqlContent, targetConnection.id, this.components);
+            Logger.info('SQL file executed successfully', 'CommandManager', {
+                fileName: document.fileName,
+                connectionId: targetConnection.id,
+                sqlLength: sqlContent.length
+            });
+        } catch (error) {
+            Logger.error('Failed to execute SQL file', error as Error, 'CommandManager');
+            vscode.window.showErrorMessage(`Failed to execute SQL file: ${(error as Error).message}`);
+        }
     }
     private async formatCurrentSQLFile(): Promise<void> {
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) {
+            Logger.warn('No active SQL file to format', 'CommandManager');
             vscode.window.showErrorMessage('No active SQL file to format');
             return;
         }
 
         const document = activeEditor.document;
         if (document.languageId !== 'sql' && document.languageId !== 'postgresql') {
+            Logger.warn('Current file is not a SQL file', 'CommandManager', { languageId: document.languageId });
             vscode.window.showErrorMessage('Current file is not a SQL file');
             return;
         }
@@ -888,11 +986,17 @@ Generated at: ${new Date().toLocaleString()}
             );
             edit.replace(document.uri, fullRange, formattedSQL);
 
-            await vscode.workspace.applyEdit(edit);
-            vscode.window.showInformationMessage('SQL file formatted successfully');
+            const success = await vscode.workspace.applyEdit(edit);
+            if (success) {
+                Logger.info('SQL file formatted successfully', 'CommandManager', { fileName: document.fileName });
+                vscode.window.showInformationMessage('SQL file formatted successfully');
+            } else {
+                Logger.warn('Failed to apply formatting edit', 'CommandManager');
+                vscode.window.showWarningMessage('SQL formatting completed but changes could not be applied');
+            }
 
         } catch (error) {
-            Logger.error('Failed to format SQL file', error as Error);
+            Logger.error('Failed to format SQL file', error as Error, 'CommandManager');
             vscode.window.showErrorMessage(`Failed to format SQL: ${(error as Error).message}`);
         }
     }
