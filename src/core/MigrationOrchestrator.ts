@@ -66,6 +66,7 @@ export interface MigrationMetadata {
     cancelledAt?: string;
     lastVerified?: string;
     executionTimeMs?: number;
+    transactionId?: number; // PostgreSQL backend process ID for transaction tracking
 }
 
 export interface ValidationReport {
@@ -111,61 +112,304 @@ export interface MigrationLock {
 }
 
 export class MigrationConcurrencyManager {
-    private locks: Map<string, MigrationLock> = new Map();
+    private connectionService: ConnectionService;
+    private connectionManager: PostgreSqlConnectionManager;
     private readonly lockTimeoutMs = 3600000; // 1 hour
 
-    acquireLock(targetConnectionId: string, migrationId: string): boolean {
-        const existingLock = this.locks.get(targetConnectionId);
-        if (existingLock) {
-            // Check if lock is expired
-            if (existingLock.expiresAt < new Date()) {
-                this.locks.delete(targetConnectionId);
-            } else {
-                return false; // Lock is still active
+    constructor(connectionService: ConnectionService, connectionManager: PostgreSqlConnectionManager) {
+        this.connectionService = connectionService;
+        this.connectionManager = connectionManager;
+    }
+
+    async acquireLock(targetConnectionId: string, migrationId: string): Promise<boolean> {
+        try {
+            Logger.debug('Attempting to acquire database-level lock', 'MigrationConcurrencyManager.acquireLock', {
+                targetConnectionId,
+                migrationId
+            });
+
+            // Get connection details for the target database
+            const connection = await this.connectionService.getConnection(targetConnectionId);
+            if (!connection) {
+                Logger.error('Connection not found for lock acquisition', 'MigrationConcurrencyManager.acquireLock', {
+                    targetConnectionId
+                });
+                return false;
             }
-        }
 
-        const lock: MigrationLock = {
-            migrationId,
-            targetConnectionId,
-            acquiredAt: new Date(),
-            expiresAt: new Date(Date.now() + this.lockTimeoutMs)
-        };
+            const password = await this.connectionService.getConnectionPassword(targetConnectionId);
+            if (!password) {
+                Logger.error('Password not found for lock acquisition', 'MigrationConcurrencyManager.acquireLock', {
+                    targetConnectionId
+                });
+                return false;
+            }
 
-        this.locks.set(targetConnectionId, lock);
-        return true;
-    }
+            const connectionWithPassword = { ...connection, password };
+            const handle = await this.connectionManager.createConnection(connectionWithPassword);
+            const client = handle.connection;
 
-    releaseLock(targetConnectionId: string, migrationId: string): boolean {
-        const lock = this.locks.get(targetConnectionId);
-        if (lock && lock.migrationId === migrationId) {
-            this.locks.delete(targetConnectionId);
-            return true;
-        }
-        return false;
-    }
+            try {
+                // Generate a unique lock key based on connection ID
+                // Use PostgreSQL advisory locks for atomic, database-level locking
+                const lockKey = this.generateLockKey(targetConnectionId);
 
-    isLocked(targetConnectionId: string): boolean {
-        const lock = this.locks.get(targetConnectionId);
-        if (!lock) return false;
+                // Try to acquire an exclusive advisory lock with timeout
+                // pg_try_advisory_lock returns true if lock acquired, false if already locked
+                const lockResult = await client.query(`
+                    SELECT pg_try_advisory_lock($1, $2) as lock_acquired,
+                           CASE WHEN pg_try_advisory_lock($1, $2) THEN
+                               extract(epoch from now()) * 1000 + $3
+                           ELSE NULL END as lock_expires_at
+                `, [lockKey, 0, this.lockTimeoutMs]);
 
-        if (lock.expiresAt < new Date()) {
-            this.locks.delete(targetConnectionId);
+                const lockAcquired = lockResult.rows[0].lock_acquired;
+                const lockExpiresAt = lockResult.rows[0].lock_expires_at;
+
+                if (lockAcquired) {
+                    // Store lock metadata in a dedicated locks table
+                    await client.query(`
+                        CREATE TABLE IF NOT EXISTS migration_locks (
+                            connection_id TEXT PRIMARY KEY,
+                            migration_id TEXT NOT NULL,
+                            acquired_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                            expires_at TIMESTAMP WITH TIME ZONE,
+                            lock_key BIGINT NOT NULL,
+                            UNIQUE(connection_id)
+                        )
+                    `);
+
+                    await client.query(`
+                        INSERT INTO migration_locks (connection_id, migration_id, expires_at, lock_key)
+                        VALUES ($1, $2, to_timestamp($3 / 1000), $4)
+                        ON CONFLICT (connection_id) DO UPDATE SET
+                            migration_id = EXCLUDED.migration_id,
+                            acquired_at = NOW(),
+                            expires_at = EXCLUDED.expires_at,
+                            lock_key = EXCLUDED.lock_key
+                    `, [targetConnectionId, migrationId, lockExpiresAt, lockKey]);
+
+                    Logger.info('Database-level lock acquired successfully', 'MigrationConcurrencyManager.acquireLock', {
+                        targetConnectionId,
+                        migrationId,
+                        lockKey
+                    });
+
+                    return true;
+                } else {
+                    Logger.warn('Failed to acquire database-level lock - already locked', 'MigrationConcurrencyManager.acquireLock', {
+                        targetConnectionId,
+                        migrationId
+                    });
+                    return false;
+                }
+
+            } catch (queryError) {
+                Logger.error('Database lock operation failed', queryError as Error, 'MigrationConcurrencyManager.acquireLock', {
+                    targetConnectionId,
+                    migrationId
+                });
+                return false;
+            } finally {
+                handle.release();
+            }
+
+        } catch (error) {
+            Logger.error('Lock acquisition failed', error as Error, 'MigrationConcurrencyManager.acquireLock', {
+                targetConnectionId,
+                migrationId
+            });
             return false;
         }
-
-        return true;
     }
 
-    getActiveLocks(): MigrationLock[] {
-        const now = new Date();
-        // Clean up expired locks
-        for (const [key, lock] of this.locks) {
-            if (lock.expiresAt < now) {
-                this.locks.delete(key);
+    async releaseLock(targetConnectionId: string, migrationId: string): Promise<boolean> {
+        try {
+            Logger.debug('Attempting to release database-level lock', 'MigrationConcurrencyManager.releaseLock', {
+                targetConnectionId,
+                migrationId
+            });
+
+            // Get connection details
+            const connection = await this.connectionService.getConnection(targetConnectionId);
+            if (!connection) {
+                Logger.error('Connection not found for lock release', 'MigrationConcurrencyManager.releaseLock', {
+                    targetConnectionId
+                });
+                return false;
             }
+
+            const password = await this.connectionService.getConnectionPassword(targetConnectionId);
+            if (!password) {
+                Logger.error('Password not found for lock release', 'MigrationConcurrencyManager.releaseLock', {
+                    targetConnectionId
+                });
+                return false;
+            }
+
+            const connectionWithPassword = { ...connection, password };
+            const handle = await this.connectionManager.createConnection(connectionWithPassword);
+            const client = handle.connection;
+
+            try {
+                // Get lock metadata from the locks table
+                const lockData = await client.query(`
+                    SELECT lock_key, migration_id FROM migration_locks
+                    WHERE connection_id = $1
+                `, [targetConnectionId]);
+
+                if (lockData.rows.length === 0) {
+                    Logger.warn('No lock found to release', 'MigrationConcurrencyManager.releaseLock', {
+                        targetConnectionId,
+                        migrationId
+                    });
+                    return false;
+                }
+
+                const lock = lockData.rows[0];
+
+                // Verify the migration ID matches
+                if (lock.migration_id !== migrationId) {
+                    Logger.warn('Lock owned by different migration', 'MigrationConcurrencyManager.releaseLock', {
+                        targetConnectionId,
+                        migrationId,
+                        actualMigrationId: lock.migration_id
+                    });
+                    return false;
+                }
+
+                // Release the advisory lock
+                await client.query('SELECT pg_advisory_unlock($1, $2)', [lock.lock_key, 0]);
+
+                // Remove lock metadata
+                await client.query('DELETE FROM migration_locks WHERE connection_id = $1', [targetConnectionId]);
+
+                Logger.info('Database-level lock released successfully', 'MigrationConcurrencyManager.releaseLock', {
+                    targetConnectionId,
+                    migrationId,
+                    lockKey: lock.lock_key
+                });
+
+                return true;
+
+            } catch (queryError) {
+                Logger.error('Database lock release operation failed', queryError as Error, 'MigrationConcurrencyManager.releaseLock', {
+                    targetConnectionId,
+                    migrationId
+                });
+                return false;
+            } finally {
+                handle.release();
+            }
+
+        } catch (error) {
+            Logger.error('Lock release failed', error as Error, 'MigrationConcurrencyManager.releaseLock', {
+                targetConnectionId,
+                migrationId
+            });
+            return false;
         }
-        return Array.from(this.locks.values());
+    }
+
+    async isLocked(targetConnectionId: string): Promise<boolean> {
+        try {
+            // Get connection details
+            const connection = await this.connectionService.getConnection(targetConnectionId);
+            if (!connection) {
+                return false;
+            }
+
+            const password = await this.connectionService.getConnectionPassword(targetConnectionId);
+            if (!password) {
+                return false;
+            }
+
+            const connectionWithPassword = { ...connection, password };
+            const handle = await this.connectionManager.createConnection(connectionWithPassword);
+            const client = handle.connection;
+
+            try {
+                // Check if there's an active lock in the locks table
+                const lockData = await client.query(`
+                    SELECT migration_id, expires_at, lock_key
+                    FROM migration_locks
+                    WHERE connection_id = $1
+                `, [targetConnectionId]);
+
+                if (lockData.rows.length === 0) {
+                    return false;
+                }
+
+                const lock = lockData.rows[0];
+
+                // Check if lock is expired
+                const now = new Date();
+                const expiresAt = new Date(lock.expires_at);
+
+                if (expiresAt < now) {
+                    // Lock is expired, clean it up
+                    await client.query('SELECT pg_advisory_unlock($1, $2)', [lock.lock_key, 0]);
+                    await client.query('DELETE FROM migration_locks WHERE connection_id = $1', [targetConnectionId]);
+
+                    Logger.info('Expired lock cleaned up', 'MigrationConcurrencyManager.isLocked', {
+                        targetConnectionId,
+                        expiredAt: expiresAt
+                    });
+
+                    return false;
+                }
+
+                // Verify the advisory lock is still held
+                const lockCheck = await client.query('SELECT pg_advisory_lock($1, $2) as lock_held', [lock.lock_key, 0]);
+                const lockHeld = lockCheck.rows[0].lock_held;
+
+                if (!lockHeld) {
+                    // Advisory lock was lost, clean up metadata
+                    await client.query('DELETE FROM migration_locks WHERE connection_id = $1', [targetConnectionId]);
+                    return false;
+                }
+
+                return true;
+
+            } catch (queryError) {
+                Logger.error('Lock check operation failed', queryError as Error, 'MigrationConcurrencyManager.isLocked', {
+                    targetConnectionId
+                });
+                return false;
+            } finally {
+                handle.release();
+            }
+
+        } catch (error) {
+            Logger.error('Lock check failed', error as Error, 'MigrationConcurrencyManager.isLocked', {
+                targetConnectionId
+            });
+            return false;
+        }
+    }
+
+    async getActiveLocks(): Promise<MigrationLock[]> {
+        try {
+            // This method would need to aggregate locks across all databases
+            // For now, return empty array as we can't easily query all databases
+            Logger.debug('getActiveLocks called - not implemented for distributed locks', 'MigrationConcurrencyManager.getActiveLocks');
+            return [];
+        } catch (error) {
+            Logger.error('Failed to get active locks', error as Error, 'MigrationConcurrencyManager.getActiveLocks');
+            return [];
+        }
+    }
+
+    private generateLockKey(connectionId: string): number {
+        // Generate a consistent hash of the connection ID for use as advisory lock key
+        let hash = 0;
+        for (let i = 0; i < connectionId.length; i++) {
+            const char = connectionId.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        // Ensure positive number and reasonable range for advisory locks
+        return Math.abs(hash) % 2147483647; // Max 32-bit signed integer
     }
 }
 
@@ -195,7 +439,7 @@ export class MigrationOrchestrator {
         const storagePath = path.join(os.homedir(), '.postgresql-schema-sync', 'migrations.json');
         this.migrationStorage = new MigrationStorage(storagePath);
         this.backupManager = new BackupManager(connectionService);
-        this.concurrencyManager = new MigrationConcurrencyManager();
+        this.concurrencyManager = new MigrationConcurrencyManager(connectionService, this.connectionManager);
         this.businessRuleEngine = new BusinessRuleEngine();
         this.realtimeMonitor = new RealtimeMonitor();
     }
@@ -217,7 +461,7 @@ export class MigrationOrchestrator {
 
         try {
             // Check for concurrent migrations on the same target
-            if (this.concurrencyManager.isLocked(request.targetConnectionId)) {
+            if (await this.concurrencyManager.isLocked(request.targetConnectionId)) {
                 throw new Error(`Migration already in progress on target connection ${request.targetConnectionId}`);
             }
 
@@ -597,6 +841,17 @@ export class MigrationOrchestrator {
             const targetConnectionWithPassword = { ...targetConnection, password: targetPassword };
             const handle = await this.connectionManager.createConnection(targetConnectionWithPassword);
             const client = handle.connection;
+
+            // Store transaction ID for rollback tracking
+            const transactionIdResult = await client.query('SELECT pg_backend_pid() as pid');
+            const transactionId = transactionIdResult.rows[0].pid;
+
+            // Update metadata with transaction ID
+            request.metadata = {
+                ...request.metadata,
+                transactionId
+            };
+
             try {
                 await client.query('BEGIN');
 
@@ -1260,44 +1515,72 @@ export class MigrationOrchestrator {
                     -- Database-level permissions
                     has_database_privilege($1, current_database(), 'CREATE') as can_create_db,
                     has_database_privilege($1, current_database(), 'CONNECT') as can_connect_db,
+                    has_database_privilege($1, current_database(), 'TEMPORARY') as can_create_temp,
 
-                    -- Schema-level permissions
-                    has_schema_privilege($1, 'public', 'CREATE') as can_create_schema,
-                    has_schema_privilege($1, 'public', 'USAGE') as can_use_schema,
+                    -- Schema-level permissions for all schemas
+                    (SELECT bool_and(has_schema_privilege($1, nspname, 'CREATE'))
+                     FROM pg_namespace
+                     WHERE nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')) as can_create_in_schemas,
 
-                    -- Table permissions (check on a sample table if exists)
-                    CASE WHEN EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' LIMIT 1)
-                         THEN (SELECT bool_or(
-                             has_table_privilege($1, schemaname||'.'||tablename, 'SELECT') AND
-                             has_table_privilege($1, schemaname||'.'||tablename, 'INSERT') AND
-                             has_table_privilege($1, schemaname||'.'||tablename, 'UPDATE') AND
-                             has_table_privilege($1, schemaname||'.'||tablename, 'DELETE')
-                         ) FROM information_schema.tables WHERE table_schema = 'public' LIMIT 5)
-                         ELSE true END as has_table_permissions,
+                    (SELECT bool_and(has_schema_privilege($1, nspname, 'USAGE'))
+                     FROM pg_namespace
+                     WHERE nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')) as can_use_schemas,
+
+                    -- Table permissions across all user tables
+                    (SELECT bool_and(
+                        has_table_privilege($1, schemaname||'.'||tablename, 'SELECT') AND
+                        has_table_privilege($1, schemaname||'.'||tablename, 'INSERT') AND
+                        has_table_privilege($1, schemaname||'.'||tablename, 'UPDATE') AND
+                        has_table_privilege($1, schemaname||'.'||tablename, 'DELETE') AND
+                        has_table_privilege($1, schemaname||'.'||tablename, 'TRUNCATE') AND
+                        has_table_privilege($1, schemaname||'.'||tablename, 'REFERENCES') AND
+                        has_table_privilege($1, schemaname||'.'||tablename, 'TRIGGER')
+                     )
+                     FROM information_schema.tables
+                     WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                       AND table_type = 'BASE TABLE') as has_full_table_permissions,
+
+                    -- Sequence permissions
+                    (SELECT bool_and(
+                        has_sequence_privilege($1, sequence_schema||'.'||sequence_name, 'SELECT') AND
+                        has_sequence_privilege($1, sequence_schema||'.'||sequence_name, 'UPDATE') AND
+                        has_sequence_privilege($1, sequence_schema||'.'||sequence_name, 'USAGE')
+                     )
+                     FROM information_schema.sequences
+                     WHERE sequence_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')) as has_sequence_permissions,
+
+                    -- Function permissions
+                    (SELECT bool_and(has_function_privilege($1, p.oid::regprocedure::text, 'EXECUTE'))
+                     FROM pg_proc p
+                     JOIN pg_namespace n ON p.pronamespace = n.oid
+                     WHERE n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')) as has_function_permissions,
 
                     -- Role membership (superuser, replication, etc.)
                     pg_has_role($1, 'superuser', 'MEMBER') as is_superuser,
                     pg_has_role($1, 'replication', 'MEMBER') as has_replication_role,
 
-                    -- Specific object permissions
+                    -- Specific administrative permissions
                     has_function_privilege($1, 'pg_catalog.pg_terminate_backend(int4)', 'EXECUTE') as can_terminate_sessions,
-                    has_database_privilege($1, current_database(), 'TEMP') as can_create_temp
-            `, [username]) as { rows: Array<Record<string, boolean>>; };
+                    has_function_privilege($1, 'pg_catalog.pg_cancel_backend(int4)', 'EXECUTE') as can_cancel_sessions,
+                    has_database_privilege($1, current_database(), 'CREATE') as can_create_extensions
+            `, [username]) as { rows: Array<Record<string, boolean | null>>; };
 
             const permissions = result.rows[0];
-
-            // Check critical permissions needed for migrations
-            const hasBasicPermissions = permissions.can_connect_db && permissions.can_use_schema;
-            const hasCreatePermissions = permissions.can_create_db || permissions.can_create_schema;
-            const hasAdvancedPermissions = permissions.has_table_permissions && permissions.can_create_temp;
 
             // Superuser can do anything
             if (permissions.is_superuser) {
                 return true;
             }
 
-            // For non-superusers, require comprehensive permissions
-            return hasBasicPermissions && hasCreatePermissions && hasAdvancedPermissions;
+            // Check critical permissions needed for migrations
+            const hasBasicPermissions = permissions.can_connect_db && permissions.can_use_schemas;
+            const hasCreatePermissions = permissions.can_create_db && permissions.can_create_in_schemas && permissions.can_create_extensions;
+            const hasObjectPermissions = permissions.has_full_table_permissions && permissions.has_sequence_permissions && permissions.has_function_permissions;
+            const hasAdminPermissions = permissions.can_create_temp && permissions.can_terminate_sessions;
+
+            // For non-superusers, require comprehensive permissions for safe migrations
+            // Handle null values by treating them as false
+            return Boolean(hasBasicPermissions) && Boolean(hasCreatePermissions) && Boolean(hasObjectPermissions) && Boolean(hasAdminPermissions);
 
         } catch (error) {
             Logger.warn('Permission check query failed', 'MigrationOrchestrator.checkSchemaPermissions', { error });
@@ -1462,25 +1745,60 @@ export class MigrationOrchestrator {
             const client = handle.connection;
 
             try {
-                // Check if there's an active transaction we can rollback
-                // This is a simplified approach - in a real implementation, we'd track transaction state
-                const transactionCheck = await client.query(`
-                    SELECT state
-                    FROM pg_stat_activity
-                    WHERE datname = current_database()
-                      AND state = 'active'
-                      AND query LIKE '%BEGIN%'
-                    LIMIT 1
-                `);
+                // Track transaction state by storing transaction ID in migration metadata
+                const activeMigrations = await this.migrationStorage.getActiveMigrations();
+                const migration = activeMigrations.get(migrationId);
 
-                if (transactionCheck.rows.length > 0) {
-                    // Attempt to rollback the active transaction
-                    await client.query('ROLLBACK');
-                    Logger.info('Transaction rollback successful', 'MigrationOrchestrator.performTransactionRollback', { migrationId });
-                    return true;
+                if (migration && migration.metadata?.transactionId) {
+                    // Check if the specific transaction is still active
+                    const transactionCheck = await client.query(`
+                        SELECT state, query
+                        FROM pg_stat_activity
+                        WHERE datname = current_database()
+                          AND state = 'active'
+                          AND query LIKE '%BEGIN%'
+                          AND pid = $1
+                    `, [migration.metadata.transactionId]);
+
+                    if (transactionCheck.rows.length > 0) {
+                        // Terminate the specific transaction
+                        await client.query('SELECT pg_terminate_backend($1)', [migration.metadata.transactionId]);
+                        Logger.info('Transaction rollback successful - terminated active transaction', 'MigrationOrchestrator.performTransactionRollback', {
+                            migrationId,
+                            transactionId: migration.metadata.transactionId
+                        });
+                        return true;
+                    } else {
+                        Logger.warn('Transaction not found or already completed', 'MigrationOrchestrator.performTransactionRollback', {
+                            migrationId,
+                            transactionId: migration.metadata.transactionId
+                        });
+                        return false;
+                    }
                 } else {
-                    Logger.warn('No active transaction found to rollback', 'MigrationOrchestrator.performTransactionRollback', { migrationId });
-                    return false;
+                    // Fallback: try to find any active transaction for this migration (legacy support)
+                    const transactionCheck = await client.query(`
+                        SELECT pid, state, query
+                        FROM pg_stat_activity
+                        WHERE datname = current_database()
+                          AND state = 'active'
+                          AND query LIKE '%BEGIN%'
+                          AND query LIKE $1
+                        LIMIT 1
+                    `, [`%${migrationId}%`]);
+
+                    if (transactionCheck.rows.length > 0) {
+                        const transaction = transactionCheck.rows[0];
+                        await client.query('SELECT pg_terminate_backend($1)', [transaction.pid]);
+                        Logger.info('Transaction rollback successful - terminated legacy transaction', 'MigrationOrchestrator.performTransactionRollback', {
+                            migrationId,
+                            transactionPid: transaction.pid
+                        });
+                        return true;
+                    } else {
+                        Logger.warn('No active transaction found for rollback', 'MigrationOrchestrator.performTransactionRollback', { migrationId });
+                        return false;
+                    }
                 }
 
             } finally {
@@ -1681,7 +1999,7 @@ export class MigrationOrchestrator {
         }
     }
 
-    private analyzeMigrationScript(sqlScript: string): { warnings: string[]; riskLevel: string; estimatedTime: number } {
+    private analyzeMigrationScript(sqlScript: string): { warnings: string[]; riskLevel: string; estimatedTime: number; } {
         const warnings: string[] = [];
         const script = sqlScript.toUpperCase();
 

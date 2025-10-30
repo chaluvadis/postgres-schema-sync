@@ -204,6 +204,37 @@ export class SchemaDiffer {
         return columns;
     }
 
+    private extractConstraintsFromAST(ast: any): any[] {
+        const constraints: any[] = [];
+
+        if (ast.create_definitions) {
+            for (const def of ast.create_definitions) {
+                if (def.resource === 'constraint') {
+                    if (def.constraint_type === 'primary key') {
+                        constraints.push({
+                            type: 'PRIMARY KEY',
+                            columns: def.definition?.columns || []
+                        });
+                    } else if (def.constraint_type === 'foreign key') {
+                        constraints.push({
+                            type: 'FOREIGN KEY',
+                            columns: def.definition?.columns || [],
+                            refTable: def.definition?.reference?.table,
+                            refColumns: def.definition?.reference?.columns || []
+                        });
+                    } else if (def.constraint_type === 'unique') {
+                        constraints.push({
+                            type: 'UNIQUE',
+                            columns: def.definition?.columns || []
+                        });
+                    }
+                }
+            }
+        }
+
+        return constraints;
+    }
+
     private formatColumnType(definition: any): string {
         if (!definition) return 'unknown';
 
@@ -221,6 +252,21 @@ export class SchemaDiffer {
     private parseTableColumnsRegex(definition: string): any[] {
         // Enhanced regex-based parsing with better handling of complex types
         const columns: any[] = [];
+
+        try {
+            // Try AST parsing first for better accuracy
+            const ast = this.sqlParser.parse(definition, { database: 'postgresql' });
+            if (ast && Array.isArray(ast) && ast.length > 0) {
+                const createTableAst = ast[0];
+                if (createTableAst.type === 'create' && createTableAst.keyword === 'table') {
+                    return this.extractColumnsFromAST(createTableAst);
+                }
+            }
+        } catch (astError) {
+            Logger.debug('AST parsing failed for table columns, using regex fallback', 'SchemaDiffer.parseTableColumnsRegex', {
+                error: String(astError)
+            });
+        }
 
         // Split by commas but be careful about commas inside parentheses
         const columnDefinitions = this.splitByCommasOutsideParentheses(definition);
@@ -278,8 +324,24 @@ export class SchemaDiffer {
     }
 
     private parseTableConstraints(definition: string): any[] {
-        // Parse constraints (simplified)
         const constraints: any[] = [];
+
+        try {
+            // Try AST parsing first for better accuracy
+            const ast = this.sqlParser.parse(definition, { database: 'postgresql' });
+            if (ast && Array.isArray(ast) && ast.length > 0) {
+                const createTableAst = ast[0];
+                if (createTableAst.type === 'create' && createTableAst.keyword === 'table') {
+                    return this.extractConstraintsFromAST(createTableAst);
+                }
+            }
+        } catch (astError) {
+            Logger.debug('AST parsing failed for table constraints, using regex fallback', 'SchemaDiffer.parseTableConstraints', {
+                error: String(astError)
+            });
+        }
+
+        // Parse constraints (simplified)
         const pkMatch = definition.match(/PRIMARY KEY\s*\(([^)]+)\)/i);
         if (pkMatch) {
             constraints.push({ type: 'PRIMARY KEY', columns: pkMatch[1].split(',').map(s => s.trim()) });
@@ -299,12 +361,48 @@ export class SchemaDiffer {
     }
 
     private extractFunctionSignature(definition: string): string {
+        try {
+            // Try AST parsing first for better accuracy
+            const ast = this.sqlParser.parse(definition, { database: 'postgresql' });
+            if (ast && Array.isArray(ast) && ast.length > 0) {
+                const createFunctionAst = ast[0];
+                if (createFunctionAst.type === 'create' && createFunctionAst.keyword === 'function') {
+                    const params = createFunctionAst.params || [];
+                    return params.map((p: any) => `${p.name} ${p.dataType}`).join(', ');
+                }
+            }
+        } catch (astError) {
+            Logger.debug('AST parsing failed for function signature, using regex fallback', 'SchemaDiffer.extractFunctionSignature', {
+                error: String(astError)
+            });
+        }
+
         // Extract function signature (simplified)
         const match = definition.match(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+\w+\s*\(([^)]*)\)/i);
         return match ? match[1] : '';
     }
 
     private parseSequenceParams(definition: string): any {
+        try {
+            // Try AST parsing first for better accuracy
+            const ast = this.sqlParser.parse(definition, { database: 'postgresql' });
+            if (ast && Array.isArray(ast) && ast.length > 0) {
+                const createSequenceAst = ast[0];
+                if (createSequenceAst.type === 'create' && createSequenceAst.keyword === 'sequence') {
+                    const params: any = {};
+                    if (createSequenceAst.start) params.start = parseInt(createSequenceAst.start);
+                    if (createSequenceAst.increment) params.increment = parseInt(createSequenceAst.increment);
+                    if (createSequenceAst.minvalue) params.minvalue = parseInt(createSequenceAst.minvalue);
+                    if (createSequenceAst.maxvalue) params.maxvalue = parseInt(createSequenceAst.maxvalue);
+                    return params;
+                }
+            }
+        } catch (astError) {
+            Logger.debug('AST parsing failed for sequence params, using regex fallback', 'SchemaDiffer.parseSequenceParams', {
+                error: String(astError)
+            });
+        }
+
         // Parse sequence parameters (simplified)
         const params: any = {};
         const startMatch = definition.match(/START\s+(?:WITH\s+)?(\d+)/i);
@@ -411,21 +509,42 @@ export class SchemaDiffer {
         const fromConstraints = this.parseTableConstraints(from.definition);
         const toConstraints = this.parseTableConstraints(to.definition);
 
-        // Find added columns
+        // Find added columns with proper NULL/NOT NULL handling
         for (const toCol of toColumns) {
             const fromCol = fromColumns.find(c => c.name === toCol.name);
             if (!fromCol) {
-                statements.push(`ALTER TABLE ${from.schema}.${from.name} ADD COLUMN ${toCol.name} ${toCol.type};`);
+                // New column - handle defaults and nullability
+                let addStmt = `ALTER TABLE ${from.schema}.${from.name} ADD COLUMN ${toCol.name} ${toCol.type}`;
+                if (toCol.default !== undefined) {
+                    addStmt += ` DEFAULT ${toCol.default}`;
+                }
+                if (toCol.nullable === false) {
+                    addStmt += ' NOT NULL';
+                }
+                statements.push(`${addStmt};`);
             } else if (fromCol.type !== toCol.type) {
+                // Type change - requires careful handling
                 statements.push(`ALTER TABLE ${from.schema}.${from.name} ALTER COLUMN ${toCol.name} TYPE ${toCol.type};`);
+            } else if (fromCol.nullable !== toCol.nullable) {
+                // Nullability change
+                if (toCol.nullable === false && fromCol.nullable !== false) {
+                    statements.push(`ALTER TABLE ${from.schema}.${from.name} ALTER COLUMN ${toCol.name} SET NOT NULL;`);
+                } else if (toCol.nullable === true && fromCol.nullable === false) {
+                    statements.push(`ALTER TABLE ${from.schema}.${from.name} ALTER COLUMN ${toCol.name} DROP NOT NULL;`);
+                }
             }
         }
 
-        // Find dropped columns
+        // Find dropped columns with CASCADE consideration
         for (const fromCol of fromColumns) {
             const toCol = toColumns.find(c => c.name === fromCol.name);
             if (!toCol) {
-                statements.push(`ALTER TABLE ${from.schema}.${from.name} DROP COLUMN ${fromCol.name} CASCADE;`);
+                // Check if column is referenced by constraints before dropping
+                const isReferenced = fromConstraints.some(con =>
+                    con.type === 'FOREIGN KEY' && con.columns.includes(fromCol.name)
+                );
+                const cascade = isReferenced ? ' CASCADE' : '';
+                statements.push(`ALTER TABLE ${from.schema}.${from.name} DROP COLUMN ${fromCol.name}${cascade};`);
             }
         }
 
@@ -435,7 +554,7 @@ export class SchemaDiffer {
         // Handle index changes
         this.generateIndexChanges(from, to, statements);
 
-        return statements.join('\n');
+        return statements.length > 0 ? statements.join('\n') : `-- No changes detected for table ${from.schema}.${from.name}`;
     }
 
     private generateConstraintChanges(from: SchemaObject, to: SchemaObject, fromConstraints: any[], toConstraints: any[], statements: string[]): void {
@@ -624,12 +743,52 @@ export class SchemaDiffer {
 
     private extractReferencedTables(sql: string): string[] {
         const tables: string[] = [];
-        // Simple regex to find table references in foreign key constraints
-        const fkRegex = /REFERENCES\s+(\w+)/gi;
-        let match;
-        while ((match = fkRegex.exec(sql)) !== null) {
-            tables.push(match[1]);
+
+        try {
+            // Try AST parsing first for better accuracy
+            const ast = this.sqlParser.parse(sql, { database: 'postgresql' });
+            if (ast && Array.isArray(ast)) {
+                for (const stmt of ast) {
+                    if (stmt.type === 'create' && stmt.keyword === 'table') {
+                        // Extract foreign key references from CREATE TABLE
+                        if (stmt.create_definitions) {
+                            for (const def of stmt.create_definitions) {
+                                if (def.resource === 'constraint' && def.constraint_type === 'foreign key') {
+                                    if (def.definition?.reference?.table) {
+                                        tables.push(def.definition.reference.table);
+                                    }
+                                }
+                            }
+                        }
+                    } else if (stmt.type === 'alter' && stmt.keyword === 'table') {
+                        // Extract references from ALTER TABLE
+                        if (stmt.expr && stmt.expr.type === 'alter') {
+                            for (const action of stmt.expr.actions || []) {
+                                if (action.keyword === 'add' && action.resource === 'constraint' && action.constraint_type === 'foreign key') {
+                                    if (action.definition?.reference?.table) {
+                                        tables.push(action.definition.reference.table);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (astError) {
+            Logger.debug('AST parsing failed for referenced tables, using regex fallback', 'SchemaDiffer.extractReferencedTables', {
+                error: String(astError)
+            });
         }
+
+        // Fallback to regex if AST parsing fails or finds nothing
+        if (tables.length === 0) {
+            const fkRegex = /REFERENCES\s+(\w+)/gi;
+            let match;
+            while ((match = fkRegex.exec(sql)) !== null) {
+                tables.push(match[1]);
+            }
+        }
+
         return [...new Set(tables)]; // Remove duplicates
     }
 

@@ -746,13 +746,13 @@ export class MigrationManagement {
         try {
             switch (change.type) {
                 case 'Added':
-                    return this.generateCreateSQL(change);
+                    return await this.generateCreateSQL(change, targetConnectionId);
 
                 case 'Removed':
                     return this.generateDropSQL(change);
 
                 case 'Modified':
-                    return this.generateAlterSQL(change, sourceConnectionId, targetConnectionId);
+                    return await this.generateAlterSQL(change, sourceConnectionId, targetConnectionId);
 
                 default:
                     return `-- Unknown change type: ${change.type}`;
@@ -766,27 +766,190 @@ export class MigrationManagement {
             return `-- Error generating SQL for ${change.type} ${change.objectType} ${change.objectName}: ${(error as Error).message}`;
         }
     }
-    private generateCreateSQL(change: SchemaDifference): string {
+    private async generateCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
         if (change.targetDefinition) {
             return change.targetDefinition;
         }
 
-        // Generate basic CREATE statement based on object type
-        switch (change.objectType) {
-            case 'table':
-                return `CREATE TABLE ${change.schema}.${change.objectName} (\n  -- TODO: Add column definitions\n  id SERIAL PRIMARY KEY\n);`;
+        // Generate CREATE statement by querying target database for actual definitions
+        try {
+            switch (change.objectType) {
+                case 'table':
+                    return await this.generateTableCreateSQL(change, targetConnectionId);
 
-            case 'index':
-                return `CREATE INDEX idx_${change.objectName} ON ${change.schema}.${change.objectName} (\n  -- TODO: Add indexed columns\n);`;
+                case 'index':
+                    return await this.generateIndexCreateSQL(change, targetConnectionId);
 
-            case 'view':
-                return `CREATE VIEW ${change.schema}.${change.objectName} AS\n  -- TODO: Add view definition\n  SELECT 1 as dummy;`;
+                case 'view':
+                    return await this.generateViewCreateSQL(change, targetConnectionId);
 
-            case 'function':
-                return `CREATE OR REPLACE FUNCTION ${change.schema}.${change.objectName}()\n  RETURNS void AS $$\n  BEGIN\n    -- TODO: Add function body\n  END;\n  $$ LANGUAGE plpgsql;`;
+                case 'function':
+                    return await this.generateFunctionCreateSQL(change, targetConnectionId);
 
-            default:
-                return `-- CREATE statement for ${change.objectType} ${change.objectName} needs manual definition`;
+                default:
+                    return `-- CREATE statement for ${change.objectType} ${change.objectName} needs manual definition`;
+            }
+        } catch (error) {
+            Logger.error('Failed to generate CREATE SQL from target database', error as Error, 'generateCreateSQL', {
+                objectType: change.objectType,
+                objectName: change.objectName,
+                schema: change.schema
+            });
+            return `-- Error generating CREATE SQL: ${(error as Error).message}`;
+        }
+    }
+
+    /**
+     * Generate CREATE TABLE SQL by querying target database
+     */
+    private async generateTableCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
+        try {
+            // Get table structure from target database
+            const tableQuery = `
+                SELECT
+                    c.column_name,
+                    c.data_type,
+                    c.is_nullable,
+                    c.column_default,
+                    c.character_maximum_length,
+                    c.numeric_precision,
+                    c.numeric_scale
+                FROM information_schema.columns c
+                WHERE c.table_schema = '${change.schema}'
+                AND c.table_name = '${change.objectName}'
+                ORDER BY c.ordinal_position
+            `;
+
+            const columnsResult = await this.queryService.executeQuery(targetConnectionId, tableQuery);
+
+            if (columnsResult.rows.length === 0) {
+                return `-- No columns found for table ${change.schema}.${change.objectName}`;
+            }
+
+            // Build column definitions
+            const columnDefs = columnsResult.rows.map((col: any) => {
+                const columnName = col[0];
+                const dataType = col[1];
+                const isNullable = col[2] === 'YES';
+                const defaultValue = col[3];
+                const maxLength = col[4];
+                const precision = col[5];
+                const scale = col[6];
+
+                let typeDef = dataType;
+                if (maxLength && (dataType === 'varchar' || dataType === 'character')) {
+                    typeDef = `${dataType}(${maxLength})`;
+                } else if (precision && scale && (dataType === 'numeric' || dataType === 'decimal')) {
+                    typeDef = `${dataType}(${precision},${scale})`;
+                }
+
+                const nullableDef = isNullable ? '' : ' NOT NULL';
+                const defaultDef = defaultValue ? ` DEFAULT ${defaultValue}` : '';
+
+                return `  ${columnName} ${typeDef}${nullableDef}${defaultDef}`;
+            });
+
+            return `CREATE TABLE ${change.schema}.${change.objectName} (\n${columnDefs.join(',\n')}\n);`;
+
+        } catch (error) {
+            Logger.error('Failed to generate table CREATE SQL', error as Error, 'generateTableCreateSQL', {
+                schema: change.schema,
+                tableName: change.objectName
+            });
+            return `-- Error generating CREATE TABLE: ${(error as Error).message}`;
+        }
+    }
+
+    /**
+     * Generate CREATE INDEX SQL by querying target database
+     */
+    private async generateIndexCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
+        try {
+            // Get index definition from target database
+            const indexQuery = `
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = '${change.schema}'
+                AND indexname = '${change.objectName}'
+            `;
+
+            const indexResult = await this.queryService.executeQuery(targetConnectionId, indexQuery);
+
+            if (indexResult.rows.length === 0) {
+                return `-- Index ${change.schema}.${change.objectName} not found in target database`;
+            }
+
+            return indexResult.rows[0][0]; // Return the index definition
+
+        } catch (error) {
+            Logger.error('Failed to generate index CREATE SQL', error as Error, 'generateIndexCreateSQL', {
+                schema: change.schema,
+                indexName: change.objectName
+            });
+            return `-- Error generating CREATE INDEX: ${(error as Error).message}`;
+        }
+    }
+
+    /**
+     * Generate CREATE VIEW SQL by querying target database
+     */
+    private async generateViewCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
+        try {
+            // Get view definition from target database
+            const viewQuery = `
+                SELECT definition
+                FROM pg_views
+                WHERE schemaname = '${change.schema}'
+                AND viewname = '${change.objectName}'
+            `;
+
+            const viewResult = await this.queryService.executeQuery(targetConnectionId, viewQuery);
+
+            if (viewResult.rows.length === 0) {
+                return `-- View ${change.schema}.${change.objectName} not found in target database`;
+            }
+
+            return `CREATE VIEW ${change.schema}.${change.objectName} AS\n${viewResult.rows[0][0]}`;
+
+        } catch (error) {
+            Logger.error('Failed to generate view CREATE SQL', error as Error, 'generateViewCreateSQL', {
+                schema: change.schema,
+                viewName: change.objectName
+            });
+            return `-- Error generating CREATE VIEW: ${(error as Error).message}`;
+        }
+    }
+
+    /**
+     * Generate CREATE FUNCTION SQL by querying target database
+     */
+    private async generateFunctionCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
+        try {
+            // Get function definition from target database
+            const functionQuery = `
+                SELECT pg_get_functiondef(p.oid) as function_definition
+                FROM pg_proc p
+                JOIN pg_namespace n ON p.pronamespace = n.oid
+                WHERE n.nspname = '${change.schema}'
+                AND p.proname = '${change.objectName}'
+                ORDER BY p.oid
+                LIMIT 1
+            `;
+
+            const functionResult = await this.queryService.executeQuery(targetConnectionId, functionQuery);
+
+            if (functionResult.rows.length === 0) {
+                return `-- Function ${change.schema}.${change.objectName} not found in target database`;
+            }
+
+            return functionResult.rows[0][0]; // Return the function definition
+
+        } catch (error) {
+            Logger.error('Failed to generate function CREATE SQL', error as Error, 'generateFunctionCreateSQL', {
+                schema: change.schema,
+                functionName: change.objectName
+            });
+            return `-- Error generating CREATE FUNCTION: ${(error as Error).message}`;
         }
     }
 

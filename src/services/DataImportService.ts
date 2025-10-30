@@ -3,6 +3,7 @@ import { ConnectionManager } from "@/managers/ConnectionManager";
 import { PostgreSqlConnectionManager } from "@/core/PostgreSqlConnectionManager";
 import { ExtensionInitializer } from "@/utils/ExtensionInitializer";
 import { Logger } from "@/utils/Logger";
+import { Parser } from 'node-sql-parser';
 
 export interface ImportJob {
   id: string;
@@ -205,6 +206,7 @@ export class DataImportService {
   private importTemplates: Map<string, ImportTemplate> = new Map();
   private activeImports: Set<string> = new Set();
   private importHistory: ImportJob[] = [];
+  private sqlParser: Parser;
   constructor(
     context: vscode.ExtensionContext,
     connectionManager: ConnectionManager
@@ -212,6 +214,7 @@ export class DataImportService {
     this.context = context;
     this.connectionManager = connectionManager;
     this.dotNetService = PostgreSqlConnectionManager.getInstance();
+    this.sqlParser = new Parser();
     this.loadImportData();
   }
   private loadImportData(): void {
@@ -539,45 +542,93 @@ export class DataImportService {
     preview: any[];
     totalRows: number;
   }> {
-    // Basic SQL INSERT parsing - in production, use a proper SQL parser
-    const insertRegex =
-      /INSERT INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/gi;
     const columns: DetectedColumn[] = [];
     const preview: any[] = [];
-    let match;
 
-    while ((match = insertRegex.exec(content)) !== null) {
-      const tableName = match[1];
-      const columnList = match[2];
-      const valueList = match[3];
+    try {
+      // Try AST-based parsing first for better accuracy
+      const ast = this.sqlParser.parse(content, { database: 'postgresql' });
+      if (ast && Array.isArray(ast)) {
+        for (const stmt of ast) {
+          if (stmt.type === 'insert' && stmt.table) {
+            // Extract table name and columns from INSERT statement
+            const tableName = Array.isArray(stmt.table) ? stmt.table[0]?.table : stmt.table;
+            const columnList = stmt.columns || [];
+            const valuesList = stmt.values || [];
 
-      // Parse columns
-      const cols = columnList
-        .split(",")
-        .map((col) => col.trim().replace(/"/g, ""));
+            // Extract columns
+            if (columns.length === 0 && columnList.length > 0) {
+              columns.push(
+                ...columnList.map((col: any) => ({
+                  name: col.column || col,
+                  type: "string" as const,
+                  nullable: true,
+                  sampleValues: [],
+                }))
+              );
+            }
 
-      if (columns.length === 0) {
-        columns.push(
-          ...cols.map((col) => ({
-            name: col,
-            type: "string" as const,
-            nullable: true,
-            sampleValues: [],
-          }))
-        );
+            // Extract values for preview
+            if (valuesList.length > 0) {
+              valuesList.slice(0, 10).forEach((valueSet: any) => {
+                if (Array.isArray(valueSet.value)) {
+                  const row: any = {};
+                  valueSet.value.forEach((val: any, index: number) => {
+                    const colName = columnList[index]?.column || columnList[index] || `col_${index}`;
+                    row[colName] = val?.value || val || null;
+                  });
+                  preview.push(row);
+                }
+              });
+            }
+          }
+        }
       }
+    } catch (astError) {
+      Logger.debug('AST parsing failed for SQL analysis, using regex fallback', 'DataImportService.analyzeSQL', {
+        error: String(astError)
+      });
+    }
 
-      // Parse values
-      const values = valueList
-        .split(",")
-        .map((val) => val.trim().replace(/['"]/g, ""));
+    // Fallback to regex-based parsing if AST fails or finds nothing
+    if (columns.length === 0 || preview.length === 0) {
+      const insertRegex =
+        /INSERT INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/gi;
+      let match;
 
-      if (values.length === cols.length) {
-        const row: any = {};
-        cols.forEach((col, index) => {
-          row[col] = values[index];
-        });
-        preview.push(row);
+      while ((match = insertRegex.exec(content)) !== null) {
+        const tableName = match[1];
+        const columnList = match[2];
+        const valueList = match[3];
+
+        // Parse columns
+        const cols = columnList
+          .split(",")
+          .map((col) => col.trim().replace(/"/g, ""));
+
+        if (columns.length === 0) {
+          columns.push(
+            ...cols.map((col) => ({
+              name: col,
+              type: "string" as const,
+              nullable: true,
+              sampleValues: [],
+            }))
+          );
+        }
+
+        // Parse values
+        const values = valueList
+          .split(",")
+          .map((val) => val.trim().replace(/['"]/g, ""));
+
+        if (values.length === cols.length) {
+          const row: any = {};
+          cols.forEach((col, index) => {
+            row[col] = values[index];
+          });
+          preview.push(row);
+        }
       }
     }
 

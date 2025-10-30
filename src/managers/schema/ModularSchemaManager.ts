@@ -128,7 +128,8 @@ export class ModularSchemaManager {
     this.schemaOperations = new SchemaOperations(connectionManager);
     this.metadataManagement = new MetadataManagement(
       this.schemaOperations,
-      connectionManager
+      connectionManager,
+      queryService
     );
     this.schemaComparison = new SchemaComparison(this.schemaOperations);
     this.dependencyAnalysis = new DependencyAnalysis(this.metadataManagement);

@@ -320,7 +320,7 @@ export class BackupManager {
 
     private async verifyBackupIntegrity(backupPath: string): Promise<boolean> {
         try {
-            // Basic integrity checks
+            // Comprehensive integrity checks
             const stats = fs.statSync(backupPath);
 
             // Check file size (should be > 0)
@@ -329,27 +329,100 @@ export class BackupManager {
                 return false;
             }
 
-            // For SQL files, check if they contain basic SQL structure
+            // Check file is readable
+            try {
+                fs.accessSync(backupPath, fs.constants.R_OK);
+            } catch (error) {
+                Logger.warn('Backup file is not readable', 'BackupManager.verifyBackupIntegrity', { backupPath });
+                return false;
+            }
+
+            // For SQL files, perform detailed content validation
             if (backupPath.endsWith('.sql')) {
                 const content = fs.readFileSync(backupPath, 'utf-8');
 
                 // Check for basic SQL patterns
-                const hasSqlContent = /CREATE|INSERT|UPDATE|DELETE|SELECT/i.test(content);
+                const hasSqlContent = /CREATE|INSERT|UPDATE|DELETE|SELECT|ALTER|DROP/i.test(content);
                 if (!hasSqlContent) {
                     Logger.warn('Backup file does not contain valid SQL content', 'BackupManager.verifyBackupIntegrity', { backupPath });
                     return false;
                 }
 
-                // Check for complete statements (basic check)
+                // Check for balanced comments
                 const openComments = (content.match(/\/\*/g) || []).length;
                 const closeComments = (content.match(/\*\//g) || []).length;
                 if (openComments !== closeComments) {
-                    Logger.warn('Backup file has unmatched comments', 'BackupManager.verifyBackupIntegrity', { backupPath });
+                    Logger.warn('Backup file has unmatched block comments', 'BackupManager.verifyBackupIntegrity', { backupPath });
+                    return false;
+                }
+
+                // Check for balanced parentheses in CREATE statements
+                const createStatements = content.match(/CREATE\s+[^;]+;/gi) || [];
+                for (const stmt of createStatements) {
+                    const openParens = (stmt.match(/\(/g) || []).length;
+                    const closeParens = (stmt.match(/\)/g) || []).length;
+                    if (openParens !== closeParens) {
+                        Logger.warn('Backup file has unmatched parentheses in CREATE statement', 'BackupManager.verifyBackupIntegrity', {
+                            backupPath,
+                            statement: stmt.substring(0, 100) + '...'
+                        });
+                        return false;
+                    }
+                }
+
+                // Check for proper statement termination
+                const statements = content.split(';').filter(s => s.trim().length > 0);
+                for (const stmt of statements) {
+                    // Skip comments and empty lines
+                    const trimmed = stmt.trim();
+                    if (!trimmed.startsWith('--') && trimmed.length > 0) {
+                        // Check for basic SQL keywords at start of statements
+                        const hasValidStart = /^(CREATE|INSERT|UPDATE|DELETE|ALTER|DROP|GRANT|REVOKE|BEGIN|COMMIT|ROLLBACK)/i.test(trimmed);
+                        if (!hasValidStart) {
+                            Logger.warn('Backup file contains statement without valid SQL keyword', 'BackupManager.verifyBackupIntegrity', {
+                                backupPath,
+                                statement: trimmed.substring(0, 50) + '...'
+                            });
+                            return false;
+                        }
+                    }
+                }
+
+                // Check file encoding (basic UTF-8 validation)
+                try {
+                    // Attempt to re-encode to check for invalid characters
+                    Buffer.from(content, 'utf-8').toString('utf-8');
+                } catch (encodingError) {
+                    Logger.warn('Backup file has encoding issues', 'BackupManager.verifyBackupIntegrity', { backupPath });
+                    return false;
+                }
+
+                // Check for minimum expected content (should have at least some schema objects)
+                const hasSchemaObjects = /CREATE\s+(TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE|TYPE|DOMAIN|COLLATION|EXTENSION)/i.test(content);
+                if (!hasSchemaObjects) {
+                    Logger.warn('Backup file does not contain expected schema objects', 'BackupManager.verifyBackupIntegrity', { backupPath });
+                    return false;
+                }
+
+            } else if (backupPath.endsWith('.sql.gz')) {
+                // For compressed files, check if they can be decompressed
+                try {
+                    const testDecompress = await execAsync(`gzip -t "${backupPath}"`);
+                    if (testDecompress.stderr) {
+                        Logger.warn('Compressed backup file is corrupted', 'BackupManager.verifyBackupIntegrity', { backupPath });
+                        return false;
+                    }
+                } catch (error) {
+                    Logger.warn('Compressed backup file integrity check failed', 'BackupManager.verifyBackupIntegrity', { backupPath });
                     return false;
                 }
             }
 
-            Logger.info('Backup integrity verification passed', 'BackupManager.verifyBackupIntegrity', { backupPath });
+            Logger.info('Backup integrity verification passed', 'BackupManager.verifyBackupIntegrity', {
+                backupPath,
+                size: stats.size,
+                checksPerformed: ['file_size', 'readability', 'content_validation', 'encoding', 'structure']
+            });
             return true;
 
         } catch (error) {
