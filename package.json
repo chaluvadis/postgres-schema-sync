@@ -701,10 +701,12 @@
     "@types/jest": "^30.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "24.9.2",
+    "@types/pg": "^8.15.6",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.105.0",
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
+    "@typescript/native-preview": "^7.0.0-dev.20251029.1",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.6.2",
@@ -714,9 +716,7 @@
     "rimraf": "^6.0.1",
     "sinon": "^21.0.0",
     "ts-jest": "^29.4.5",
-    "ts-node": "^10.9.2",
-    "@typescript/native-preview": "^7.0.0-dev.20251029.1",
-    "@types/pg": "^8.15.6"
+    "ts-node": "^10.9.2"
   },
   "repository": {
     "type": "git",
@@ -726,6 +726,7 @@
     "url": "https://github.com/chaluvadis/postgresql-schema-sync/issues"
   },
   "dependencies": {
+    "node-sql-parser": "^5.3.13",
     "pg": "^8.16.3"
   }
 }

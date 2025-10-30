@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as tls from "tls";
+import * as crypto from "crypto";
 import { Logger } from "@/utils/Logger";
 
 export interface SecurityConfiguration {
@@ -1430,15 +1431,38 @@ export class SecurityManager {
         return data;
       }
 
-      // In a real implementation, this would use Node.js crypto module
-      // For now, we'll use a placeholder that would be replaced with actual encryption
-      const encrypted = `encrypted_${Buffer.from(data).toString("base64")}_${
-        key.algorithm
-      }`;
+      // Generate a random initialization vector (IV) for AES-GCM
+      const iv = crypto.randomBytes(16);
+
+      // Generate encryption key from key ID (derive key from ID for consistency)
+      const encryptionKey = this.generateKeyFromId(keyId);
+
+      // Create cipher with the encryption key and IV
+      const cipher = crypto.createCipheriv(key.algorithm, encryptionKey, iv);
+
+      // Encrypt the data
+      let encrypted = cipher.update(data, 'utf8', 'hex');
+      encrypted += cipher.final('hex');
+
+      // For AES-256-GCM, get the authentication tag
+      let authTag: Buffer | undefined;
+      if (key.algorithm === 'AES-256-GCM') {
+        authTag = (cipher as any).getAuthTag();
+      }
+
+      // Combine IV, encrypted data, and auth tag (if available)
+      const buffers: Buffer[] = [iv, Buffer.from(encrypted, 'hex')];
+      if (authTag) {
+        buffers.push(authTag);
+      }
+      const result = Buffer.concat(buffers).toString('base64');
+
+      // Create final encrypted string with metadata
+      const finalEncrypted = `encrypted_${key.algorithm}_${result}`;
 
       // Cache encrypted data
-      this.sensitiveDataCache.set(encrypted, {
-        encrypted,
+      this.sensitiveDataCache.set(finalEncrypted, {
+        encrypted: finalEncrypted,
         classification,
         timestamp: Date.now(),
       });
@@ -1446,9 +1470,11 @@ export class SecurityManager {
       Logger.info("Data encrypted successfully", "encryptSensitiveData", {
         classification,
         algorithm: key.algorithm,
+        dataLength: data.length,
+        encryptedLength: finalEncrypted.length,
       });
 
-      return encrypted;
+      return finalEncrypted;
     } catch (error) {
       Logger.error(
         "Failed to encrypt sensitive data",
@@ -1460,6 +1486,16 @@ export class SecurityManager {
   }
 
   /**
+   * Generates a consistent encryption key from a key ID
+   */
+  private generateKeyFromId(keyId: string): Buffer {
+    // Use PBKDF2 to derive a consistent key from the key ID
+    // This ensures the same key ID always produces the same encryption key
+    const salt = 'postgresql-schema-sync-salt'; // Fixed salt for consistency
+    return crypto.pbkdf2Sync(keyId, salt, 10000, 32, 'sha256');
+  }
+
+  /**
    * Decrypts previously encrypted data
    */
   async decryptSensitiveData(encryptedData: string): Promise<string> {
@@ -1468,14 +1504,61 @@ export class SecurityManager {
     }
 
     try {
+      // Check cache first
       const cached = this.sensitiveDataCache.get(encryptedData);
       if (cached) {
-        // In a real implementation, this would decrypt the actual encrypted data
-        const decrypted = Buffer.from(
-          encryptedData.replace("encrypted_", "").split("_")[0],
-          "base64"
-        ).toString();
-        return decrypted;
+        // Parse the encrypted data format: encrypted_{algorithm}_{base64data}
+        const parts = encryptedData.split('_');
+        if (parts.length < 3 || parts[0] !== 'encrypted') {
+          Logger.warn("Invalid encrypted data format", "decryptSensitiveData");
+          return encryptedData;
+        }
+
+        const algorithm = parts[1];
+        const encryptedPayload = parts.slice(2).join('_');
+
+        // Decode the base64 payload
+        const payloadBuffer = Buffer.from(encryptedPayload, 'base64');
+
+        // Extract components based on algorithm
+        let iv: Buffer;
+        let encrypted: Buffer;
+        let authTag: Buffer | undefined;
+
+        if (algorithm === 'AES-256-GCM') {
+          // For GCM: IV (16 bytes) + encrypted data + auth tag (16 bytes)
+          iv = payloadBuffer.subarray(0, 16);
+          authTag = payloadBuffer.subarray(-16);
+          encrypted = payloadBuffer.subarray(16, -16);
+        } else {
+          // For other algorithms: IV (16 bytes) + encrypted data
+          iv = payloadBuffer.subarray(0, 16);
+          encrypted = payloadBuffer.subarray(16);
+        }
+
+        // Find the encryption key (we need to derive it from the key ID used during encryption)
+        // This is a simplified approach - in production, you'd store key metadata
+        const keyId = this.findKeyIdForEncryptedData(encryptedData);
+        if (!keyId) {
+          Logger.warn("Could not determine encryption key for data", "decryptSensitiveData");
+          return encryptedData;
+        }
+
+        const encryptionKey = this.generateKeyFromId(keyId);
+
+        // Create decipher
+        const decipher = crypto.createDecipheriv(algorithm, encryptionKey, iv);
+
+        // Set auth tag for GCM mode
+        if (authTag && algorithm === 'AES-256-GCM') {
+          (decipher as any).setAuthTag(authTag);
+        }
+
+        // Decrypt the data
+        let decrypted = decipher.update(encrypted);
+        decrypted = Buffer.concat([decrypted, decipher.final()]);
+
+        return decrypted.toString('utf8');
       }
 
       Logger.warn("Encrypted data not found in cache", "decryptSensitiveData");
@@ -1488,6 +1571,26 @@ export class SecurityManager {
       );
       return encryptedData;
     }
+  }
+
+  /**
+   * Finds the key ID used to encrypt data (simplified implementation)
+   */
+  private findKeyIdForEncryptedData(encryptedData: string): string | null {
+    // In a real implementation, you'd store key metadata with encrypted data
+    // For now, we'll try to find a key that can decrypt the data
+    for (const [keyId, key] of this.encryptionKeys.entries()) {
+      try {
+        const encryptionKey = this.generateKeyFromId(keyId);
+        // This is a simplified check - in production, you'd verify with stored metadata
+        if (key.usage.includes('data-encryption')) {
+          return keyId;
+        }
+      } catch {
+        // Continue to next key
+      }
+    }
+    return null;
   }
 
   /**
