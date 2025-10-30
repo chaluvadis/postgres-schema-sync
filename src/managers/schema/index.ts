@@ -67,12 +67,10 @@ export type {
     RollbackScript,
     ValidationStep,
     MigrationDependency,
-    MigrationMetadata,
     MigrationExecutionResult,
     ExecutionLogEntry,
-    MigrationPerformanceMetrics,
     ValidationResult
-} from './MigrationManagement';
+} from './MigrationTypes';
 
 // Export classes
 export { SchemaOperations } from './SchemaOperations';

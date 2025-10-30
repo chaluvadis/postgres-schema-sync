@@ -1,158 +1,24 @@
 import { SchemaDifference } from './SchemaComparison';
 import { Logger } from '@/utils/Logger';
 import { QueryExecutionService } from '@/services/QueryExecutionService';
-import { ValidationFramework, ValidationRequest, ValidationReport } from '../../core/ValidationFramework';
-
-// Enhanced Migration Script Generation Interfaces
-export interface EnhancedMigrationScript {
-    id: string;
-    name: string;
-    description: string;
-    version: string;
-    sourceSchema: SchemaSnapshot;
-    targetSchema: SchemaSnapshot;
-    migrationSteps: MigrationStep[];
-    rollbackScript: RollbackScript;
-    validationSteps: ValidationStep[];
-    dependencies: MigrationDependency[];
-    metadata: MigrationMetadata;
-    generatedAt: Date;
-    estimatedExecutionTime: number; // in minutes
-    riskLevel: 'low' | 'medium' | 'high' | 'critical';
-}
-
-export interface SchemaSnapshot {
-    connectionId: string;
-    schemaHash: string;
-    objectCount: number;
-    capturedAt: Date;
-    objects: any[];
-    relationships: any[];
-}
-
-export interface MigrationStep {
-    id: string;
-    order: number;
-    name: string;
-    description: string;
-    sqlScript: string;
-    objectType: string;
-    objectName: string;
-    schema: string;
-    operation: 'CREATE' | 'ALTER' | 'DROP' | 'RENAME' | 'MIGRATE_DATA';
-    riskLevel: 'low' | 'medium' | 'high' | 'critical';
-    dependencies: string[]; // IDs of other steps this depends on
-    estimatedDuration: number; // in seconds
-    rollbackSql?: string;
-    verificationQuery?: string;
-    preConditions: PreCondition[];
-    postConditions: PostCondition[];
-}
-
-export interface PreCondition {
-    type: 'data_condition' | 'permission_check' | 'custom';
-    description: string;
-    sqlQuery?: string;
-    expectedResult?: any;
-}
-
-export interface PostCondition {
-    type: 'row_count' | 'data_integrity' | 'performance_check' | 'custom';
-    description: string;
-    sqlQuery?: string;
-    expectedResult?: any;
-    tolerance?: number; // Acceptable variance for checks
-}
-
-export interface RollbackScript {
-    isComplete: boolean;
-    steps: RollbackStep[];
-    estimatedRollbackTime: number; // in minutes
-    successRate: number; // percentage
-    warnings: string[];
-    limitations: string[];
-}
-
-export interface RollbackStep {
-    order: number;
-    description: string;
-    estimatedDuration: number; // in minutes
-    riskLevel: 'low' | 'medium' | 'high' | 'critical';
-    dependencies: string[];
-    verificationSteps: string[];
-}
-
-export interface ValidationStep {
-    id: string;
-    name: string;
-    description: string;
-    type: 'syntax' | 'schema' | 'data' | 'performance' | 'security';
-    sqlQuery?: string;
-    expectedResult?: any;
-    severity: 'error' | 'warning' | 'info';
-    automated: boolean;
-}
-
-export interface MigrationDependency {
-    type: 'object' | 'data' | 'permission' | 'external';
-    sourceStep: string;
-    targetStep: string;
-    description: string;
-    critical: boolean;
-}
-
-export interface MigrationMetadata {
-    author: string;
-    reviewedBy?: string;
-    approvedBy?: string;
-    tags: string[];
-    businessJustification: string;
-    changeType: 'hotfix' | 'feature' | 'refactoring' | 'optimization';
-    environment: 'development' | 'staging' | 'production';
-    testingRequired: boolean;
-    documentationUpdated: boolean;
-}
-
-export interface MigrationExecutionResult {
-    scriptId: string;
-    executionId: string;
-    startTime: Date;
-    endTime?: Date;
-    status: 'running' | 'completed' | 'failed' | 'rolled_back';
-    currentStep?: number;
-    completedSteps: number;
-    failedSteps: number;
-    executionLog: ExecutionLogEntry[];
-    performanceMetrics: MigrationPerformanceMetrics;
-    validationResults: ValidationResult[];
-}
-
-export interface ExecutionLogEntry {
-    timestamp: Date;
-    stepId?: string;
-    level: 'info' | 'warning' | 'error';
-    message: string;
-    duration?: number;
-    affectedRows?: number;
-}
-
-export interface MigrationPerformanceMetrics {
-    totalExecutionTime: number; // in seconds
-    averageStepTime: number; // in seconds
-    peakMemoryUsage: number; // in MB
-    databaseLoad: number; // 0-1 scale
-    rollbackTime?: number; // in seconds
-}
-
-export interface ValidationResult {
-    stepId: string;
-    validationId: string;
-    passed: boolean;
-    actualResult?: any;
-    expectedResult?: any;
-    executionTime: number; // in milliseconds
-    errorMessage?: string;
-}
+import { ValidationFramework } from '../../core/ValidationFramework';
+import { MigrationScriptGenerator } from './MigrationScriptGenerator';
+import { MigrationExecutor } from './MigrationExecutor';
+import { MigrationValidator } from './MigrationValidator';
+import {
+    EnhancedMigrationScript,
+    MigrationExecutionResult,
+    ValidationResult,
+    MigrationStep,
+    SchemaSnapshot,
+    PreCondition,
+    PostCondition,
+    RollbackScript,
+    RollbackStep,
+    ValidationStep,
+    ExecutionLogEntry,
+    MigrationDependency
+} from './MigrationTypes';
 
 /**
  * MigrationManagement - Handles migration script generation, execution, and validation
@@ -161,11 +27,44 @@ export interface ValidationResult {
 export class MigrationManagement {
     private queryService: QueryExecutionService;
     private validationFramework: ValidationFramework;
+    private scriptGenerator: MigrationScriptGenerator;
+    private executor: MigrationExecutor;
+    private validator: MigrationValidator;
 
-    constructor(queryService: QueryExecutionService, validationFramework: ValidationFramework) {
+    /**
+     * Creates a new MigrationManagement instance
+     * @param queryService - Service for executing database queries
+     * @param validationFramework - Framework for validating migration operations
+     * @param scriptGenerator - Module for generating migration scripts
+     * @param executor - Module for executing migration scripts
+     * @param validator - Module for validating migration scripts
+     */
+    constructor(
+        queryService: QueryExecutionService,
+        validationFramework: ValidationFramework,
+        scriptGenerator: MigrationScriptGenerator,
+        executor: MigrationExecutor,
+        validator: MigrationValidator
+    ) {
         this.queryService = queryService;
         this.validationFramework = validationFramework;
+        this.scriptGenerator = scriptGenerator;
+        this.executor = executor;
+        this.validator = validator;
     }
+    /**
+     * Generates an enhanced migration script with comprehensive analysis and rollback capabilities
+     * @param sourceConnectionId - Connection ID for the source database
+     * @param targetConnectionId - Connection ID for the target database
+     * @param schemaChanges - Array of schema differences to migrate
+     * @param options - Configuration options for migration generation
+     * @param options.includeRollback - Whether to include rollback script generation
+     * @param options.includeValidation - Whether to include validation steps
+     * @param options.includePerformanceOptimization - Whether to include performance optimizations
+     * @param options.businessJustification - Business justification for the migration
+     * @returns Promise resolving to an enhanced migration script
+     * @throws Error if migration script generation fails
+     */
     async generateEnhancedMigrationScript(
         sourceConnectionId: string,
         targetConnectionId: string,
@@ -177,6 +76,23 @@ export class MigrationManagement {
             businessJustification?: string;
         } = {}
     ): Promise<EnhancedMigrationScript> {
+        // Input validation
+        if (!sourceConnectionId || typeof sourceConnectionId !== 'string') {
+            throw new Error('sourceConnectionId must be a non-empty string');
+        }
+        if (!targetConnectionId || typeof targetConnectionId !== 'string') {
+            throw new Error('targetConnectionId must be a non-empty string');
+        }
+        if (!Array.isArray(schemaChanges)) {
+            throw new Error('schemaChanges must be an array');
+        }
+        if (schemaChanges.length === 0) {
+            throw new Error('schemaChanges array cannot be empty');
+        }
+        if (options.businessJustification && typeof options.businessJustification !== 'string') {
+            throw new Error('businessJustification must be a string if provided');
+        }
+
         try {
             Logger.info('Generating enhanced migration script', 'generateEnhancedMigrationScript', {
                 sourceConnectionId,
@@ -185,72 +101,30 @@ export class MigrationManagement {
                 options
             });
 
-            // Create schema snapshots
-            const sourceSnapshot = await this.createSchemaSnapshot(sourceConnectionId);
-            const targetSnapshot = await this.createSchemaSnapshot(targetConnectionId);
-
-            // Generate migration steps with proper ordering
-            const migrationSteps = await this.generateMigrationSteps(schemaChanges, sourceConnectionId, targetConnectionId);
-
-            // Generate rollback script if requested
-            const rollbackScript = options.includeRollback !== false ?
-                await this.generateRollbackScript(migrationSteps, sourceConnectionId, targetConnectionId) :
-                this.getDefaultRollbackScript();
-
-            // Generate validation steps if requested
-            const validationSteps = options.includeValidation !== false ?
-                await this.generateValidationSteps(migrationSteps, sourceConnectionId, targetConnectionId) :
-                [];
-
-            // Analyze dependencies between migration steps
-            const dependencies = await this.analyzeMigrationDependencies(migrationSteps, sourceConnectionId, targetConnectionId);
-
-            // Calculate estimated execution time
-            const estimatedExecutionTime = migrationSteps.reduce((total, step) => total + step.estimatedDuration, 0) / 60; // Convert to minutes
-
-            // Assess overall risk level
-            const riskLevel = this.assessMigrationRiskLevel(migrationSteps);
-
-            const script: EnhancedMigrationScript = {
-                id: this.generateId(),
-                name: `Migration Script ${new Date().toISOString().split('T')[0]}`,
-                description: `Automated migration script for ${schemaChanges.length} schema changes`,
-                version: '1.0.0',
-                sourceSchema: sourceSnapshot,
-                targetSchema: targetSnapshot,
-                migrationSteps,
-                rollbackScript,
-                validationSteps,
-                dependencies,
-                metadata: {
-                    author: 'SchemaComparisonView',
-                    tags: ['automated', 'schema-comparison'],
-                    businessJustification: options.businessJustification || 'Schema synchronization between environments',
-                    changeType: 'feature',
-                    environment: 'production',
-                    testingRequired: true,
-                    documentationUpdated: false
-                },
-                generatedAt: new Date(),
-                estimatedExecutionTime,
-                riskLevel
-            };
-
-            Logger.info('Enhanced migration script generated', 'generateEnhancedMigrationScript', {
-                scriptId: script.id,
-                stepCount: migrationSteps.length,
-                estimatedTime: `${estimatedExecutionTime} minutes`,
-                riskLevel,
-                rollbackIncluded: options.includeRollback !== false
-            });
-
-            return script;
+            // Delegate to script generator module
+            return await this.scriptGenerator.generateEnhancedMigrationScript(
+                sourceConnectionId,
+                targetConnectionId,
+                schemaChanges,
+                options
+            );
 
         } catch (error) {
             Logger.error('Failed to generate enhanced migration script', error as Error);
             throw error;
         }
     }
+    /**
+     * Executes an enhanced migration script with comprehensive monitoring and error handling
+     * @param script - The enhanced migration script to execute
+     * @param connectionId - Connection ID for the target database
+     * @param options - Execution options
+     * @param options.dryRun - If true, only simulate execution without making changes
+     * @param options.validateOnly - If true, only run validation without executing migration
+     * @param options.stopOnError - If true, stop execution on first error
+     * @returns Promise resolving to migration execution result
+     * @throws Error if migration execution fails
+     */
     async executeMigrationScript(
         script: EnhancedMigrationScript,
         connectionId: string,
@@ -260,6 +134,17 @@ export class MigrationManagement {
             stopOnError?: boolean;
         } = {}
     ): Promise<MigrationExecutionResult> {
+        // Input validation
+        if (!script || typeof script !== 'object') {
+            throw new Error('script must be a valid EnhancedMigrationScript object');
+        }
+        if (!script.id || !script.migrationSteps || !Array.isArray(script.migrationSteps)) {
+            throw new Error('script must have valid id and migrationSteps array');
+        }
+        if (!connectionId || typeof connectionId !== 'string') {
+            throw new Error('connectionId must be a non-empty string');
+        }
+
         try {
             Logger.info('Executing enhanced migration script', 'executeMigrationScript', {
                 scriptId: script.id,
@@ -268,117 +153,33 @@ export class MigrationManagement {
                 validateOnly: options.validateOnly || false
             });
 
-            const executionId = this.generateId();
-            const startTime = new Date();
-            const executionLog: ExecutionLogEntry[] = [];
-
-            executionLog.push({
-                timestamp: new Date(),
-                level: 'info',
-                message: `Starting migration execution: ${script.name}`,
-                duration: 0
-            });
-
-            const result: MigrationExecutionResult = {
-                scriptId: script.id,
-                executionId,
-                startTime,
-                status: 'running',
-                completedSteps: 0,
-                failedSteps: 0,
-                executionLog,
-                performanceMetrics: {
-                    totalExecutionTime: 0,
-                    averageStepTime: 0,
-                    peakMemoryUsage: 0,
-                    databaseLoad: 0
-                },
-                validationResults: []
-            };
-
-            // Execute each migration step
-            for (let i = 0; i < script.migrationSteps.length; i++) {
-                const step = script.migrationSteps[i];
-                result.currentStep = i + 1;
-
-                try {
-                    executionLog.push({
-                        timestamp: new Date(),
-                        stepId: step.id,
-                        level: 'info',
-                        message: `Executing step ${step.order}: ${step.name}`,
-                        duration: 0
-                    });
-
-                    if (!options.dryRun && !options.validateOnly) {
-                        // Execute the actual SQL (simulated)
-                        await this.executeMigrationStep(step, connectionId);
-
-                        executionLog.push({
-                            timestamp: new Date(),
-                            stepId: step.id,
-                            level: 'info',
-                            message: `Step ${step.order} completed successfully`,
-                            duration: step.estimatedDuration * 1000
-                        });
-                    }
-
-                    result.completedSteps++;
-
-                } catch (error) {
-                    executionLog.push({
-                        timestamp: new Date(),
-                        stepId: step.id,
-                        level: 'error',
-                        message: `Step ${step.order} failed: ${(error as Error).message}`,
-                        duration: 0
-                    });
-
-                    result.failedSteps++;
-
-                    if (options.stopOnError) {
-                        result.status = 'failed';
-                        break;
-                    }
-                }
-            }
-
-            // Update final status
-            result.endTime = new Date();
-            result.status = result.failedSteps === 0 ? 'completed' : 'failed';
-
-            // Calculate performance metrics
-            const totalTime = result.endTime.getTime() - startTime.getTime();
-            result.performanceMetrics = {
-                totalExecutionTime: totalTime / 1000, // Convert to seconds
-                averageStepTime: totalTime / (result.completedSteps + result.failedSteps) / 1000,
-                peakMemoryUsage: 50, // Simulated
-                databaseLoad: 0.3 // Simulated
-            };
-
-            executionLog.push({
-                timestamp: new Date(),
-                level: 'info',
-                message: `Migration execution ${result.status}: ${result.completedSteps} completed, ${result.failedSteps} failed`,
-                duration: totalTime
-            });
-
-            Logger.info('Migration script execution completed', 'executeMigrationScript', {
-                executionId,
-                status: result.status,
-                completedSteps: result.completedSteps,
-                failedSteps: result.failedSteps,
-                totalTime: `${(totalTime / 1000).toFixed(2)} seconds`
-            });
-
-            return result;
+            // Delegate to executor module
+            return await this.executor.executeMigrationScript(script, connectionId, options);
 
         } catch (error) {
             Logger.error('Migration script execution failed', error as Error);
             throw error;
         }
     }
+    /**
+     * Validates a migration script using both framework validation and legacy validation steps
+     * @param script - The enhanced migration script to validate
+     * @param connectionId - Connection ID for the database to validate against
+     * @returns Promise resolving to array of validation results
+     * @throws Error if validation fails
+     */
     async validateMigrationScript(script: EnhancedMigrationScript, connectionId: string): Promise<ValidationResult[]> {
+        // Input validation
+        if (!script || typeof script !== 'object') {
+            throw new Error('script must be a valid EnhancedMigrationScript object');
+        }
+        if (!script.id || !script.validationSteps || !Array.isArray(script.validationSteps)) {
+            throw new Error('script must have valid id and validationSteps array');
+        }
+        if (!connectionId || typeof connectionId !== 'string') {
+            throw new Error('connectionId must be a non-empty string');
+        }
+
         try {
             Logger.info('Validating migration script with ValidationFramework', 'validateMigrationScript', {
                 scriptId: script.id,
@@ -386,98 +187,27 @@ export class MigrationManagement {
                 connectionId
             });
 
-            // First run the ValidationFramework validation
-            const frameworkValidationReport = await this.performFrameworkValidation(script, connectionId);
-
-            // Then run the existing validation steps for backward compatibility
-            const legacyValidationResults: ValidationResult[] = [];
-
-            // Run each validation step
-            for (const validation of script.validationSteps) {
-                const startTime = Date.now();
-
-                try {
-                    let passed = false;
-                    let actualResult: any = null;
-                    let errorMessage: string | undefined;
-
-                    if (validation.automated && validation.sqlQuery) {
-                        try {
-                            // Execute actual validation query against the database
-                            const result = await this.queryService.executeQuery(connectionId, validation.sqlQuery);
-
-                            // Extract actual result from query
-                            actualResult = result.rows.length > 0 ? result.rows[0][0] : null;
-
-                            // Validate against expected result
-                            passed = this.validateConditionResult(actualResult, validation.expectedResult);
-
-                            Logger.debug('Validation query executed', 'validateMigrationScript', {
-                                validationId: validation.id,
-                                sqlQuery: validation.sqlQuery,
-                                actualResult,
-                                expectedResult: validation.expectedResult,
-                                passed
-                            });
-
-                        } catch (queryError) {
-                            passed = false;
-                            errorMessage = `Query execution failed: ${(queryError as Error).message}`;
-                            Logger.warn('Validation query failed', 'validateMigrationScript', {
-                                validationId: validation.id,
-                                error: (queryError as Error).message
-                            });
-                        }
-                    } else {
-                        // Manual validation required
-                        passed = false;
-                        errorMessage = 'Manual validation required';
-                    }
-
-                    legacyValidationResults.push({
-                        stepId: validation.id.split('_')[1] || 'unknown', // Extract step ID
-                        validationId: validation.id,
-                        passed,
-                        actualResult,
-                        expectedResult: validation.expectedResult,
-                        executionTime: Date.now() - startTime,
-                        errorMessage
-                    });
-
-                } catch (error) {
-                    legacyValidationResults.push({
-                        stepId: validation.id.split('_')[1] || 'unknown',
-                        validationId: validation.id,
-                        passed: false,
-                        executionTime: Date.now() - startTime,
-                        errorMessage: (error as Error).message
-                    });
-                }
-            }
-
-            // Combine framework validation results with legacy results
-            const combinedResults = this.combineValidationResults(frameworkValidationReport, legacyValidationResults);
-
-            const passedValidations = combinedResults.filter(v => v.passed).length;
-            const failedValidations = combinedResults.length - passedValidations;
-
-            Logger.info('Migration script validation completed', 'validateMigrationScript', {
-                totalValidations: combinedResults.length,
-                passedValidations,
-                failedValidations,
-                successRate: `${((passedValidations / combinedResults.length) * 100).toFixed(1)}%`,
-                frameworkValidationPassed: frameworkValidationReport.canProceed,
-                legacyValidationPassed: legacyValidationResults.filter(v => v.passed).length
-            });
-
-            return combinedResults;
+            // Delegate to validator module
+            return await this.validator.validateMigrationScript(script, connectionId);
 
         } catch (error) {
             Logger.error('Migration script validation failed', error as Error, 'validateMigrationScript');
             throw error;
         }
     }
+    /**
+     * Creates a comprehensive snapshot of the database schema for migration analysis
+     * @param connectionId - Connection ID for the database to snapshot
+     * @returns Promise resolving to schema snapshot
+     * @throws Error if schema snapshot creation fails
+     * @private
+     */
     private async createSchemaSnapshot(connectionId: string): Promise<SchemaSnapshot> {
+        // Input validation
+        if (!connectionId || typeof connectionId !== 'string') {
+            throw new Error('connectionId must be a non-empty string');
+        }
+
         try {
             Logger.info('Creating schema snapshot', 'createSchemaSnapshot', { connectionId });
 
@@ -631,6 +361,13 @@ export class MigrationManagement {
             throw error;
         }
     }
+    /**
+     * Generates a deterministic hash for schema objects for change detection
+     * @param objects - Array of schema objects to hash
+     * @returns Promise resolving to schema hash string
+     * @throws Error if hash generation fails
+     * @private
+     */
     private async generateSchemaHash(objects: any[]): Promise<string> {
         try {
             // Sort objects consistently for deterministic hashing
@@ -671,11 +408,29 @@ export class MigrationManagement {
             return Date.now().toString(16);
         }
     }
+    /**
+     * Generates ordered migration steps from schema differences
+     * @param schemaChanges - Array of schema differences to convert to steps
+     * @param sourceConnectionId - Connection ID for source database
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to array of migration steps
+     * @private
+     */
     private async generateMigrationSteps(
         schemaChanges: SchemaDifference[],
         sourceConnectionId: string,
         targetConnectionId: string
     ): Promise<MigrationStep[]> {
+        // Input validation
+        if (!Array.isArray(schemaChanges)) {
+            throw new Error('schemaChanges must be an array');
+        }
+        if (!sourceConnectionId || typeof sourceConnectionId !== 'string') {
+            throw new Error('sourceConnectionId must be a non-empty string');
+        }
+        if (!targetConnectionId || typeof targetConnectionId !== 'string') {
+            throw new Error('targetConnectionId must be a non-empty string');
+        }
         const steps: MigrationStep[] = [];
 
         // Sort changes by dependency order (DROP first, then CREATE/ALTER)
@@ -689,7 +444,17 @@ export class MigrationManagement {
 
         return steps;
     }
+    /**
+     * Orders schema changes by dependency to ensure safe migration execution
+     * @param changes - Array of schema differences to order
+     * @returns Ordered array of schema differences
+     * @private
+     */
     private orderChangesByDependency(changes: SchemaDifference[]): SchemaDifference[] {
+        // Input validation
+        if (!Array.isArray(changes)) {
+            throw new Error('changes must be an array');
+        }
         // Order: DROP operations first, then CREATE, then ALTER
         const dropOperations = changes.filter(c => c.type === 'Removed');
         const createOperations = changes.filter(c => c.type === 'Added');
@@ -697,12 +462,37 @@ export class MigrationManagement {
 
         return [...dropOperations, ...createOperations, ...modifyOperations];
     }
+    /**
+     * Generates a single migration step from a schema difference
+     * @param change - Schema difference to convert to migration step
+     * @param order - Order number for the migration step
+     * @param sourceConnectionId - Connection ID for source database
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to migration step
+     * @private
+     */
     private async generateMigrationStep(
         change: SchemaDifference,
         order: number,
         sourceConnectionId: string,
         targetConnectionId: string
     ): Promise<MigrationStep> {
+        // Input validation
+        if (!change || typeof change !== 'object') {
+            throw new Error('change must be a valid SchemaDifference object');
+        }
+        if (!change.objectType || !change.objectName || !change.schema) {
+            throw new Error('change must have valid objectType, objectName, and schema properties');
+        }
+        if (typeof order !== 'number' || order < 1) {
+            throw new Error('order must be a positive number');
+        }
+        if (!sourceConnectionId || typeof sourceConnectionId !== 'string') {
+            throw new Error('sourceConnectionId must be a non-empty string');
+        }
+        if (!targetConnectionId || typeof targetConnectionId !== 'string') {
+            throw new Error('targetConnectionId must be a non-empty string');
+        }
         const stepId = `step_${order}`;
 
         // Generate SQL based on change type
@@ -738,11 +528,30 @@ export class MigrationManagement {
             postConditions
         };
     }
+    /**
+     * Generates SQL statement for a schema change based on change type
+     * @param change - Schema difference to generate SQL for
+     * @param sourceConnectionId - Connection ID for source database
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to SQL statement string
+     * @throws Error if SQL generation fails
+     * @private
+     */
     private async generateChangeSQL(
         change: SchemaDifference,
         sourceConnectionId: string,
         targetConnectionId: string
     ): Promise<string> {
+        // Input validation
+        if (!change || typeof change !== 'object') {
+            throw new Error('change must be a valid SchemaDifference object');
+        }
+        if (!sourceConnectionId || typeof sourceConnectionId !== 'string') {
+            throw new Error('sourceConnectionId must be a non-empty string');
+        }
+        if (!targetConnectionId || typeof targetConnectionId !== 'string') {
+            throw new Error('targetConnectionId must be a non-empty string');
+        }
         try {
             switch (change.type) {
                 case 'Added':
@@ -766,7 +575,22 @@ export class MigrationManagement {
             return `-- Error generating SQL for ${change.type} ${change.objectType} ${change.objectName}: ${(error as Error).message}`;
         }
     }
+    /**
+     * Generates CREATE SQL statement for added objects
+     * @param change - Schema difference representing the added object
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to CREATE SQL statement
+     * @throws Error if CREATE SQL generation fails
+     * @private
+     */
     private async generateCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
+        // Input validation
+        if (!change || typeof change !== 'object') {
+            throw new Error('change must be a valid SchemaDifference object');
+        }
+        if (!targetConnectionId || typeof targetConnectionId !== 'string') {
+            throw new Error('targetConnectionId must be a non-empty string');
+        }
         if (change.targetDefinition) {
             return change.targetDefinition;
         }
@@ -800,7 +624,12 @@ export class MigrationManagement {
     }
 
     /**
-     * Generate CREATE TABLE SQL by querying target database
+     * Generates CREATE TABLE SQL by querying target database structure
+     * @param change - Schema difference for the table to create
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to CREATE TABLE SQL statement
+     * @throws Error if table creation SQL generation fails
+     * @private
      */
     private async generateTableCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
         try {
@@ -861,7 +690,12 @@ export class MigrationManagement {
     }
 
     /**
-     * Generate CREATE INDEX SQL by querying target database
+     * Generates CREATE INDEX SQL by querying target database index definition
+     * @param change - Schema difference for the index to create
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to CREATE INDEX SQL statement
+     * @throws Error if index creation SQL generation fails
+     * @private
      */
     private async generateIndexCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
         try {
@@ -891,7 +725,12 @@ export class MigrationManagement {
     }
 
     /**
-     * Generate CREATE VIEW SQL by querying target database
+     * Generates CREATE VIEW SQL by querying target database view definition
+     * @param change - Schema difference for the view to create
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to CREATE VIEW SQL statement
+     * @throws Error if view creation SQL generation fails
+     * @private
      */
     private async generateViewCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
         try {
@@ -921,7 +760,12 @@ export class MigrationManagement {
     }
 
     /**
-     * Generate CREATE FUNCTION SQL by querying target database
+     * Generates CREATE FUNCTION SQL by querying target database function definition
+     * @param change - Schema difference for the function to create
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to CREATE FUNCTION SQL statement
+     * @throws Error if function creation SQL generation fails
+     * @private
      */
     private async generateFunctionCreateSQL(change: SchemaDifference, targetConnectionId: string): Promise<string> {
         try {
@@ -954,7 +798,10 @@ export class MigrationManagement {
     }
 
     /**
-     * Generate DROP SQL statement
+     * Generates DROP SQL statement for removed objects
+     * @param change - Schema difference representing the removed object
+     * @returns DROP SQL statement string
+     * @private
      */
     private generateDropSQL(change: SchemaDifference): string {
         const objectType = change.objectType.toUpperCase();
@@ -985,7 +832,13 @@ export class MigrationManagement {
     }
 
     /**
-     * Generate ALTER SQL statement
+     * Generates ALTER SQL statement for modified objects
+     * @param change - Schema difference representing the modified object
+     * @param sourceConnectionId - Connection ID for source database
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to ALTER SQL statement
+     * @throws Error if ALTER SQL generation fails
+     * @private
      */
     private async generateAlterSQL(
         change: SchemaDifference,
@@ -1009,32 +862,491 @@ export class MigrationManagement {
     }
 
     /**
-     * Generate ALTER TABLE SQL statement
+     * Generates ALTER TABLE SQL statement for table modifications
+     * @param change - Schema difference for the table modification
+     * @param sourceConnectionId - Connection ID for source database
+     * @param targetConnectionId - Connection ID for target database
+     * @returns Promise resolving to ALTER TABLE SQL statement
+     * @throws Error if table alteration SQL generation fails
+     * @private
      */
     private async generateTableAlterSQL(
         change: SchemaDifference,
         sourceConnectionId: string,
         targetConnectionId: string
     ): Promise<string> {
-        // Get source and target schema snapshots to compare table structures
-        const sourceSnapshot = await this.createSchemaSnapshot(sourceConnectionId);
-        const targetSnapshot = await this.createSchemaSnapshot(targetConnectionId);
+        try {
+            Logger.info('Generating table ALTER SQL', 'generateTableAlterSQL', {
+                schema: change.schema,
+                tableName: change.objectName,
+                sourceConnectionId,
+                targetConnectionId
+            });
 
-        const sourceTable = sourceSnapshot.objects.find(obj =>
-            obj.type === 'table' && obj.schema === change.schema && obj.name === change.objectName
-        );
+            // Get column information from both source and target databases
+            const sourceColumns = await this.getTableColumns(sourceConnectionId, change.schema, change.objectName);
+            const targetColumns = await this.getTableColumns(targetConnectionId, change.schema, change.objectName);
 
-        const targetTable = targetSnapshot.objects.find(obj =>
-            obj.type === 'table' && obj.schema === change.schema && obj.name === change.objectName
-        );
+            if (!sourceColumns || !targetColumns) {
+                return `-- Cannot generate ALTER TABLE: unable to retrieve column information`;
+            }
 
-        if (!sourceTable || !targetTable) {
-            return `-- Cannot generate ALTER TABLE: table not found in source or target schema`;
+            // Get constraint information
+            const sourceConstraints = await this.getTableConstraints(sourceConnectionId, change.schema, change.objectName);
+            const targetConstraints = await this.getTableConstraints(targetConnectionId, change.schema, change.objectName);
+
+            // Get index information
+            const sourceIndexes = await this.getTableIndexes(sourceConnectionId, change.schema, change.objectName);
+            const targetIndexes = await this.getTableIndexes(targetConnectionId, change.schema, change.objectName);
+
+            // Analyze differences and generate ALTER statements
+            const alterStatements: string[] = [];
+            const warnings: string[] = [];
+
+            // Analyze column changes
+            if (sourceColumns && targetColumns) {
+                const columnChanges = this.analyzeColumnChanges(sourceColumns, targetColumns);
+                for (const columnChange of columnChanges) {
+                    const statement = this.generateColumnAlterStatement(change.schema, change.objectName, columnChange);
+                    if (statement) {
+                        alterStatements.push(statement);
+                    }
+                    if (columnChange.warning) {
+                        warnings.push(columnChange.warning);
+                    }
+                }
+            }
+
+            // Analyze constraint changes
+            if (sourceConstraints && targetConstraints) {
+                const constraintChanges = this.analyzeConstraintChanges(sourceConstraints, targetConstraints);
+                for (const constraintChange of constraintChanges) {
+                    const statement = this.generateConstraintAlterStatement(change.schema, change.objectName, constraintChange);
+                    if (statement) {
+                        alterStatements.push(statement);
+                    }
+                }
+            }
+
+            // Analyze index changes
+            if (sourceIndexes && targetIndexes) {
+                const indexChanges = this.analyzeIndexChanges(sourceIndexes, targetIndexes);
+                for (const indexChange of indexChanges) {
+                    const statement = this.generateIndexAlterStatement(change.schema, change.objectName, indexChange);
+                    if (statement) {
+                        alterStatements.push(statement);
+                    }
+                }
+            }
+
+            if (alterStatements.length === 0) {
+                return `-- No specific table changes detected for ${change.schema}.${change.objectName}`;
+            }
+
+            let result = `-- ALTER TABLE statements for ${change.schema}.${change.objectName}\n${alterStatements.join('\n')}`;
+
+            if (warnings.length > 0) {
+                result += `\n-- Warnings:\n${warnings.map(w => `--   ${w}`).join('\n')}`;
+            }
+
+            Logger.info('Table ALTER SQL generated', 'generateTableAlterSQL', {
+                tableName: change.objectName,
+                statementCount: alterStatements.length,
+                warningCount: warnings.length
+            });
+
+            return result;
+
+        } catch (error) {
+            Logger.error('Failed to generate table ALTER SQL', error as Error, 'generateTableAlterSQL', {
+                schema: change.schema,
+                tableName: change.objectName
+            });
+            return `-- Error generating ALTER TABLE: ${(error as Error).message}`;
+        }
+    }
+
+    /**
+     * Retrieves table column information from database
+     * @param connectionId - Connection ID for the database
+     * @param schema - Schema name
+     * @param tableName - Table name
+     * @returns Promise resolving to array of column information or null if failed
+     * @private
+     */
+    private async getTableColumns(connectionId: string, schema: string, tableName: string): Promise<any[] | null> {
+        try {
+            const query = `
+                SELECT
+                    column_name,
+                    data_type,
+                    is_nullable,
+                    column_default,
+                    character_maximum_length,
+                    numeric_precision,
+                    numeric_scale,
+                    ordinal_position
+                FROM information_schema.columns
+                WHERE table_schema = '${schema}' AND table_name = '${tableName}'
+                ORDER BY ordinal_position
+            `;
+
+            const result = await this.queryService.executeQuery(connectionId, query);
+            return result.rows.map(row => ({
+                columnName: row[0],
+                dataType: row[1],
+                isNullable: row[2],
+                columnDefault: row[3],
+                maxLength: row[4],
+                precision: row[5],
+                scale: row[6],
+                position: row[7]
+            }));
+        } catch (error) {
+            Logger.warn('Failed to get table columns', 'getTableColumns', {
+                connectionId,
+                schema,
+                tableName,
+                error: (error as Error).message
+            });
+            return null;
+        }
+    }
+
+    /**
+     * Retrieves table constraint information from database
+     * @param connectionId - Connection ID for the database
+     * @param schema - Schema name
+     * @param tableName - Table name
+     * @returns Promise resolving to array of constraint information or null if failed
+     * @private
+     */
+    private async getTableConstraints(connectionId: string, schema: string, tableName: string): Promise<any[] | null> {
+        try {
+            const query = `
+                SELECT
+                    tc.constraint_name,
+                    tc.constraint_type,
+                    kcu.column_name,
+                    ccu.table_schema AS foreign_table_schema,
+                    ccu.table_name AS foreign_table_name,
+                    ccu.column_name AS foreign_column_name,
+                    cc.check_clause
+                FROM information_schema.table_constraints tc
+                LEFT JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+                LEFT JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+                LEFT JOIN information_schema.check_constraints cc ON tc.constraint_name = cc.constraint_name
+                WHERE tc.table_schema = '${schema}' AND tc.table_name = '${tableName}'
+                ORDER BY tc.constraint_name
+            `;
+
+            const result = await this.queryService.executeQuery(connectionId, query);
+            return result.rows.map(row => ({
+                constraintName: row[0],
+                constraintType: row[1],
+                columnName: row[2],
+                foreignTableSchema: row[3],
+                foreignTableName: row[4],
+                foreignColumnName: row[5],
+                checkClause: row[6]
+            }));
+        } catch (error) {
+            Logger.warn('Failed to get table constraints', 'getTableConstraints', {
+                connectionId,
+                schema,
+                tableName,
+                error: (error as Error).message
+            });
+            return null;
+        }
+    }
+
+    /**
+     * Retrieves table index information from database
+     * @param connectionId - Connection ID for the database
+     * @param schema - Schema name
+     * @param tableName - Table name
+     * @returns Promise resolving to array of index information or null if failed
+     * @private
+     */
+    private async getTableIndexes(connectionId: string, schema: string, tableName: string): Promise<any[] | null> {
+        try {
+            const query = `
+                SELECT
+                    schemaname,
+                    tablename,
+                    indexname,
+                    indexdef
+                FROM pg_indexes
+                WHERE schemaname = '${schema}' AND tablename = '${tableName}'
+                ORDER BY indexname
+            `;
+
+            const result = await this.queryService.executeQuery(connectionId, query);
+            return result.rows.map(row => ({
+                schema: row[0],
+                tableName: row[1],
+                indexName: row[2],
+                definition: row[3]
+            }));
+        } catch (error) {
+            Logger.warn('Failed to get table indexes', 'getTableIndexes', {
+                connectionId,
+                schema,
+                tableName,
+                error: (error as Error).message
+            });
+            return null;
+        }
+    }
+
+    /**
+     * Analyzes differences between source and target column definitions
+     * @param sourceColumns - Column definitions from source database
+     * @param targetColumns - Column definitions from target database
+     * @returns Array of column change objects
+     * @private
+     */
+    private analyzeColumnChanges(sourceColumns: any[], targetColumns: any[]): any[] {
+        const changes: any[] = [];
+
+        // Find added columns
+        for (const targetCol of targetColumns) {
+            const sourceCol = sourceColumns.find(sc => sc.columnName === targetCol.columnName);
+            if (!sourceCol) {
+                changes.push({
+                    type: 'ADD',
+                    column: targetCol,
+                    warning: null
+                });
+            }
         }
 
-        // For now, return a generic ALTER TABLE statement
-        // In a full implementation, this would compare column definitions and generate specific changes
-        return `-- ALTER TABLE ${change.schema}.${change.objectName}\n-- TODO: Analyze specific column changes and generate appropriate ALTER statements`;
+        // Find removed columns
+        for (const sourceCol of sourceColumns) {
+            const targetCol = targetColumns.find(tc => tc.columnName === sourceCol.columnName);
+            if (!targetCol) {
+                changes.push({
+                    type: 'DROP',
+                    column: sourceCol,
+                    warning: `WARNING: Dropping column ${sourceCol.columnName} may cause data loss`
+                });
+            }
+        }
+
+        // Find modified columns
+        for (const sourceCol of sourceColumns) {
+            const targetCol = targetColumns.find(tc => tc.columnName === sourceCol.columnName);
+            if (targetCol) {
+                const differences = this.compareColumns(sourceCol, targetCol);
+                if (differences.length > 0) {
+                    changes.push({
+                        type: 'MODIFY',
+                        sourceColumn: sourceCol,
+                        targetColumn: targetCol,
+                        differences,
+                        warning: differences.some(d => d.includes('data type')) ?
+                            `WARNING: Data type change for ${sourceCol.columnName} may cause data loss` : null
+                    });
+                }
+            }
+        }
+
+        return changes;
+    }
+
+    /**
+     * Compares two column definitions and returns list of differences
+     * @param sourceCol - Source column definition
+     * @param targetCol - Target column definition
+     * @returns Array of difference descriptions
+     * @private
+     */
+    private compareColumns(sourceCol: any, targetCol: any): string[] {
+        const differences: string[] = [];
+
+        if (sourceCol.dataType !== targetCol.dataType) {
+            differences.push(`data type: ${sourceCol.dataType} -> ${targetCol.dataType}`);
+        }
+        if (sourceCol.isNullable !== targetCol.isNullable) {
+            differences.push(`nullable: ${sourceCol.isNullable} -> ${targetCol.isNullable}`);
+        }
+        if (sourceCol.columnDefault !== targetCol.columnDefault) {
+            differences.push(`default: ${sourceCol.columnDefault} -> ${targetCol.columnDefault}`);
+        }
+        if (sourceCol.maxLength !== targetCol.maxLength) {
+            differences.push(`max length: ${sourceCol.maxLength} -> ${targetCol.maxLength}`);
+        }
+
+        return differences;
+    }
+
+    /**
+     * Generates ALTER TABLE statement for column changes
+     * @param schema - Schema name
+     * @param tableName - Table name
+     * @param change - Column change object
+     * @returns ALTER TABLE statement or null if no change needed
+     * @private
+     */
+    private generateColumnAlterStatement(schema: string, tableName: string, change: any): string | null {
+        switch (change.type) {
+            case 'ADD':
+                const nullable = change.column.isNullable === 'YES' ? '' : ' NOT NULL';
+                const defaultVal = change.column.columnDefault ? ` DEFAULT ${change.column.columnDefault}` : '';
+                return `ALTER TABLE ${schema}.${tableName} ADD COLUMN ${change.column.columnName} ${change.column.dataType}${nullable}${defaultVal};`;
+
+            case 'DROP':
+                return `ALTER TABLE ${schema}.${tableName} DROP COLUMN IF EXISTS ${change.column.columnName} CASCADE;`;
+
+            case 'MODIFY':
+                const statements: string[] = [];
+                if (change.differences.some((d: string) => d.includes('data type'))) {
+                    statements.push(`ALTER TABLE ${schema}.${tableName} ALTER COLUMN ${change.sourceColumn.columnName} TYPE ${change.targetColumn.dataType};`);
+                }
+                if (change.differences.some((d: string) => d.includes('nullable'))) {
+                    if (change.targetColumn.isNullable === 'YES') {
+                        statements.push(`ALTER TABLE ${schema}.${tableName} ALTER COLUMN ${change.sourceColumn.columnName} DROP NOT NULL;`);
+                    } else {
+                        statements.push(`ALTER TABLE ${schema}.${tableName} ALTER COLUMN ${change.sourceColumn.columnName} SET NOT NULL;`);
+                    }
+                }
+                if (change.differences.some((d: string) => d.includes('default'))) {
+                    if (change.targetColumn.columnDefault) {
+                        statements.push(`ALTER TABLE ${schema}.${tableName} ALTER COLUMN ${change.sourceColumn.columnName} SET DEFAULT ${change.targetColumn.columnDefault};`);
+                    } else {
+                        statements.push(`ALTER TABLE ${schema}.${tableName} ALTER COLUMN ${change.sourceColumn.columnName} DROP DEFAULT;`);
+                    }
+                }
+                return statements.join('\n');
+
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Analyzes differences between source and target constraint definitions
+     * @param sourceConstraints - Constraint definitions from source database
+     * @param targetConstraints - Constraint definitions from target database
+     * @returns Array of constraint change objects
+     * @private
+     */
+    private analyzeConstraintChanges(sourceConstraints: any[], targetConstraints: any[]): any[] {
+        const changes: any[] = [];
+
+        // Find added constraints
+        for (const targetCon of targetConstraints) {
+            const sourceCon = sourceConstraints.find(sc => sc.constraintName === targetCon.constraintName);
+            if (!sourceCon) {
+                changes.push({
+                    type: 'ADD',
+                    constraint: targetCon
+                });
+            }
+        }
+
+        // Find removed constraints
+        for (const sourceCon of sourceConstraints) {
+            const targetCon = targetConstraints.find(tc => tc.constraintName === sourceCon.constraintName);
+            if (!targetCon) {
+                changes.push({
+                    type: 'DROP',
+                    constraint: sourceCon
+                });
+            }
+        }
+
+        return changes;
+    }
+
+    /**
+     * Generates ALTER TABLE statement for constraint changes
+     * @param schema - Schema name
+     * @param tableName - Table name
+     * @param change - Constraint change object
+     * @returns ALTER TABLE statement or null if no change needed
+     * @private
+     */
+    private generateConstraintAlterStatement(schema: string, tableName: string, change: any): string | null {
+        switch (change.type) {
+            case 'ADD':
+                const constraint = change.constraint;
+                switch (constraint.constraintType) {
+                    case 'PRIMARY KEY':
+                        return `ALTER TABLE ${schema}.${tableName} ADD CONSTRAINT ${constraint.constraintName} PRIMARY KEY (${constraint.columnName});`;
+                    case 'FOREIGN KEY':
+                        return `ALTER TABLE ${schema}.${tableName} ADD CONSTRAINT ${constraint.constraintName} FOREIGN KEY (${constraint.columnName}) REFERENCES ${constraint.foreignTableSchema}.${constraint.foreignTableName}(${constraint.foreignColumnName});`;
+                    case 'UNIQUE':
+                        return `ALTER TABLE ${schema}.${tableName} ADD CONSTRAINT ${constraint.constraintName} UNIQUE (${constraint.columnName});`;
+                    case 'CHECK':
+                        return `ALTER TABLE ${schema}.${tableName} ADD CONSTRAINT ${constraint.constraintName} CHECK (${constraint.checkClause});`;
+                    default:
+                        return `-- Unknown constraint type: ${constraint.constraintType}`;
+                }
+
+            case 'DROP':
+                return `ALTER TABLE ${schema}.${tableName} DROP CONSTRAINT IF EXISTS ${change.constraint.constraintName} CASCADE;`;
+
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Analyzes differences between source and target index definitions
+     * @param sourceIndexes - Index definitions from source database
+     * @param targetIndexes - Index definitions from target database
+     * @returns Array of index change objects
+     * @private
+     */
+    private analyzeIndexChanges(sourceIndexes: any[], targetIndexes: any[]): any[] {
+        const changes: any[] = [];
+
+        // Find added indexes
+        for (const targetIdx of targetIndexes) {
+            const sourceIdx = sourceIndexes.find(si => si.indexName === targetIdx.indexName);
+            if (!sourceIdx) {
+                changes.push({
+                    type: 'ADD',
+                    index: targetIdx
+                });
+            }
+        }
+
+        // Find removed indexes
+        for (const sourceIdx of sourceIndexes) {
+            const targetIdx = targetIndexes.find(ti => ti.indexName === sourceIdx.indexName);
+            if (!targetIdx) {
+                changes.push({
+                    type: 'DROP',
+                    index: sourceIdx
+                });
+            }
+        }
+
+        return changes;
+    }
+
+    /**
+     * Generates CREATE/DROP INDEX statement for index changes
+     * @param schema - Schema name
+     * @param tableName - Table name
+     * @param change - Index change object
+     * @returns CREATE INDEX or DROP INDEX statement or null if no change needed
+     * @private
+     */
+    private generateIndexAlterStatement(schema: string, tableName: string, change: any): string | null {
+        switch (change.type) {
+            case 'ADD':
+                return change.index.definition;
+
+            case 'DROP':
+                return `DROP INDEX IF EXISTS ${schema}.${change.index.indexName} CASCADE;`;
+
+            default:
+                return null;
+        }
     }
 
     /**
@@ -1758,10 +2070,10 @@ export class MigrationManagement {
             }
 
             // If no specific changes detected, provide intelligent analysis
-            return `-- WARNING: Cannot determine specific index modifications for ${change.objectName}`;
-            + `\n-- Index analysis: ${JSON.stringify(sourceIndexInfo, null, 2)}`;
-            + `\n-- Target analysis: ${JSON.stringify(targetIndexInfo, null, 2)}`;
-            + `\n-- Manual restoration required for index ${change.schema}.${change.objectName}`;
+            return `-- WARNING: Cannot determine specific index modifications for ${change.objectName}` +
+                `\n-- Index analysis: ${JSON.stringify(sourceIndexInfo, null, 2)}` +
+                `\n-- Target analysis: ${JSON.stringify(targetIndexInfo, null, 2)}` +
+                `\n-- Manual restoration required for index ${change.schema}.${change.objectName}`;
 
         } catch (error) {
             Logger.error('Failed to generate index modification rollback', error as Error, 'generateIndexModificationRollback', {
@@ -1960,10 +2272,10 @@ export class MigrationManagement {
             }
 
             // If no specific changes detected, provide intelligent analysis
-            return `-- WARNING: Cannot determine specific view modifications for ${change.objectName}`;
-            + `\n-- View analysis: ${JSON.stringify(sourceViewInfo, null, 2)}`;
-            + `\n-- Target analysis: ${JSON.stringify(targetViewInfo, null, 2)}`;
-            + `\n-- Manual restoration required for view ${change.schema}.${change.objectName}`;
+            return `-- WARNING: Cannot determine specific view modifications for ${change.objectName}` +
+                `\n-- View analysis: ${JSON.stringify(sourceViewInfo, null, 2)}` +
+                `\n-- Target analysis: ${JSON.stringify(targetViewInfo, null, 2)}` +
+                `\n-- Manual restoration required for view ${change.schema}.${change.objectName}`;
 
         } catch (error) {
             Logger.error('Failed to generate view modification rollback', error as Error, 'generateViewModificationRollback', {
@@ -2215,10 +2527,10 @@ export class MigrationManagement {
             }
 
             // If no specific changes detected, provide intelligent analysis
-            return `-- WARNING: Cannot determine specific function modifications for ${change.objectName}`;
-            + `\n-- Function analysis: ${JSON.stringify(sourceFunctionInfo, null, 2)}`;
-            + `\n-- Target analysis: ${JSON.stringify(targetFunctionInfo, null, 2)}`;
-            + `\n-- Manual restoration required for function ${change.schema}.${change.objectName}`;
+            return `-- WARNING: Cannot determine specific function modifications for ${change.objectName}` +
+                `\n-- Function analysis: ${JSON.stringify(sourceFunctionInfo, null, 2)}` +
+                `\n-- Target analysis: ${JSON.stringify(targetFunctionInfo, null, 2)}` +
+                `\n-- Manual restoration required for function ${change.schema}.${change.objectName}`;
 
         } catch (error) {
             Logger.error('Failed to generate function modification rollback', error as Error, 'generateFunctionModificationRollback', {
@@ -2685,67 +2997,67 @@ export class MigrationManagement {
         }
     }
 
-   /**
-   * Generate advanced table validations with comprehensive checks
-   */
-  private async generateAdvancedTableValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
-      const validations: ValidationStep[] = [];
+    /**
+    * Generate advanced table validations with comprehensive checks
+    */
+    private async generateAdvancedTableValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
+        const validations: ValidationStep[] = [];
 
-      try {
-          Logger.info('Generating advanced table validations', 'generateAdvancedTableValidations', {
-              stepId: step.id,
-              tableName: step.objectName,
-              schema: step.schema,
-              operation: step.operation,
-              connectionId
-          });
+        try {
+            Logger.info('Generating advanced table validations', 'generateAdvancedTableValidations', {
+                stepId: step.id,
+                tableName: step.objectName,
+                schema: step.schema,
+                operation: step.operation,
+                connectionId
+            });
 
-          // Execute real-time validation queries using the connectionId
-          const tableExists = await this.queryService.executeQuery(connectionId,
-              `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'`
-          );
+            // Execute real-time validation queries using the connectionId
+            const tableExists = await this.queryService.executeQuery(connectionId,
+                `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'`
+            );
 
-           // 1. Enhanced data integrity validation with NULL checks
-           const dataIntegrityQuery = `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`;
-           const dataIntegrityResult = await this.queryService.executeQuery(connectionId, dataIntegrityQuery);
-           const rowCount = parseInt(dataIntegrityResult.rows[0][0]);
+            // 1. Enhanced data integrity validation with NULL checks
+            const dataIntegrityQuery = `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`;
+            const dataIntegrityResult = await this.queryService.executeQuery(connectionId, dataIntegrityQuery);
+            const rowCount = parseInt(dataIntegrityResult.rows[0][0]);
 
-           validations.push({
-               id: `data_integrity_${step.id}`,
-               name: `Data Integrity: ${step.name}`,
-               description: `Check data integrity for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: dataIntegrityQuery,
-               expectedResult: rowCount >= 0 ? 'Data integrity validated' : 'Data integrity check failed',
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `data_integrity_${step.id}`,
+                name: `Data Integrity: ${step.name}`,
+                description: `Check data integrity for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: dataIntegrityQuery,
+                expectedResult: rowCount >= 0 ? 'Data integrity validated' : 'Data integrity check failed',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 2. Row count validation with threshold checking
-           if (step.operation !== 'DROP') {
-               const rowCountQuery = `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`;
-               const rowCountResult = await this.queryService.executeQuery(connectionId, rowCountQuery);
-               const actualRowCount = parseInt(rowCountResult.rows[0][0]);
+            // 2. Row count validation with threshold checking
+            if (step.operation !== 'DROP') {
+                const rowCountQuery = `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`;
+                const rowCountResult = await this.queryService.executeQuery(connectionId, rowCountQuery);
+                const actualRowCount = parseInt(rowCountResult.rows[0][0]);
 
-               validations.push({
-                   id: `row_count_${step.id}`,
-                   name: `Row Count: ${step.name}`,
-                   description: `Verify row count is reasonable for ${step.objectName}`,
-                   type: 'data',
-                   sqlQuery: rowCountQuery,
-                   expectedResult: actualRowCount >= 0 ? `${actualRowCount} rows found` : 'Row count check failed',
-                   severity: 'info',
-                   automated: true
-               });
+                validations.push({
+                    id: `row_count_${step.id}`,
+                    name: `Row Count: ${step.name}`,
+                    description: `Verify row count is reasonable for ${step.objectName}`,
+                    type: 'data',
+                    sqlQuery: rowCountQuery,
+                    expectedResult: actualRowCount >= 0 ? `${actualRowCount} rows found` : 'Row count check failed',
+                    severity: 'info',
+                    automated: true
+                });
 
-               // 3. Row count change detection (for ALTER operations)
-               if (step.operation === 'ALTER') {
-                   validations.push({
-                       id: `row_count_change_${step.id}`,
-                       name: `Row Count Change Detection: ${step.name}`,
-                       description: `Monitor for unexpected row count changes in ${step.objectName}`,
-                       type: 'data',
-                       sqlQuery: `
+                // 3. Row count change detection (for ALTER operations)
+                if (step.operation === 'ALTER') {
+                    validations.push({
+                        id: `row_count_change_${step.id}`,
+                        name: `Row Count Change Detection: ${step.name}`,
+                        description: `Monitor for unexpected row count changes in ${step.objectName}`,
+                        type: 'data',
+                        sqlQuery: `
                            WITH current_count AS (
                                SELECT COUNT(*) as cnt FROM ${step.schema}.${step.objectName}
                            ),
@@ -2760,15 +3072,15 @@ export class MigrationManagement {
                                END as row_count_status
                            FROM current_count, previous_estimate
                        `,
-                       expectedResult: 'Row count within expected range',
-                       severity: 'warning',
-                       automated: true
-                   });
-               }
-           }
+                        expectedResult: 'Row count within expected range',
+                        severity: 'warning',
+                        automated: true
+                    });
+                }
+            }
 
-           // 4. Enhanced constraint validation with detailed analysis
-           const constraintQuery = `
+            // 4. Enhanced constraint validation with detailed analysis
+            const constraintQuery = `
                SELECT
                    COUNT(*) as constraint_count,
                    COUNT(CASE WHEN constraint_type = 'PRIMARY KEY' THEN 1 END) as pk_count,
@@ -2778,22 +3090,22 @@ export class MigrationManagement {
                FROM information_schema.table_constraints tc
                WHERE tc.table_schema = '${step.schema}' AND tc.table_name = '${step.objectName}'
            `;
-           const constraintResult = await this.queryService.executeQuery(connectionId, constraintQuery);
-           const constraintData = constraintResult.rows[0];
+            const constraintResult = await this.queryService.executeQuery(connectionId, constraintQuery);
+            const constraintData = constraintResult.rows[0];
 
-           validations.push({
-               id: `constraints_${step.id}`,
-               name: `Constraint Validation: ${step.name}`,
-               description: `Verify table constraints are valid for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: constraintQuery,
-               expectedResult: parseInt(constraintData[0]) >= 0 ? `${constraintData[0]} constraints found` : 'Constraint validation failed',
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `constraints_${step.id}`,
+                name: `Constraint Validation: ${step.name}`,
+                description: `Verify table constraints are valid for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: constraintQuery,
+                expectedResult: parseInt(constraintData[0]) >= 0 ? `${constraintData[0]} constraints found` : 'Constraint validation failed',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 5. Foreign key relationship validation with referential integrity
-           const fkQuery = `
+            // 5. Foreign key relationship validation with referential integrity
+            const fkQuery = `
                SELECT
                    COUNT(*) as fk_count,
                    COUNT(CASE WHEN ccu.table_name IS NOT NULL THEN 1 END) as valid_fks
@@ -2803,22 +3115,22 @@ export class MigrationManagement {
                WHERE tc.table_schema = '${step.schema}' AND tc.table_name = '${step.objectName}'
                AND tc.constraint_type = 'FOREIGN KEY'
            `;
-           const fkResult = await this.queryService.executeQuery(connectionId, fkQuery);
-           const fkData = fkResult.rows[0];
+            const fkResult = await this.queryService.executeQuery(connectionId, fkQuery);
+            const fkData = fkResult.rows[0];
 
-           validations.push({
-               id: `foreign_keys_${step.id}`,
-               name: `Foreign Key Validation: ${step.name}`,
-               description: `Verify foreign key relationships for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: fkQuery,
-               expectedResult: parseInt(fkData[0]) >= 0 ? `${fkData[0]} foreign keys found` : 'Foreign key validation failed',
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `foreign_keys_${step.id}`,
+                name: `Foreign Key Validation: ${step.name}`,
+                description: `Verify foreign key relationships for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: fkQuery,
+                expectedResult: parseInt(fkData[0]) >= 0 ? `${fkData[0]} foreign keys found` : 'Foreign key validation failed',
+                severity: 'info',
+                automated: true
+            });
 
-           // 6. Orphaned records detection (for tables with FK relationships)
-           const orphanedQuery = `
+            // 6. Orphaned records detection (for tables with FK relationships)
+            const orphanedQuery = `
                SELECT COUNT(*) as orphaned_count
                FROM ${step.schema}.${step.objectName} t
                WHERE NOT EXISTS (
@@ -2830,22 +3142,22 @@ export class MigrationManagement {
                    AND tc.constraint_type = 'FOREIGN KEY'
                )
            `;
-           const orphanedResult = await this.queryService.executeQuery(connectionId, orphanedQuery);
-           const orphanedCount = parseInt(orphanedResult.rows[0][0]);
+            const orphanedResult = await this.queryService.executeQuery(connectionId, orphanedQuery);
+            const orphanedCount = parseInt(orphanedResult.rows[0][0]);
 
-           validations.push({
-               id: `orphaned_records_${step.id}`,
-               name: `Orphaned Records Check: ${step.name}`,
-               description: `Check for orphaned records in ${step.objectName}`,
-               type: 'data',
-               sqlQuery: orphanedQuery,
-               expectedResult: orphanedCount === 0 ? 'No orphaned records found' : `${orphanedCount} orphaned records detected`,
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `orphaned_records_${step.id}`,
+                name: `Orphaned Records Check: ${step.name}`,
+                description: `Check for orphaned records in ${step.objectName}`,
+                type: 'data',
+                sqlQuery: orphanedQuery,
+                expectedResult: orphanedCount === 0 ? 'No orphaned records found' : `${orphanedCount} orphaned records detected`,
+                severity: 'warning',
+                automated: true
+            });
 
-           // 7. Table size and bloat analysis
-           const sizeQuery = `
+            // 7. Table size and bloat analysis
+            const sizeQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -2855,22 +3167,22 @@ export class MigrationManagement {
                FROM pg_tables
                WHERE schemaname = '${step.schema}' AND tablename = '${step.objectName}'
            `;
-           const sizeResult = await this.queryService.executeQuery(connectionId, sizeQuery);
-           const sizeData = sizeResult.rows[0];
+            const sizeResult = await this.queryService.executeQuery(connectionId, sizeQuery);
+            const sizeData = sizeResult.rows[0];
 
-           validations.push({
-               id: `table_bloat_${step.id}`,
-               name: `Table Bloat Analysis: ${step.name}`,
-               description: `Analyze table size and potential bloat for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: sizeQuery,
-               expectedResult: sizeData ? 'Table size analysis completed' : 'Table size analysis failed',
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `table_bloat_${step.id}`,
+                name: `Table Bloat Analysis: ${step.name}`,
+                description: `Analyze table size and potential bloat for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: sizeQuery,
+                expectedResult: sizeData ? 'Table size analysis completed' : 'Table size analysis failed',
+                severity: 'info',
+                automated: true
+            });
 
-           // 8. Dead tuple analysis (for PostgreSQL)
-           const deadTupleQuery = `
+            // 8. Dead tuple analysis (for PostgreSQL)
+            const deadTupleQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -2883,23 +3195,23 @@ export class MigrationManagement {
                FROM pg_stat_user_tables
                WHERE schemaname = '${step.schema}' AND tablename = '${step.objectName}'
            `;
-           const deadTupleResult = await this.queryService.executeQuery(connectionId, deadTupleQuery);
-           const deadTupleData = deadTupleResult.rows[0];
-           const cleanupStatus = deadTupleData ? deadTupleData[4] : 'Dead tuple analysis failed';
+            const deadTupleResult = await this.queryService.executeQuery(connectionId, deadTupleQuery);
+            const deadTupleData = deadTupleResult.rows[0];
+            const cleanupStatus = deadTupleData ? deadTupleData[4] : 'Dead tuple analysis failed';
 
-           validations.push({
-               id: `dead_tuples_${step.id}`,
-               name: `Dead Tuples Analysis: ${step.name}`,
-               description: `Check for dead tuples in ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: deadTupleQuery,
-               expectedResult: cleanupStatus,
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `dead_tuples_${step.id}`,
+                name: `Dead Tuples Analysis: ${step.name}`,
+                description: `Check for dead tuples in ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: deadTupleQuery,
+                expectedResult: cleanupStatus,
+                severity: 'warning',
+                automated: true
+            });
 
-           // 9. Column statistics validation
-           const columnStatsQuery = `
+            // 9. Column statistics validation
+            const columnStatsQuery = `
                SELECT
                    COUNT(*) as total_columns,
                    COUNT(CASE WHEN data_type IN ('integer', 'bigint', 'smallint') THEN 1 END) as numeric_columns,
@@ -2909,22 +3221,22 @@ export class MigrationManagement {
                FROM information_schema.columns
                WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'
            `;
-           const columnStatsResult = await this.queryService.executeQuery(connectionId, columnStatsQuery);
-           const columnStatsData = columnStatsResult.rows[0];
+            const columnStatsResult = await this.queryService.executeQuery(connectionId, columnStatsQuery);
+            const columnStatsData = columnStatsResult.rows[0];
 
-           validations.push({
-               id: `column_stats_${step.id}`,
-               name: `Column Statistics: ${step.name}`,
-               description: `Validate column statistics for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: columnStatsQuery,
-               expectedResult: columnStatsData ? `${columnStatsData[0]} columns analyzed` : 'Column statistics failed',
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `column_stats_${step.id}`,
+                name: `Column Statistics: ${step.name}`,
+                description: `Validate column statistics for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: columnStatsQuery,
+                expectedResult: columnStatsData ? `${columnStatsData[0]} columns analyzed` : 'Column statistics failed',
+                severity: 'info',
+                automated: true
+            });
 
-           // 10. Primary key validation
-           const pkQuery = `
+            // 10. Primary key validation
+            const pkQuery = `
                SELECT
                    COUNT(*) as pk_count,
                    COUNT(CASE WHEN kcu.column_name IS NOT NULL THEN 1 END) as valid_pks
@@ -2933,22 +3245,22 @@ export class MigrationManagement {
                WHERE tc.table_schema = '${step.schema}' AND tc.table_name = '${step.objectName}'
                AND tc.constraint_type = 'PRIMARY KEY'
            `;
-           const pkResult = await this.queryService.executeQuery(connectionId, pkQuery);
-           const pkData = pkResult.rows[0];
+            const pkResult = await this.queryService.executeQuery(connectionId, pkQuery);
+            const pkData = pkResult.rows[0];
 
-           validations.push({
-               id: `primary_key_${step.id}`,
-               name: `Primary Key Validation: ${step.name}`,
-               description: `Verify primary key integrity for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: pkQuery,
-               expectedResult: pkData ? `${pkData[0]} primary keys found` : 'Primary key validation failed',
-               severity: 'error',
-               automated: true
-           });
+            validations.push({
+                id: `primary_key_${step.id}`,
+                name: `Primary Key Validation: ${step.name}`,
+                description: `Verify primary key integrity for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: pkQuery,
+                expectedResult: pkData ? `${pkData[0]} primary keys found` : 'Primary key validation failed',
+                severity: 'error',
+                automated: true
+            });
 
-           // 11. Check constraint validation
-           const checkConstraintQuery = `
+            // 11. Check constraint validation
+            const checkConstraintQuery = `
                SELECT
                    COUNT(*) as check_constraint_count
                FROM information_schema.table_constraints tc
@@ -2956,89 +3268,89 @@ export class MigrationManagement {
                WHERE tc.table_schema = '${step.schema}' AND tc.table_name = '${step.objectName}'
                AND tc.constraint_type = 'CHECK'
            `;
-           const checkConstraintResult = await this.queryService.executeQuery(connectionId, checkConstraintQuery);
-           const checkConstraintData = checkConstraintResult.rows[0];
+            const checkConstraintResult = await this.queryService.executeQuery(connectionId, checkConstraintQuery);
+            const checkConstraintData = checkConstraintResult.rows[0];
 
-           validations.push({
-               id: `check_constraints_${step.id}`,
-               name: `Check Constraint Validation: ${step.name}`,
-               description: `Validate check constraints for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: checkConstraintQuery,
-               expectedResult: checkConstraintData ? `${checkConstraintData[0]} check constraints found` : 'Check constraint validation failed',
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `check_constraints_${step.id}`,
+                name: `Check Constraint Validation: ${step.name}`,
+                description: `Validate check constraints for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: checkConstraintQuery,
+                expectedResult: checkConstraintData ? `${checkConstraintData[0]} check constraints found` : 'Check constraint validation failed',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 12. Table ownership and permissions validation
-           const permissionQuery = `
+            // 12. Table ownership and permissions validation
+            const permissionQuery = `
                SELECT
                    COUNT(*) as permission_count,
                    COUNT(CASE WHEN privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE') THEN 1 END) as critical_permissions
                FROM information_schema.role_table_grants
                WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'
            `;
-           const permissionResult = await this.queryService.executeQuery(connectionId, permissionQuery);
-           const permissionData = permissionResult.rows[0];
+            const permissionResult = await this.queryService.executeQuery(connectionId, permissionQuery);
+            const permissionData = permissionResult.rows[0];
 
-           validations.push({
-               id: `table_permissions_${step.id}`,
-               name: `Table Permissions: ${step.name}`,
-               description: `Verify table permissions for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: permissionQuery,
-               expectedResult: permissionData ? `${permissionData[0]} permissions configured` : 'Permission validation failed',
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `table_permissions_${step.id}`,
+                name: `Table Permissions: ${step.name}`,
+                description: `Verify table permissions for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: permissionQuery,
+                expectedResult: permissionData ? `${permissionData[0]} permissions configured` : 'Permission validation failed',
+                severity: 'info',
+                automated: true
+            });
 
-           Logger.info('Advanced table validations generated', 'generateAdvancedTableValidations', {
-               stepId: step.id,
-               validationCount: validations.length,
-               tableName: step.objectName
-           });
+            Logger.info('Advanced table validations generated', 'generateAdvancedTableValidations', {
+                stepId: step.id,
+                validationCount: validations.length,
+                tableName: step.objectName
+            });
 
-           return validations;
+            return validations;
 
-       } catch (error) {
-           Logger.error('Failed to generate advanced table validations', error as Error, 'generateAdvancedTableValidations', {
-               stepId: step.id,
-               tableName: step.objectName,
-               schema: step.schema
-           });
+        } catch (error) {
+            Logger.error('Failed to generate advanced table validations', error as Error, 'generateAdvancedTableValidations', {
+                stepId: step.id,
+                tableName: step.objectName,
+                schema: step.schema
+            });
 
-           // Return basic validations as fallback
-           return [
-               {
-                   id: `fallback_data_integrity_${step.id}`,
-                   name: `Fallback Data Integrity: ${step.name}`,
-                   description: `Basic data integrity check for ${step.objectName}`,
-                   type: 'data',
-                   sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`,
-                   expectedResult: '>= 0',
-                   severity: 'warning',
-                   automated: true
-               }
-           ];
-       }
-   }
+            // Return basic validations as fallback
+            return [
+                {
+                    id: `fallback_data_integrity_${step.id}`,
+                    name: `Fallback Data Integrity: ${step.name}`,
+                    description: `Basic data integrity check for ${step.objectName}`,
+                    type: 'data',
+                    sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`,
+                    expectedResult: '>= 0',
+                    severity: 'warning',
+                    automated: true
+                }
+            ];
+        }
+    }
 
     /**
     * Generate advanced index validations with comprehensive analysis
     */
-   private async generateAdvancedIndexValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
-       const validations: ValidationStep[] = [];
+    private async generateAdvancedIndexValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
+        const validations: ValidationStep[] = [];
 
-       try {
-           Logger.info('Generating advanced index validations', 'generateAdvancedIndexValidations', {
-               stepId: step.id,
-               indexName: step.objectName,
-               schema: step.schema,
-               operation: step.operation
-           });
+        try {
+            Logger.info('Generating advanced index validations', 'generateAdvancedIndexValidations', {
+                stepId: step.id,
+                indexName: step.objectName,
+                schema: step.schema,
+                operation: step.operation
+            });
 
-           // 1. Enhanced index usage statistics validation
-           const indexUsageQuery = `
+            // 1. Enhanced index usage statistics validation
+            const indexUsageQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -3053,23 +3365,23 @@ export class MigrationManagement {
                FROM pg_stat_user_indexes
                WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
            `;
-           const indexUsageResult = await this.queryService.executeQuery(connectionId, indexUsageQuery);
-           const indexUsageData = indexUsageResult.rows[0];
-           const usageStatus = indexUsageData ? indexUsageData[6] : 'Index usage check failed';
+            const indexUsageResult = await this.queryService.executeQuery(connectionId, indexUsageQuery);
+            const indexUsageData = indexUsageResult.rows[0];
+            const usageStatus = indexUsageData ? indexUsageData[6] : 'Index usage check failed';
 
-           validations.push({
-               id: `index_usage_${step.id}`,
-               name: `Index Usage Statistics: ${step.name}`,
-               description: `Verify index ${step.objectName} is being used effectively`,
-               type: 'performance',
-               sqlQuery: indexUsageQuery,
-               expectedResult: usageStatus,
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `index_usage_${step.id}`,
+                name: `Index Usage Statistics: ${step.name}`,
+                description: `Verify index ${step.objectName} is being used effectively`,
+                type: 'performance',
+                sqlQuery: indexUsageQuery,
+                expectedResult: usageStatus,
+                severity: 'info',
+                automated: true
+            });
 
-           // 2. Index size and bloat analysis
-           const indexSizeQuery = `
+            // 2. Index size and bloat analysis
+            const indexSizeQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -3084,23 +3396,23 @@ export class MigrationManagement {
                FROM pg_indexes
                WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
            `;
-           const indexSizeResult = await this.queryService.executeQuery(connectionId, indexSizeQuery);
-           const indexSizeData = indexSizeResult.rows[0];
-           const sizeStatus = indexSizeData ? indexSizeData[6] : 'Index size check failed';
+            const indexSizeResult = await this.queryService.executeQuery(connectionId, indexSizeQuery);
+            const indexSizeData = indexSizeResult.rows[0];
+            const sizeStatus = indexSizeData ? indexSizeData[6] : 'Index size check failed';
 
-           validations.push({
-               id: `index_size_${step.id}`,
-               name: `Index Size Analysis: ${step.name}`,
-               description: `Check index size and potential bloat for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: indexSizeQuery,
-               expectedResult: sizeStatus,
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `index_size_${step.id}`,
+                name: `Index Size Analysis: ${step.name}`,
+                description: `Check index size and potential bloat for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: indexSizeQuery,
+                expectedResult: sizeStatus,
+                severity: 'info',
+                automated: true
+            });
 
-           // 3. Index fragmentation analysis
-           const fragmentationQuery = `
+            // 3. Index fragmentation analysis
+            const fragmentationQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -3115,23 +3427,23 @@ export class MigrationManagement {
                FROM pg_indexes
                WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
            `;
-           const fragmentationResult = await this.queryService.executeQuery(connectionId, fragmentationQuery);
-           const fragmentationData = fragmentationResult.rows[0];
-           const fragmentationStatus = fragmentationData ? fragmentationData[6] : 'Fragmentation check failed';
+            const fragmentationResult = await this.queryService.executeQuery(connectionId, fragmentationQuery);
+            const fragmentationData = fragmentationResult.rows[0];
+            const fragmentationStatus = fragmentationData ? fragmentationData[6] : 'Fragmentation check failed';
 
-           validations.push({
-               id: `index_fragmentation_${step.id}`,
-               name: `Index Fragmentation: ${step.name}`,
-               description: `Analyze index fragmentation for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: fragmentationQuery,
-               expectedResult: fragmentationStatus,
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `index_fragmentation_${step.id}`,
+                name: `Index Fragmentation: ${step.name}`,
+                description: `Analyze index fragmentation for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: fragmentationQuery,
+                expectedResult: fragmentationStatus,
+                severity: 'warning',
+                automated: true
+            });
 
-           // 4. Index selectivity analysis
-           const selectivityQuery = `
+            // 4. Index selectivity analysis
+            const selectivityQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -3146,23 +3458,23 @@ export class MigrationManagement {
                FROM pg_indexes i
                WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
            `;
-           const selectivityResult = await this.queryService.executeQuery(connectionId, selectivityQuery);
-           const selectivityData = selectivityResult.rows[0];
-           const selectivityStatus = selectivityData ? selectivityData[5] : 'Selectivity check failed';
+            const selectivityResult = await this.queryService.executeQuery(connectionId, selectivityQuery);
+            const selectivityData = selectivityResult.rows[0];
+            const selectivityStatus = selectivityData ? selectivityData[5] : 'Selectivity check failed';
 
-           validations.push({
-               id: `index_selectivity_${step.id}`,
-               name: `Index Selectivity: ${step.name}`,
-               description: `Analyze index selectivity for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: selectivityQuery,
-               expectedResult: selectivityStatus,
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `index_selectivity_${step.id}`,
+                name: `Index Selectivity: ${step.name}`,
+                description: `Analyze index selectivity for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: selectivityQuery,
+                expectedResult: selectivityStatus,
+                severity: 'info',
+                automated: true
+            });
 
-           // 5. Index column analysis
-           const columnAnalysisQuery = `
+            // 5. Index column analysis
+            const columnAnalysisQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -3177,23 +3489,23 @@ export class MigrationManagement {
                FROM pg_indexes
                WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
            `;
-           const columnAnalysisResult = await this.queryService.executeQuery(connectionId, columnAnalysisQuery);
-           const columnAnalysisData = columnAnalysisResult.rows[0];
-           const widthStatus = columnAnalysisData ? columnAnalysisData[5] : 'Column analysis failed';
+            const columnAnalysisResult = await this.queryService.executeQuery(connectionId, columnAnalysisQuery);
+            const columnAnalysisData = columnAnalysisResult.rows[0];
+            const widthStatus = columnAnalysisData ? columnAnalysisData[5] : 'Column analysis failed';
 
-           validations.push({
-               id: `index_columns_${step.id}`,
-               name: `Index Column Analysis: ${step.name}`,
-               description: `Analyze indexed columns for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: columnAnalysisQuery,
-               expectedResult: widthStatus,
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `index_columns_${step.id}`,
+                name: `Index Column Analysis: ${step.name}`,
+                description: `Analyze indexed columns for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: columnAnalysisQuery,
+                expectedResult: widthStatus,
+                severity: 'warning',
+                automated: true
+            });
 
-           // 6. Index uniqueness validation
-           const uniquenessQuery = `
+            // 6. Index uniqueness validation
+            const uniquenessQuery = `
                SELECT
                    i.schemaname,
                    i.tablename,
@@ -3210,23 +3522,23 @@ export class MigrationManagement {
                FROM pg_indexes i
                WHERE i.schemaname = '${step.schema}' AND i.indexname = '${step.objectName}'
            `;
-           const uniquenessResult = await this.queryService.executeQuery(connectionId, uniquenessQuery);
-           const uniquenessData = uniquenessResult.rows[0];
-           const uniquenessStatus = uniquenessData ? uniquenessData[5] : 'Uniqueness check failed';
+            const uniquenessResult = await this.queryService.executeQuery(connectionId, uniquenessQuery);
+            const uniquenessData = uniquenessResult.rows[0];
+            const uniquenessStatus = uniquenessData ? uniquenessData[5] : 'Uniqueness check failed';
 
-           validations.push({
-               id: `index_uniqueness_${step.id}`,
-               name: `Index Uniqueness: ${step.name}`,
-               description: `Check index uniqueness constraints for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: uniquenessQuery,
-               expectedResult: uniquenessStatus,
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `index_uniqueness_${step.id}`,
+                name: `Index Uniqueness: ${step.name}`,
+                description: `Check index uniqueness constraints for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: uniquenessQuery,
+                expectedResult: uniquenessStatus,
+                severity: 'info',
+                automated: true
+            });
 
-           // 7. Index maintenance requirements
-           const maintenanceQuery = `
+            // 7. Index maintenance requirements
+            const maintenanceQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -3241,23 +3553,23 @@ export class MigrationManagement {
                FROM pg_indexes
                WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
            `;
-           const maintenanceResult = await this.queryService.executeQuery(connectionId, maintenanceQuery);
-           const maintenanceData = maintenanceResult.rows[0];
-           const maintenanceStatus = maintenanceData ? maintenanceData[5] : 'Maintenance check failed';
+            const maintenanceResult = await this.queryService.executeQuery(connectionId, maintenanceQuery);
+            const maintenanceData = maintenanceResult.rows[0];
+            const maintenanceStatus = maintenanceData ? maintenanceData[5] : 'Maintenance check failed';
 
-           validations.push({
-               id: `index_maintenance_${step.id}`,
-               name: `Index Maintenance: ${step.name}`,
-               description: `Check maintenance requirements for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: maintenanceQuery,
-               expectedResult: maintenanceStatus,
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `index_maintenance_${step.id}`,
+                name: `Index Maintenance: ${step.name}`,
+                description: `Check maintenance requirements for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: maintenanceQuery,
+                expectedResult: maintenanceStatus,
+                severity: 'info',
+                automated: true
+            });
 
-           // 8. Index performance impact assessment
-           const performanceQuery = `
+            // 8. Index performance impact assessment
+            const performanceQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -3272,23 +3584,23 @@ export class MigrationManagement {
                FROM pg_indexes
                WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
            `;
-           const performanceResult = await this.queryService.executeQuery(connectionId, performanceQuery);
-           const performanceData = performanceResult.rows[0];
-           const performanceImpact = performanceData ? performanceData[5] : 'Performance check failed';
+            const performanceResult = await this.queryService.executeQuery(connectionId, performanceQuery);
+            const performanceData = performanceResult.rows[0];
+            const performanceImpact = performanceData ? performanceData[5] : 'Performance check failed';
 
-           validations.push({
-               id: `index_performance_${step.id}`,
-               name: `Index Performance Impact: ${step.name}`,
-               description: `Assess performance impact of ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: performanceQuery,
-               expectedResult: performanceImpact,
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `index_performance_${step.id}`,
+                name: `Index Performance Impact: ${step.name}`,
+                description: `Assess performance impact of ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: performanceQuery,
+                expectedResult: performanceImpact,
+                severity: 'warning',
+                automated: true
+            });
 
-           // 9. Index dependency validation
-           const dependencyQuery = `
+            // 9. Index dependency validation
+            const dependencyQuery = `
                SELECT
                    COUNT(*) as dependency_count,
                    COUNT(CASE WHEN deptype = 'n' THEN 1 END) as normal_deps,
@@ -3296,22 +3608,22 @@ export class MigrationManagement {
                FROM pg_depend
                WHERE objid = (SELECT oid FROM pg_class WHERE relname = '${step.objectName}' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '${step.schema}'))
            `;
-           const dependencyResult = await this.queryService.executeQuery(connectionId, dependencyQuery);
-           const dependencyData = dependencyResult.rows[0];
+            const dependencyResult = await this.queryService.executeQuery(connectionId, dependencyQuery);
+            const dependencyData = dependencyResult.rows[0];
 
-           validations.push({
-               id: `index_dependencies_${step.id}`,
-               name: `Index Dependencies: ${step.name}`,
-               description: `Check dependencies for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: dependencyQuery,
-               expectedResult: dependencyData ? `${dependencyData[0]} dependencies found` : 'Dependency check failed',
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `index_dependencies_${step.id}`,
+                name: `Index Dependencies: ${step.name}`,
+                description: `Check dependencies for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: dependencyQuery,
+                expectedResult: dependencyData ? `${dependencyData[0]} dependencies found` : 'Dependency check failed',
+                severity: 'info',
+                automated: true
+            });
 
-           // 10. Index creation date and age analysis
-           const ageQuery = `
+            // 10. Index creation date and age analysis
+            const ageQuery = `
                SELECT
                    schemaname,
                    tablename,
@@ -3323,81 +3635,81 @@ export class MigrationManagement {
                FROM pg_indexes
                WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
            `;
-           const ageResult = await this.queryService.executeQuery(connectionId, ageQuery);
-           const ageData = ageResult.rows[0];
-           const ageStatus = ageData ? ageData[3] : 'Age analysis failed';
+            const ageResult = await this.queryService.executeQuery(connectionId, ageQuery);
+            const ageData = ageResult.rows[0];
+            const ageStatus = ageData ? ageData[3] : 'Age analysis failed';
 
-           validations.push({
-               id: `index_age_${step.id}`,
-               name: `Index Age Analysis: ${step.name}`,
-               description: `Analyze index age and creation patterns for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: ageQuery,
-               expectedResult: ageStatus,
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `index_age_${step.id}`,
+                name: `Index Age Analysis: ${step.name}`,
+                description: `Analyze index age and creation patterns for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: ageQuery,
+                expectedResult: ageStatus,
+                severity: 'info',
+                automated: true
+            });
 
-           Logger.info('Advanced index validations generated', 'generateAdvancedIndexValidations', {
-               stepId: step.id,
-               validationCount: validations.length,
-               indexName: step.objectName
-           });
+            Logger.info('Advanced index validations generated', 'generateAdvancedIndexValidations', {
+                stepId: step.id,
+                validationCount: validations.length,
+                indexName: step.objectName
+            });
 
-           return validations;
+            return validations;
 
-       } catch (error) {
-           Logger.error('Failed to generate advanced index validations', error as Error, 'generateAdvancedIndexValidations', {
-               stepId: step.id,
-               indexName: step.objectName,
-               schema: step.schema
-           });
+        } catch (error) {
+            Logger.error('Failed to generate advanced index validations', error as Error, 'generateAdvancedIndexValidations', {
+                stepId: step.id,
+                indexName: step.objectName,
+                schema: step.schema
+            });
 
-           // Return basic validations as fallback
-           return [
-               {
-                   id: `fallback_index_usage_${step.id}`,
-                   name: `Fallback Index Usage: ${step.name}`,
-                   description: `Basic index usage check for ${step.objectName}`,
-                   type: 'performance',
-                   sqlQuery: `SELECT * FROM pg_stat_user_indexes WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'`,
-                   expectedResult: '>= 0',
-                   severity: 'info',
-                   automated: true
-               },
-               {
-                   id: `fallback_index_size_${step.id}`,
-                   name: `Fallback Index Size: ${step.name}`,
-                   description: `Basic index size check for ${step.objectName}`,
-                   type: 'performance',
-                   sqlQuery: `
+            // Return basic validations as fallback
+            return [
+                {
+                    id: `fallback_index_usage_${step.id}`,
+                    name: `Fallback Index Usage: ${step.name}`,
+                    description: `Basic index usage check for ${step.objectName}`,
+                    type: 'performance',
+                    sqlQuery: `SELECT * FROM pg_stat_user_indexes WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'`,
+                    expectedResult: '>= 0',
+                    severity: 'info',
+                    automated: true
+                },
+                {
+                    id: `fallback_index_size_${step.id}`,
+                    name: `Fallback Index Size: ${step.name}`,
+                    description: `Basic index size check for ${step.objectName}`,
+                    type: 'performance',
+                    sqlQuery: `
                        SELECT pg_size_pretty(pg_total_relation_size(indexname::regclass)) as size
                        FROM (SELECT indexname FROM pg_indexes WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}') i
                    `,
-                   expectedResult: '>= 0',
-                   severity: 'info',
-                   automated: true
-               }
-           ];
-       }
-   }
+                    expectedResult: '>= 0',
+                    severity: 'info',
+                    automated: true
+                }
+            ];
+        }
+    }
 
     /**
     * Generate advanced view validations with comprehensive analysis
     */
-   private async generateAdvancedViewValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
-       const validations: ValidationStep[] = [];
+    private async generateAdvancedViewValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
+        const validations: ValidationStep[] = [];
 
-       try {
-           Logger.info('Generating advanced view validations', 'generateAdvancedViewValidations', {
-               stepId: step.id,
-               viewName: step.objectName,
-               schema: step.schema,
-               operation: step.operation
-           });
+        try {
+            Logger.info('Generating advanced view validations', 'generateAdvancedViewValidations', {
+                stepId: step.id,
+                viewName: step.objectName,
+                schema: step.schema,
+                operation: step.operation
+            });
 
-           // 1. Enhanced view syntax and execution validation
-           const viewSyntaxQuery = `
+            // 1. Enhanced view syntax and execution validation
+            const viewSyntaxQuery = `
                SELECT
                    COUNT(*) as row_count,
                    CASE
@@ -3406,23 +3718,23 @@ export class MigrationManagement {
                    END as execution_status
                FROM ${step.schema}.${step.objectName}
            `;
-           const viewSyntaxResult = await this.queryService.executeQuery(connectionId, viewSyntaxQuery);
-           const viewSyntaxData = viewSyntaxResult.rows[0];
-           const executionStatus = viewSyntaxData ? viewSyntaxData[1] : 'View syntax check failed';
+            const viewSyntaxResult = await this.queryService.executeQuery(connectionId, viewSyntaxQuery);
+            const viewSyntaxData = viewSyntaxResult.rows[0];
+            const executionStatus = viewSyntaxData ? viewSyntaxData[1] : 'View syntax check failed';
 
-           validations.push({
-               id: `view_syntax_${step.id}`,
-               name: `View Syntax & Execution: ${step.name}`,
-               description: `Verify view ${step.objectName} has valid syntax and can be executed`,
-               type: 'syntax',
-               sqlQuery: viewSyntaxQuery,
-               expectedResult: executionStatus,
-               severity: 'error',
-               automated: true
-           });
+            validations.push({
+                id: `view_syntax_${step.id}`,
+                name: `View Syntax & Execution: ${step.name}`,
+                description: `Verify view ${step.objectName} has valid syntax and can be executed`,
+                type: 'syntax',
+                sqlQuery: viewSyntaxQuery,
+                expectedResult: executionStatus,
+                severity: 'error',
+                automated: true
+            });
 
-           // 2. View dependency chain validation
-           const viewDependencyQuery = `
+            // 2. View dependency chain validation
+            const viewDependencyQuery = `
                SELECT
                    COUNT(*) as dependency_count,
                    COUNT(CASE WHEN depth > 3 THEN 1 END) as deep_dependencies,
@@ -3442,23 +3754,23 @@ export class MigrationManagement {
                    WHERE v.schemaname = '${step.schema}' AND v.viewname = '${step.objectName}'
                ) view_deps
            `;
-           const viewDependencyResult = await this.queryService.executeQuery(connectionId, viewDependencyQuery);
-           const viewDependencyData = viewDependencyResult.rows[0];
-           const dependencyStatus = viewDependencyData ? viewDependencyData[2] : 'Dependency check failed';
+            const viewDependencyResult = await this.queryService.executeQuery(connectionId, viewDependencyQuery);
+            const viewDependencyData = viewDependencyResult.rows[0];
+            const dependencyStatus = viewDependencyData ? viewDependencyData[2] : 'Dependency check failed';
 
-           validations.push({
-               id: `view_dependencies_${step.id}`,
-               name: `View Dependency Chain: ${step.name}`,
-               description: `Verify view dependency chain is intact for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: viewDependencyQuery,
-               expectedResult: dependencyStatus,
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `view_dependencies_${step.id}`,
+                name: `View Dependency Chain: ${step.name}`,
+                description: `Verify view dependency chain is intact for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: viewDependencyQuery,
+                expectedResult: dependencyStatus,
+                severity: 'warning',
+                automated: true
+            });
 
-           // 3. View column mapping validation
-           const viewColumnQuery = `
+            // 3. View column mapping validation
+            const viewColumnQuery = `
                SELECT
                    COUNT(*) as column_count,
                    COUNT(CASE WHEN data_type IS NOT NULL THEN 1 END) as typed_columns,
@@ -3470,23 +3782,23 @@ export class MigrationManagement {
                FROM information_schema.columns
                WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'
            `;
-           const viewColumnResult = await this.queryService.executeQuery(connectionId, viewColumnQuery);
-           const viewColumnData = viewColumnResult.rows[0];
-           const columnStatus = viewColumnData ? viewColumnData[3] : 'Column mapping check failed';
+            const viewColumnResult = await this.queryService.executeQuery(connectionId, viewColumnQuery);
+            const viewColumnData = viewColumnResult.rows[0];
+            const columnStatus = viewColumnData ? viewColumnData[3] : 'Column mapping check failed';
 
-           validations.push({
-               id: `view_columns_${step.id}`,
-               name: `View Column Mapping: ${step.name}`,
-               description: `Validate column mapping and consistency for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: viewColumnQuery,
-               expectedResult: columnStatus,
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `view_columns_${step.id}`,
+                name: `View Column Mapping: ${step.name}`,
+                description: `Validate column mapping and consistency for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: viewColumnQuery,
+                expectedResult: columnStatus,
+                severity: 'warning',
+                automated: true
+            });
 
-           // 4. View security context validation
-           const viewSecurityQuery = `
+            // 4. View security context validation
+            const viewSecurityQuery = `
                SELECT
                    COUNT(*) as permission_count,
                    COUNT(CASE WHEN privilege_type IN ('SELECT') THEN 1 END) as select_permissions,
@@ -3498,23 +3810,23 @@ export class MigrationManagement {
                FROM information_schema.role_table_grants
                WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'
            `;
-           const viewSecurityResult = await this.queryService.executeQuery(connectionId, viewSecurityQuery);
-           const viewSecurityData = viewSecurityResult.rows[0];
-           const securityStatus = viewSecurityData ? viewSecurityData[3] : 'Security check failed';
+            const viewSecurityResult = await this.queryService.executeQuery(connectionId, viewSecurityQuery);
+            const viewSecurityData = viewSecurityResult.rows[0];
+            const securityStatus = viewSecurityData ? viewSecurityData[3] : 'Security check failed';
 
-           validations.push({
-               id: `view_security_${step.id}`,
-               name: `View Security Context: ${step.name}`,
-               description: `Validate security context for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: viewSecurityQuery,
-               expectedResult: securityStatus,
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `view_security_${step.id}`,
+                name: `View Security Context: ${step.name}`,
+                description: `Validate security context for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: viewSecurityQuery,
+                expectedResult: securityStatus,
+                severity: 'warning',
+                automated: true
+            });
 
-           // 5. View definition complexity analysis
-           const complexityQuery = `
+            // 5. View definition complexity analysis
+            const complexityQuery = `
                SELECT
                    schemaname,
                    viewname,
@@ -3530,23 +3842,23 @@ export class MigrationManagement {
                FROM pg_views
                WHERE schemaname = '${step.schema}' AND viewname = '${step.objectName}'
            `;
-           const complexityResult = await this.queryService.executeQuery(connectionId, complexityQuery);
-           const complexityData = complexityResult.rows[0];
-           const complexityStatus = complexityData ? complexityData[6] : 'Complexity check failed';
+            const complexityResult = await this.queryService.executeQuery(connectionId, complexityQuery);
+            const complexityData = complexityResult.rows[0];
+            const complexityStatus = complexityData ? complexityData[6] : 'Complexity check failed';
 
-           validations.push({
-               id: `view_complexity_${step.id}`,
-               name: `View Definition Complexity: ${step.name}`,
-               description: `Analyze complexity of view definition for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: complexityQuery,
-               expectedResult: complexityStatus,
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `view_complexity_${step.id}`,
+                name: `View Definition Complexity: ${step.name}`,
+                description: `Analyze complexity of view definition for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: complexityQuery,
+                expectedResult: complexityStatus,
+                severity: 'info',
+                automated: true
+            });
 
-           // 6. View data consistency validation
-           const viewConsistencyQuery = `
+            // 6. View data consistency validation
+            const viewConsistencyQuery = `
                SELECT
                    COUNT(*) as row_count,
                    COUNT(DISTINCT *) as distinct_row_count,
@@ -3556,23 +3868,23 @@ export class MigrationManagement {
                    END as consistency_status
                FROM ${step.schema}.${step.objectName}
            `;
-           const viewConsistencyResult = await this.queryService.executeQuery(connectionId, viewConsistencyQuery);
-           const viewConsistencyData = viewConsistencyResult.rows[0];
-           const consistencyStatus = viewConsistencyData ? viewConsistencyData[2] : 'Consistency check failed';
+            const viewConsistencyResult = await this.queryService.executeQuery(connectionId, viewConsistencyQuery);
+            const viewConsistencyData = viewConsistencyResult.rows[0];
+            const consistencyStatus = viewConsistencyData ? viewConsistencyData[2] : 'Consistency check failed';
 
-           validations.push({
-               id: `view_consistency_${step.id}`,
-               name: `View Data Consistency: ${step.name}`,
-               description: `Check data consistency for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: viewConsistencyQuery,
-               expectedResult: consistencyStatus,
-               severity: 'warning',
-               automated: true
-           });
+            validations.push({
+                id: `view_consistency_${step.id}`,
+                name: `View Data Consistency: ${step.name}`,
+                description: `Check data consistency for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: viewConsistencyQuery,
+                expectedResult: consistencyStatus,
+                severity: 'warning',
+                automated: true
+            });
 
-           // 7. View performance impact assessment
-           const viewPerformanceQuery = `
+            // 7. View performance impact assessment
+            const viewPerformanceQuery = `
                SELECT
                    schemaname,
                    viewname,
@@ -3584,23 +3896,23 @@ export class MigrationManagement {
                FROM pg_views
                WHERE schemaname = '${step.schema}' AND viewname = '${step.objectName}'
            `;
-           const viewPerformanceResult = await this.queryService.executeQuery(connectionId, viewPerformanceQuery);
-           const viewPerformanceData = viewPerformanceResult.rows[0];
-           const performanceImpact = viewPerformanceData ? viewPerformanceData[3] : 'Performance check failed';
+            const viewPerformanceResult = await this.queryService.executeQuery(connectionId, viewPerformanceQuery);
+            const viewPerformanceData = viewPerformanceResult.rows[0];
+            const performanceImpact = viewPerformanceData ? viewPerformanceData[3] : 'Performance check failed';
 
-           validations.push({
-               id: `view_performance_${step.id}`,
-               name: `View Performance Impact: ${step.name}`,
-               description: `Assess performance impact of ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: viewPerformanceQuery,
-               expectedResult: performanceImpact,
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `view_performance_${step.id}`,
+                name: `View Performance Impact: ${step.name}`,
+                description: `Assess performance impact of ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: viewPerformanceQuery,
+                expectedResult: performanceImpact,
+                severity: 'info',
+                automated: true
+            });
 
-           // 8. View dependency object validation
-           const viewObjectQuery = `
+            // 8. View dependency object validation
+            const viewObjectQuery = `
                SELECT
                    COUNT(*) as total_dependencies,
                    COUNT(CASE WHEN obj_type = 'table' THEN 1 END) as table_dependencies,
@@ -3623,23 +3935,23 @@ export class MigrationManagement {
                    WHERE v.schemaname = '${step.schema}' AND v.viewname = '${step.objectName}'
                ) dependencies
            `;
-           const viewObjectResult = await this.queryService.executeQuery(connectionId, viewObjectQuery);
-           const viewObjectData = viewObjectResult.rows[0];
-           const objectStatus = viewObjectData ? viewObjectData[4] : 'Object validation failed';
+            const viewObjectResult = await this.queryService.executeQuery(connectionId, viewObjectQuery);
+            const viewObjectData = viewObjectResult.rows[0];
+            const objectStatus = viewObjectData ? viewObjectData[4] : 'Object validation failed';
 
-           validations.push({
-               id: `view_objects_${step.id}`,
-               name: `View Dependency Objects: ${step.name}`,
-               description: `Validate all dependency objects exist for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: viewObjectQuery,
-               expectedResult: objectStatus,
-               severity: 'error',
-               automated: true
-           });
+            validations.push({
+                id: `view_objects_${step.id}`,
+                name: `View Dependency Objects: ${step.name}`,
+                description: `Validate all dependency objects exist for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: viewObjectQuery,
+                expectedResult: objectStatus,
+                severity: 'error',
+                automated: true
+            });
 
-           // 9. View creation and modification tracking
-           const viewTrackingQuery = `
+            // 9. View creation and modification tracking
+            const viewTrackingQuery = `
                SELECT
                    schemaname,
                    viewname,
@@ -3651,28 +3963,28 @@ export class MigrationManagement {
                FROM pg_views
                WHERE schemaname = '${step.schema}' AND viewname = '${step.objectName}'
            `;
-           const viewTrackingResult = await this.queryService.executeQuery(connectionId, viewTrackingQuery);
-           const viewTrackingData = viewTrackingResult.rows[0];
-           const ownershipStatus = viewTrackingData ? viewTrackingData[3] : 'Ownership check failed';
+            const viewTrackingResult = await this.queryService.executeQuery(connectionId, viewTrackingQuery);
+            const viewTrackingData = viewTrackingResult.rows[0];
+            const ownershipStatus = viewTrackingData ? viewTrackingData[3] : 'Ownership check failed';
 
-           validations.push({
-               id: `view_tracking_${step.id}`,
-               name: `View Tracking: ${step.name}`,
-               description: `Track view creation and modification for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: viewTrackingQuery,
-               expectedResult: ownershipStatus,
-               severity: 'info',
-               automated: true
-           });
+            validations.push({
+                id: `view_tracking_${step.id}`,
+                name: `View Tracking: ${step.name}`,
+                description: `Track view creation and modification for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: viewTrackingQuery,
+                expectedResult: ownershipStatus,
+                severity: 'info',
+                automated: true
+            });
 
-           // 10. View access pattern validation
-           validations.push({
-               id: `view_access_${step.id}`,
-               name: `View Access Patterns: ${step.name}`,
-               description: `Validate access patterns for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 10. View access pattern validation
+            validations.push({
+                id: `view_access_${step.id}`,
+                name: `View Access Patterns: ${step.name}`,
+                description: `Validate access patterns for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_grants,
                        COUNT(CASE WHEN grantor IS NOT NULL THEN 1 END) as proper_grants,
@@ -3684,76 +3996,76 @@ export class MigrationManagement {
                    FROM information_schema.role_table_grants
                    WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'
                `,
-               expectedResult: 'View access permissions properly configured',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'View access permissions properly configured',
+                severity: 'warning',
+                automated: true
+            });
 
-           Logger.info('Advanced view validations generated', 'generateAdvancedViewValidations', {
-               stepId: step.id,
-               validationCount: validations.length,
-               viewName: step.objectName
-           });
+            Logger.info('Advanced view validations generated', 'generateAdvancedViewValidations', {
+                stepId: step.id,
+                validationCount: validations.length,
+                viewName: step.objectName
+            });
 
-           return validations;
+            return validations;
 
-       } catch (error) {
-           Logger.error('Failed to generate advanced view validations', error as Error, 'generateAdvancedViewValidations', {
-               stepId: step.id,
-               viewName: step.objectName,
-               schema: step.schema
-           });
+        } catch (error) {
+            Logger.error('Failed to generate advanced view validations', error as Error, 'generateAdvancedViewValidations', {
+                stepId: step.id,
+                viewName: step.objectName,
+                schema: step.schema
+            });
 
-           // Return basic validations as fallback
-           return [
-               {
-                   id: `fallback_view_syntax_${step.id}`,
-                   name: `Fallback View Syntax: ${step.name}`,
-                   description: `Basic view syntax check for ${step.objectName}`,
-                   type: 'syntax',
-                   sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`,
-                   expectedResult: '>= 0',
-                   severity: 'error',
-                   automated: true
-               },
-               {
-                   id: `fallback_view_dependencies_${step.id}`,
-                   name: `Fallback View Dependencies: ${step.name}`,
-                   description: `Basic view dependency check for ${step.objectName}`,
-                   type: 'schema',
-                   sqlQuery: `
+            // Return basic validations as fallback
+            return [
+                {
+                    id: `fallback_view_syntax_${step.id}`,
+                    name: `Fallback View Syntax: ${step.name}`,
+                    description: `Basic view syntax check for ${step.objectName}`,
+                    type: 'syntax',
+                    sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`,
+                    expectedResult: '>= 0',
+                    severity: 'error',
+                    automated: true
+                },
+                {
+                    id: `fallback_view_dependencies_${step.id}`,
+                    name: `Fallback View Dependencies: ${step.name}`,
+                    description: `Basic view dependency check for ${step.objectName}`,
+                    type: 'schema',
+                    sqlQuery: `
                        SELECT COUNT(*) FROM pg_views v
                        WHERE v.schemaname = '${step.schema}' AND v.viewname = '${step.objectName}'
                    `,
-                   expectedResult: '>= 0',
-                   severity: 'warning',
-                   automated: true
-               }
-           ];
-       }
-   }
+                    expectedResult: '>= 0',
+                    severity: 'warning',
+                    automated: true
+                }
+            ];
+        }
+    }
 
     /**
     * Generate advanced function validations with comprehensive analysis
     */
-   private async generateAdvancedFunctionValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
-       const validations: ValidationStep[] = [];
+    private async generateAdvancedFunctionValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
+        const validations: ValidationStep[] = [];
 
-       try {
-           Logger.info('Generating advanced function validations', 'generateAdvancedFunctionValidations', {
-               stepId: step.id,
-               functionName: step.objectName,
-               schema: step.schema,
-               operation: step.operation
-           });
+        try {
+            Logger.info('Generating advanced function validations', 'generateAdvancedFunctionValidations', {
+                stepId: step.id,
+                functionName: step.objectName,
+                schema: step.schema,
+                operation: step.operation
+            });
 
-           // 1. Enhanced function syntax and definition validation
-           validations.push({
-               id: `function_syntax_${step.id}`,
-               name: `Function Syntax & Definition: ${step.name}`,
-               description: `Verify function ${step.objectName} has valid syntax and definition`,
-               type: 'syntax',
-               sqlQuery: `
+            // 1. Enhanced function syntax and definition validation
+            validations.push({
+                id: `function_syntax_${step.id}`,
+                name: `Function Syntax & Definition: ${step.name}`,
+                description: `Verify function ${step.objectName} has valid syntax and definition`,
+                type: 'syntax',
+                sqlQuery: `
                    SELECT
                        p.proname,
                        p.prokind,
@@ -3766,18 +4078,18 @@ export class MigrationManagement {
                    JOIN pg_namespace n ON p.pronamespace = n.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'Function definition is valid',
-               severity: 'error',
-               automated: true
-           });
+                expectedResult: 'Function definition is valid',
+                severity: 'error',
+                automated: true
+            });
 
-           // 2. Function execution capability validation
-           validations.push({
-               id: `function_execution_${step.id}`,
-               name: `Function Execution Capability: ${step.name}`,
-               description: `Test function ${step.objectName} execution capability`,
-               type: 'data',
-               sqlQuery: `
+            // 2. Function execution capability validation
+            validations.push({
+                id: `function_execution_${step.id}`,
+                name: `Function Execution Capability: ${step.name}`,
+                description: `Test function ${step.objectName} execution capability`,
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        proname,
                        prokind,
@@ -3794,18 +4106,18 @@ export class MigrationManagement {
                    JOIN pg_namespace n ON p.pronamespace = n.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'Function is executable',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Function is executable',
+                severity: 'info',
+                automated: true
+            });
 
-           // 3. Function parameter validation
-           validations.push({
-               id: `function_parameters_${step.id}`,
-               name: `Function Parameter Validation: ${step.name}`,
-               description: `Validate function parameters for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: `
+            // 3. Function parameter validation
+            validations.push({
+                id: `function_parameters_${step.id}`,
+                name: `Function Parameter Validation: ${step.name}`,
+                description: `Validate function parameters for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        proname,
                        pg_get_function_identity_arguments(p.oid) as parameters,
@@ -3818,18 +4130,18 @@ export class MigrationManagement {
                    JOIN pg_namespace n ON p.pronamespace = n.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'Parameter count is reasonable',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Parameter count is reasonable',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 4. Function security permission validation
-           validations.push({
-               id: `function_security_${step.id}`,
-               name: `Function Security Permissions: ${step.name}`,
-               description: `Validate security permissions for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 4. Function security permission validation
+            validations.push({
+                id: `function_security_${step.id}`,
+                name: `Function Security Permissions: ${step.name}`,
+                description: `Validate security permissions for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as permission_count,
                        COUNT(CASE WHEN prosecdef THEN 1 END) as security_definer_functions,
@@ -3842,18 +4154,18 @@ export class MigrationManagement {
                    JOIN pg_namespace n ON p.pronamespace = n.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'Function security permissions configured',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Function security permissions configured',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 5. Function volatility analysis
-           validations.push({
-               id: `function_volatility_${step.id}`,
-               name: `Function Volatility Analysis: ${step.name}`,
-               description: `Analyze volatility characteristics of ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: `
+            // 5. Function volatility analysis
+            validations.push({
+                id: `function_volatility_${step.id}`,
+                name: `Function Volatility Analysis: ${step.name}`,
+                description: `Analyze volatility characteristics of ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        proname,
                        CASE p.provolatile
@@ -3872,18 +4184,18 @@ export class MigrationManagement {
                    JOIN pg_namespace n ON p.pronamespace = n.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'Function is immutable - good for performance',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Function is immutable - good for performance',
+                severity: 'info',
+                automated: true
+            });
 
-           // 6. Function dependency analysis
-           validations.push({
-               id: `function_dependencies_${step.id}`,
-               name: `Function Dependency Analysis: ${step.name}`,
-               description: `Analyze dependencies for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: `
+            // 6. Function dependency analysis
+            validations.push({
+                id: `function_dependencies_${step.id}`,
+                name: `Function Dependency Analysis: ${step.name}`,
+                description: `Analyze dependencies for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as dependency_count,
                        COUNT(CASE WHEN deptype = 'n' THEN 1 END) as normal_dependencies,
@@ -3897,18 +4209,18 @@ export class MigrationManagement {
                    JOIN pg_namespace n ON p.pronamespace = n.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'Function dependencies validated',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Function dependencies validated',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 7. Function execution plan analysis
-           validations.push({
-               id: `function_execution_plan_${step.id}`,
-               name: `Function Execution Plan: ${step.name}`,
-               description: `Analyze execution plan characteristics for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: `
+            // 7. Function execution plan analysis
+            validations.push({
+                id: `function_execution_plan_${step.id}`,
+                name: `Function Execution Plan: ${step.name}`,
+                description: `Analyze execution plan characteristics for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        proname,
                        prolang as language_oid,
@@ -3927,18 +4239,18 @@ export class MigrationManagement {
                    JOIN pg_namespace n ON p.pronamespace = n.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'SQL function - good performance characteristics',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'SQL function - good performance characteristics',
+                severity: 'info',
+                automated: true
+            });
 
-           // 8. Function return type validation
-           validations.push({
-               id: `function_return_type_${step.id}`,
-               name: `Function Return Type: ${step.name}`,
-               description: `Validate return type for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: `
+            // 8. Function return type validation
+            validations.push({
+                id: `function_return_type_${step.id}`,
+                name: `Function Return Type: ${step.name}`,
+                description: `Validate return type for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        proname,
                        pg_get_function_result(p.oid) as return_type,
@@ -3950,18 +4262,18 @@ export class MigrationManagement {
                    JOIN pg_namespace n ON p.pronamespace = n.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'Function has return type',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Function has return type',
+                severity: 'info',
+                automated: true
+            });
 
-           // 9. Function language validation
-           validations.push({
-               id: `function_language_${step.id}`,
-               name: `Function Language Validation: ${step.name}`,
-               description: `Validate function language for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: `
+            // 9. Function language validation
+            validations.push({
+                id: `function_language_${step.id}`,
+                name: `Function Language Validation: ${step.name}`,
+                description: `Validate function language for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        p.proname,
                        l.lanname as language_name,
@@ -3975,18 +4287,18 @@ export class MigrationManagement {
                    JOIN pg_language l ON p.prolang = l.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'Trusted language - sql',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Trusted language - sql',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 10. Function access privilege validation
-           validations.push({
-               id: `function_privileges_${step.id}`,
-               name: `Function Access Privileges: ${step.name}`,
-               description: `Validate access privileges for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 10. Function access privilege validation
+            validations.push({
+                id: `function_privileges_${step.id}`,
+                name: `Function Access Privileges: ${step.name}`,
+                description: `Validate access privileges for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as privilege_count,
                        COUNT(CASE WHEN proacl IS NOT NULL THEN 1 END) as functions_with_acl,
@@ -3998,73 +4310,73 @@ export class MigrationManagement {
                    JOIN pg_namespace n ON p.pronamespace = n.oid
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
-               expectedResult: 'Function privileges configured',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Function privileges configured',
+                severity: 'warning',
+                automated: true
+            });
 
-           Logger.info('Advanced function validations generated', 'generateAdvancedFunctionValidations', {
-               stepId: step.id,
-               validationCount: validations.length,
-               functionName: step.objectName
-           });
+            Logger.info('Advanced function validations generated', 'generateAdvancedFunctionValidations', {
+                stepId: step.id,
+                validationCount: validations.length,
+                functionName: step.objectName
+            });
 
-           return validations;
+            return validations;
 
-       } catch (error) {
-           Logger.error('Failed to generate advanced function validations', error as Error, 'generateAdvancedFunctionValidations', {
-               stepId: step.id,
-               functionName: step.objectName,
-               schema: step.schema
-           });
+        } catch (error) {
+            Logger.error('Failed to generate advanced function validations', error as Error, 'generateAdvancedFunctionValidations', {
+                stepId: step.id,
+                functionName: step.objectName,
+                schema: step.schema
+            });
 
-           // Return basic validations as fallback
-           return [
-               {
-                   id: `fallback_function_syntax_${step.id}`,
-                   name: `Fallback Function Syntax: ${step.name}`,
-                   description: `Basic function syntax check for ${step.objectName}`,
-                   type: 'syntax',
-                   sqlQuery: `SELECT proname FROM pg_proc WHERE proname = '${step.objectName}' AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = '${step.schema}')`,
-                   expectedResult: 1,
-                   severity: 'error',
-                   automated: true
-               },
-               {
-                   id: `fallback_function_execution_${step.id}`,
-                   name: `Fallback Function Execution: ${step.name}`,
-                   description: `Basic function execution check for ${step.objectName}`,
-                   type: 'data',
-                   sqlQuery: `SELECT COUNT(*) FROM pg_proc WHERE proname = '${step.objectName}' AND prokind = 'f'`,
-                   expectedResult: '>= 0',
-                   severity: 'info',
-                   automated: true
-               }
-           ];
-       }
-   }
+            // Return basic validations as fallback
+            return [
+                {
+                    id: `fallback_function_syntax_${step.id}`,
+                    name: `Fallback Function Syntax: ${step.name}`,
+                    description: `Basic function syntax check for ${step.objectName}`,
+                    type: 'syntax',
+                    sqlQuery: `SELECT proname FROM pg_proc WHERE proname = '${step.objectName}' AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = '${step.schema}')`,
+                    expectedResult: 1,
+                    severity: 'error',
+                    automated: true
+                },
+                {
+                    id: `fallback_function_execution_${step.id}`,
+                    name: `Fallback Function Execution: ${step.name}`,
+                    description: `Basic function execution check for ${step.objectName}`,
+                    type: 'data',
+                    sqlQuery: `SELECT COUNT(*) FROM pg_proc WHERE proname = '${step.objectName}' AND prokind = 'f'`,
+                    expectedResult: '>= 0',
+                    severity: 'info',
+                    automated: true
+                }
+            ];
+        }
+    }
 
     /**
     * Generate advanced column validations with comprehensive analysis
     */
-   private async generateAdvancedColumnValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
-       const validations: ValidationStep[] = [];
+    private async generateAdvancedColumnValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
+        const validations: ValidationStep[] = [];
 
-       try {
-           Logger.info('Generating advanced column validations', 'generateAdvancedColumnValidations', {
-               stepId: step.id,
-               columnName: step.objectName,
-               schema: step.schema,
-               operation: step.operation
-           });
+        try {
+            Logger.info('Generating advanced column validations', 'generateAdvancedColumnValidations', {
+                stepId: step.id,
+                columnName: step.objectName,
+                schema: step.schema,
+                operation: step.operation
+            });
 
-           // 1. Enhanced column integrity validation
-           validations.push({
-               id: `column_integrity_${step.id}`,
-               name: `Column Integrity: ${step.name}`,
-               description: `Verify column modifications maintain data integrity`,
-               type: 'data',
-               sqlQuery: `
+            // 1. Enhanced column integrity validation
+            validations.push({
+                id: `column_integrity_${step.id}`,
+                name: `Column Integrity: ${step.name}`,
+                description: `Verify column modifications maintain data integrity`,
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as column_count,
                        COUNT(CASE WHEN data_type IS NOT NULL THEN 1 END) as typed_columns,
@@ -4076,18 +4388,18 @@ export class MigrationManagement {
                    FROM information_schema.columns
                    WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}' AND column_name = '${step.objectName}'
                `,
-               expectedResult: 'Column integrity validated',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Column integrity validated',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 2. Column data validation with statistical analysis
-           validations.push({
-               id: `column_data_${step.id}`,
-               name: `Column Data Analysis: ${step.name}`,
-               description: `Verify column data is valid after modification`,
-               type: 'data',
-               sqlQuery: `
+            // 2. Column data validation with statistical analysis
+            validations.push({
+                id: `column_data_${step.id}`,
+                name: `Column Data Analysis: ${step.name}`,
+                description: `Verify column data is valid after modification`,
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_rows,
                        COUNT(CASE WHEN ${step.objectName} IS NOT NULL THEN 1 END) as non_null_rows,
@@ -4101,18 +4413,18 @@ export class MigrationManagement {
                        END as data_status
                    FROM ${step.schema}.${step.objectName}
                `,
-               expectedResult: 'Column data analysis completed',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Column data analysis completed',
+                severity: 'info',
+                automated: true
+            });
 
-           // 3. Column data type consistency validation
-           validations.push({
-               id: `column_type_consistency_${step.id}`,
-               name: `Column Type Consistency: ${step.name}`,
-               description: `Validate data type consistency for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: `
+            // 3. Column data type consistency validation
+            validations.push({
+                id: `column_type_consistency_${step.id}`,
+                name: `Column Type Consistency: ${step.name}`,
+                description: `Validate data type consistency for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        data_type,
                        COUNT(*) as rows_with_type,
@@ -4127,18 +4439,18 @@ export class MigrationManagement {
                    WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}' AND column_name = '${step.objectName}'
                    GROUP BY data_type
                `,
-               expectedResult: '>= 0',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: '>= 0',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 4. Column constraint validation
-           validations.push({
-               id: `column_constraints_${step.id}`,
-               name: `Column Constraint Validation: ${step.name}`,
-               description: `Validate column constraints for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: `
+            // 4. Column constraint validation
+            validations.push({
+                id: `column_constraints_${step.id}`,
+                name: `Column Constraint Validation: ${step.name}`,
+                description: `Validate column constraints for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        c.column_name,
                        c.data_type,
@@ -4158,18 +4470,18 @@ export class MigrationManagement {
                    WHERE c.table_schema = '${step.schema}' AND c.table_name = '${step.objectName}' AND c.column_name = '${step.objectName}'
                    GROUP BY c.column_name, c.data_type, c.is_nullable, c.column_default
                `,
-               expectedResult: 'Column constraints validated',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Column constraints validated',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 5. Column statistical analysis
-           validations.push({
-               id: `column_statistics_${step.id}`,
-               name: `Column Statistical Analysis: ${step.name}`,
-               description: `Perform statistical analysis on ${step.objectName}`,
-               type: 'data',
-               sqlQuery: `
+            // 5. Column statistical analysis
+            validations.push({
+                id: `column_statistics_${step.id}`,
+                name: `Column Statistical Analysis: ${step.name}`,
+                description: `Perform statistical analysis on ${step.objectName}`,
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_values,
                        COUNT(DISTINCT ${step.objectName}) as distinct_values,
@@ -4183,18 +4495,18 @@ export class MigrationManagement {
                    FROM ${step.schema}.${step.objectName}
                    WHERE ${step.objectName} IS NOT NULL
                `,
-               expectedResult: 'Column has data diversity',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Column has data diversity',
+                severity: 'info',
+                automated: true
+            });
 
-           // 6. Column null pattern analysis
-           validations.push({
-               id: `column_null_patterns_${step.id}`,
-               name: `Column Null Pattern Analysis: ${step.name}`,
-               description: `Analyze null patterns in ${step.objectName}`,
-               type: 'data',
-               sqlQuery: `
+            // 6. Column null pattern analysis
+            validations.push({
+                id: `column_null_patterns_${step.id}`,
+                name: `Column Null Pattern Analysis: ${step.name}`,
+                description: `Analyze null patterns in ${step.objectName}`,
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_rows,
                        COUNT(CASE WHEN ${step.objectName} IS NULL THEN 1 END) as null_count,
@@ -4209,18 +4521,18 @@ export class MigrationManagement {
                        END as null_status
                    FROM ${step.schema}.${step.objectName}
                `,
-               expectedResult: 'No null values - good data quality',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'No null values - good data quality',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 7. Column data distribution analysis
-           validations.push({
-               id: `column_distribution_${step.id}`,
-               name: `Column Data Distribution: ${step.name}`,
-               description: `Analyze data distribution in ${step.objectName}`,
-               type: 'data',
-               sqlQuery: `
+            // 7. Column data distribution analysis
+            validations.push({
+                id: `column_distribution_${step.id}`,
+                name: `Column Data Distribution: ${step.name}`,
+                description: `Analyze data distribution in ${step.objectName}`,
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_count,
                        MIN(${step.objectName}) as min_value,
@@ -4233,18 +4545,18 @@ export class MigrationManagement {
                    FROM ${step.schema}.${step.objectName}
                    WHERE ${step.objectName} IS NOT NULL
                `,
-               expectedResult: 'Data range analysis completed',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Data range analysis completed',
+                severity: 'info',
+                automated: true
+            });
 
-           // 8. Column default value validation
-           validations.push({
-               id: `column_defaults_${step.id}`,
-               name: `Column Default Value Validation: ${step.name}`,
-               description: `Validate default values for ${step.objectName}`,
-               type: 'schema',
-               sqlQuery: `
+            // 8. Column default value validation
+            validations.push({
+                id: `column_defaults_${step.id}`,
+                name: `Column Default Value Validation: ${step.name}`,
+                description: `Validate default values for ${step.objectName}`,
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        column_name,
                        data_type,
@@ -4258,18 +4570,18 @@ export class MigrationManagement {
                    FROM information_schema.columns
                    WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}' AND column_name = '${step.objectName}'
                `,
-               expectedResult: 'Default value configured',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Default value configured',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 9. Column length validation (for text columns)
-           validations.push({
-               id: `column_length_${step.id}`,
-               name: `Column Length Validation: ${step.name}`,
-               description: `Validate column length constraints for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: `
+            // 9. Column length validation (for text columns)
+            validations.push({
+                id: `column_length_${step.id}`,
+                name: `Column Length Validation: ${step.name}`,
+                description: `Validate column length constraints for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        character_maximum_length,
                        COUNT(*) as total_rows,
@@ -4284,18 +4596,18 @@ export class MigrationManagement {
                    WHERE c.table_schema = '${step.schema}' AND c.table_name = '${step.objectName}' AND c.column_name = '${step.objectName}'
                    GROUP BY character_maximum_length
                `,
-               expectedResult: 'All values within length limit',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'All values within length limit',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 10. Column precision and scale validation (for numeric columns)
-           validations.push({
-               id: `column_precision_${step.id}`,
-               name: `Column Precision & Scale: ${step.name}`,
-               description: `Validate precision and scale for ${step.objectName}`,
-               type: 'data',
-               sqlQuery: `
+            // 10. Column precision and scale validation (for numeric columns)
+            validations.push({
+                id: `column_precision_${step.id}`,
+                name: `Column Precision & Scale: ${step.name}`,
+                description: `Validate precision and scale for ${step.objectName}`,
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        numeric_precision,
                        numeric_scale,
@@ -4311,74 +4623,74 @@ export class MigrationManagement {
                    WHERE c.table_schema = '${step.schema}' AND c.table_name = '${step.objectName}' AND c.column_name = '${step.objectName}'
                    GROUP BY numeric_precision, numeric_scale
                `,
-               expectedResult: 'Precision validation passed',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Precision validation passed',
+                severity: 'warning',
+                automated: true
+            });
 
-           Logger.info('Advanced column validations generated', 'generateAdvancedColumnValidations', {
-               stepId: step.id,
-               validationCount: validations.length,
-               columnName: step.objectName
-           });
+            Logger.info('Advanced column validations generated', 'generateAdvancedColumnValidations', {
+                stepId: step.id,
+                validationCount: validations.length,
+                columnName: step.objectName
+            });
 
-           return validations;
+            return validations;
 
-       } catch (error) {
-           Logger.error('Failed to generate advanced column validations', error as Error, 'generateAdvancedColumnValidations', {
-               stepId: step.id,
-               columnName: step.objectName,
-               schema: step.schema
-           });
+        } catch (error) {
+            Logger.error('Failed to generate advanced column validations', error as Error, 'generateAdvancedColumnValidations', {
+                stepId: step.id,
+                columnName: step.objectName,
+                schema: step.schema
+            });
 
-           // Return basic validations as fallback
-           return [
-               {
-                   id: `fallback_column_integrity_${step.id}`,
-                   name: `Fallback Column Integrity: ${step.name}`,
-                   description: `Basic column integrity check for ${step.objectName}`,
-                   type: 'data',
-                   sqlQuery: `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}' AND column_name = '${step.objectName}'`,
-                   expectedResult: 1,
-                   severity: 'warning',
-                   automated: true
-               },
-               {
-                   id: `fallback_column_data_${step.id}`,
-                   name: `Fallback Column Data: ${step.name}`,
-                   description: `Basic column data check for ${step.objectName}`,
-                   type: 'data',
-                   sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName} WHERE ${step.objectName} IS NOT NULL`,
-                   expectedResult: '>= 0',
-                   severity: 'info',
-                   automated: true
-               }
-           ];
-       }
-   }
+            // Return basic validations as fallback
+            return [
+                {
+                    id: `fallback_column_integrity_${step.id}`,
+                    name: `Fallback Column Integrity: ${step.name}`,
+                    description: `Basic column integrity check for ${step.objectName}`,
+                    type: 'data',
+                    sqlQuery: `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}' AND column_name = '${step.objectName}'`,
+                    expectedResult: 1,
+                    severity: 'warning',
+                    automated: true
+                },
+                {
+                    id: `fallback_column_data_${step.id}`,
+                    name: `Fallback Column Data: ${step.name}`,
+                    description: `Basic column data check for ${step.objectName}`,
+                    type: 'data',
+                    sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName} WHERE ${step.objectName} IS NOT NULL`,
+                    expectedResult: '>= 0',
+                    severity: 'info',
+                    automated: true
+                }
+            ];
+        }
+    }
 
     /**
     * Generate advanced performance validations with comprehensive monitoring
     */
-   private async generateAdvancedPerformanceValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
-       const validations: ValidationStep[] = [];
+    private async generateAdvancedPerformanceValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
+        const validations: ValidationStep[] = [];
 
-       try {
-           Logger.info('Generating advanced performance validations', 'generateAdvancedPerformanceValidations', {
-               stepId: step.id,
-               objectName: step.objectName,
-               schema: step.schema,
-               objectType: step.objectType,
-               operation: step.operation
-           });
+        try {
+            Logger.info('Generating advanced performance validations', 'generateAdvancedPerformanceValidations', {
+                stepId: step.id,
+                objectName: step.objectName,
+                schema: step.schema,
+                objectType: step.objectType,
+                operation: step.operation
+            });
 
-           // 1. Query execution time monitoring
-           validations.push({
-               id: `performance_query_${step.id}`,
-               name: `Query Execution Time: ${step.name}`,
-               description: `Monitor query execution time impact of ${step.objectName} changes`,
-               type: 'performance',
-               sqlQuery: `
+            // 1. Query execution time monitoring
+            validations.push({
+                id: `performance_query_${step.id}`,
+                name: `Query Execution Time: ${step.name}`,
+                description: `Monitor query execution time impact of ${step.objectName} changes`,
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        current_setting('log_min_duration_statement') as min_duration,
                        current_setting('log_statement') as statement_logging,
@@ -4387,19 +4699,19 @@ export class MigrationManagement {
                            ELSE 'Query duration threshold is reasonable'
                        END as duration_status
                `,
-               expectedResult: 'Query duration threshold is reasonable',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Query duration threshold is reasonable',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 2. Table size monitoring (for table operations)
-           if (step.objectType === 'table') {
-               validations.push({
-                   id: `table_size_${step.id}`,
-                   name: `Table Size Monitoring: ${step.name}`,
-                   description: `Monitor table size changes for ${step.objectName}`,
-                   type: 'performance',
-                   sqlQuery: `
+            // 2. Table size monitoring (for table operations)
+            if (step.objectType === 'table') {
+                validations.push({
+                    id: `table_size_${step.id}`,
+                    name: `Table Size Monitoring: ${step.name}`,
+                    description: `Monitor table size changes for ${step.objectName}`,
+                    type: 'performance',
+                    sqlQuery: `
                        SELECT
                            schemaname,
                            tablename,
@@ -4414,20 +4726,20 @@ export class MigrationManagement {
                        FROM pg_tables
                        WHERE schemaname = '${step.schema}' AND tablename = '${step.objectName}'
                    `,
-                   expectedResult: 'Table size is reasonable',
-                   severity: 'info',
-                   automated: true
-               });
-           }
+                    expectedResult: 'Table size is reasonable',
+                    severity: 'info',
+                    automated: true
+                });
+            }
 
-           // 3. Index performance impact assessment
-           if (step.objectType === 'index') {
-               validations.push({
-                   id: `index_performance_${step.id}`,
-                   name: `Index Performance Impact: ${step.name}`,
-                   description: `Assess performance impact of index ${step.objectName}`,
-                   type: 'performance',
-                   sqlQuery: `
+            // 3. Index performance impact assessment
+            if (step.objectType === 'index') {
+                validations.push({
+                    id: `index_performance_${step.id}`,
+                    name: `Index Performance Impact: ${step.name}`,
+                    description: `Assess performance impact of index ${step.objectName}`,
+                    type: 'performance',
+                    sqlQuery: `
                        SELECT
                            schemaname,
                            tablename,
@@ -4443,19 +4755,19 @@ export class MigrationManagement {
                        FROM pg_indexes
                        WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
                    `,
-                   expectedResult: 'Index performance is acceptable',
-                   severity: 'warning',
-                   automated: true
-               });
-           }
+                    expectedResult: 'Index performance is acceptable',
+                    severity: 'warning',
+                    automated: true
+                });
+            }
 
-           // 4. Resource usage tracking
-           validations.push({
-               id: `resource_usage_${step.id}`,
-               name: `Resource Usage Tracking: ${step.name}`,
-               description: `Track resource usage impact of ${step.objectName} changes`,
-               type: 'performance',
-               sqlQuery: `
+            // 4. Resource usage tracking
+            validations.push({
+                id: `resource_usage_${step.id}`,
+                name: `Resource Usage Tracking: ${step.name}`,
+                description: `Track resource usage impact of ${step.objectName} changes`,
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        numbackends as active_connections,
                        CASE
@@ -4466,18 +4778,18 @@ export class MigrationManagement {
                    FROM pg_stat_database
                    WHERE datname = current_database()
                `,
-               expectedResult: 'Connection count is reasonable',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Connection count is reasonable',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 5. Performance regression detection
-           validations.push({
-               id: `performance_regression_${step.id}`,
-               name: `Performance Regression Detection: ${step.name}`,
-               description: `Detect performance regressions for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: `
+            // 5. Performance regression detection
+            validations.push({
+                id: `performance_regression_${step.id}`,
+                name: `Performance Regression Detection: ${step.name}`,
+                description: `Detect performance regressions for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        schemaname,
                        tablename,
@@ -4493,19 +4805,19 @@ export class MigrationManagement {
                    FROM pg_stat_user_tables
                    WHERE schemaname = '${step.schema}' AND tablename = '${step.objectName}'
                `,
-               expectedResult: 'Activity levels are normal',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Activity levels are normal',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 6. Query plan analysis (for functions and views)
-           if (step.objectType === 'function' || step.objectType === 'view') {
-               validations.push({
-                   id: `query_plan_${step.id}`,
-                   name: `Query Plan Analysis: ${step.name}`,
-                   description: `Analyze query execution plan for ${step.objectName}`,
-                   type: 'performance',
-                   sqlQuery: `
+            // 6. Query plan analysis (for functions and views)
+            if (step.objectType === 'function' || step.objectType === 'view') {
+                validations.push({
+                    id: `query_plan_${step.id}`,
+                    name: `Query Plan Analysis: ${step.name}`,
+                    description: `Analyze query execution plan for ${step.objectName}`,
+                    type: 'performance',
+                    sqlQuery: `
                        SELECT
                            schemaname,
                            ${step.objectType === 'function' ? 'proname' : 'viewname'} as object_name,
@@ -4517,19 +4829,19 @@ export class MigrationManagement {
                        WHERE ${step.objectType === 'function' ? 'n.nspname' : 'schemaname'} = '${step.schema}'
                        AND ${step.objectType === 'function' ? 'p.proname' : 'viewname'} = '${step.objectName}'
                    `,
-                   expectedResult: 'Contains SELECT statements',
-                   severity: 'info',
-                   automated: true
-               });
-           }
+                    expectedResult: 'Contains SELECT statements',
+                    severity: 'info',
+                    automated: true
+                });
+            }
 
-           // 7. Lock monitoring
-           validations.push({
-               id: `lock_monitoring_${step.id}`,
-               name: `Lock Monitoring: ${step.name}`,
-               description: `Monitor locks that may affect ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: `
+            // 7. Lock monitoring
+            validations.push({
+                id: `lock_monitoring_${step.id}`,
+                name: `Lock Monitoring: ${step.name}`,
+                description: `Monitor locks that may affect ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as active_locks,
                        COUNT(CASE WHEN mode = 'ExclusiveLock' THEN 1 END) as exclusive_locks,
@@ -4542,18 +4854,18 @@ export class MigrationManagement {
                    FROM pg_locks
                    WHERE locktype = 'relation'
                `,
-               expectedResult: 'Lock status is normal',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Lock status is normal',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 8. Cache effectiveness monitoring
-           validations.push({
-               id: `cache_effectiveness_${step.id}`,
-               name: `Cache Effectiveness: ${step.name}`,
-               description: `Monitor cache effectiveness for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: `
+            // 8. Cache effectiveness monitoring
+            validations.push({
+                id: `cache_effectiveness_${step.id}`,
+                name: `Cache Effectiveness: ${step.name}`,
+                description: `Monitor cache effectiveness for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        sum(heap_blks_read) as heap_reads,
                        sum(heap_blks_hit) as heap_hits,
@@ -4575,18 +4887,18 @@ export class MigrationManagement {
                    FROM pg_statio_user_tables
                    WHERE schemaname = '${step.schema}' AND relname = '${step.objectName}'
                `,
-               expectedResult: 'Cache effectiveness is good',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Cache effectiveness is good',
+                severity: 'info',
+                automated: true
+            });
 
-           // 9. I/O performance monitoring
-           validations.push({
-               id: `io_performance_${step.id}`,
-               name: `I/O Performance: ${step.name}`,
-               description: `Monitor I/O performance for ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: `
+            // 9. I/O performance monitoring
+            validations.push({
+                id: `io_performance_${step.id}`,
+                name: `I/O Performance: ${step.name}`,
+                description: `Monitor I/O performance for ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        schemaname,
                        tablename,
@@ -4599,18 +4911,18 @@ export class MigrationManagement {
                    FROM pg_statio_user_tables
                    WHERE schemaname = '${step.schema}' AND tablename = '${step.objectName}'
                `,
-               expectedResult: 'I/O activity is normal',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'I/O activity is normal',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 10. Memory usage tracking
-           validations.push({
-               id: `memory_usage_${step.id}`,
-               name: `Memory Usage Tracking: ${step.name}`,
-               description: `Track memory usage impact of ${step.objectName}`,
-               type: 'performance',
-               sqlQuery: `
+            // 10. Memory usage tracking
+            validations.push({
+                id: `memory_usage_${step.id}`,
+                name: `Memory Usage Tracking: ${step.name}`,
+                description: `Track memory usage impact of ${step.objectName}`,
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        current_setting('work_mem') as work_mem,
                        current_setting('maintenance_work_mem') as maintenance_work_mem,
@@ -4620,43 +4932,43 @@ export class MigrationManagement {
                            ELSE 'Memory settings are adequate'
                        END as memory_status
                `,
-               expectedResult: 'Memory settings are adequate',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Memory settings are adequate',
+                severity: 'info',
+                automated: true
+            });
 
-           Logger.info('Advanced performance validations generated', 'generateAdvancedPerformanceValidations', {
-               stepId: step.id,
-               validationCount: validations.length,
-               objectName: step.objectName
-           });
+            Logger.info('Advanced performance validations generated', 'generateAdvancedPerformanceValidations', {
+                stepId: step.id,
+                validationCount: validations.length,
+                objectName: step.objectName
+            });
 
-           return validations;
+            return validations;
 
-       } catch (error) {
-           Logger.error('Failed to generate advanced performance validations', error as Error, 'generateAdvancedPerformanceValidations', {
-               stepId: step.id,
-               objectName: step.objectName,
-               schema: step.schema
-           });
+        } catch (error) {
+            Logger.error('Failed to generate advanced performance validations', error as Error, 'generateAdvancedPerformanceValidations', {
+                stepId: step.id,
+                objectName: step.objectName,
+                schema: step.schema
+            });
 
-           // Return basic validations as fallback
-           return [
-               {
-                   id: `fallback_performance_query_${step.id}`,
-                   name: `Fallback Query Performance: ${step.name}`,
-                   description: `Basic query performance check for ${step.objectName}`,
-                   type: 'performance',
-                   sqlQuery: this.generatePerformanceValidationQuery(step),
-                   severity: 'warning',
-                   automated: true
-               },
-               {
-                   id: `fallback_resource_usage_${step.id}`,
-                   name: `Fallback Resource Usage: ${step.name}`,
-                   description: `Basic resource usage check for ${step.objectName}`,
-                   type: 'performance',
-                   sqlQuery: `
+            // Return basic validations as fallback
+            return [
+                {
+                    id: `fallback_performance_query_${step.id}`,
+                    name: `Fallback Query Performance: ${step.name}`,
+                    description: `Basic query performance check for ${step.objectName}`,
+                    type: 'performance',
+                    sqlQuery: this.generatePerformanceValidationQuery(step),
+                    severity: 'warning',
+                    automated: true
+                },
+                {
+                    id: `fallback_resource_usage_${step.id}`,
+                    name: `Fallback Resource Usage: ${step.name}`,
+                    description: `Basic resource usage check for ${step.objectName}`,
+                    type: 'performance',
+                    sqlQuery: `
                        SELECT
                            numbackends as active_connections,
                            CASE
@@ -4666,36 +4978,36 @@ export class MigrationManagement {
                        FROM pg_stat_database
                        WHERE datname = current_database()
                    `,
-                   expectedResult: 'Connection count is reasonable',
-                   severity: 'warning',
-                   automated: true
-               }
-           ];
-       }
-   }
+                    expectedResult: 'Connection count is reasonable',
+                    severity: 'warning',
+                    automated: true
+                }
+            ];
+        }
+    }
 
     /**
     * Generate advanced security validations with comprehensive checks
     */
-   private async generateAdvancedSecurityValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
-       const validations: ValidationStep[] = [];
+    private async generateAdvancedSecurityValidations(step: MigrationStep, connectionId: string): Promise<ValidationStep[]> {
+        const validations: ValidationStep[] = [];
 
-       try {
-           Logger.info('Generating advanced security validations', 'generateAdvancedSecurityValidations', {
-               stepId: step.id,
-               objectName: step.objectName,
-               schema: step.schema,
-               objectType: step.objectType,
-               operation: step.operation
-           });
+        try {
+            Logger.info('Generating advanced security validations', 'generateAdvancedSecurityValidations', {
+                stepId: step.id,
+                objectName: step.objectName,
+                schema: step.schema,
+                objectType: step.objectType,
+                operation: step.operation
+            });
 
-           // 1. Enhanced security permission validation
-           validations.push({
-               id: `security_permissions_${step.id}`,
-               name: `Security Permissions Analysis: ${step.name}`,
-               description: `Comprehensive security permission analysis for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 1. Enhanced security permission validation
+            validations.push({
+                id: `security_permissions_${step.id}`,
+                name: `Security Permissions Analysis: ${step.name}`,
+                description: `Comprehensive security permission analysis for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_grants,
                        COUNT(CASE WHEN privilege_type = 'SELECT' THEN 1 END) as select_grants,
@@ -4711,18 +5023,18 @@ export class MigrationManagement {
                    FROM information_schema.role_table_grants
                    WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'
                `,
-               expectedResult: 'Security permissions are reasonable',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Security permissions are reasonable',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 2. Privilege escalation detection
-           validations.push({
-               id: `security_privileges_${step.id}`,
-               name: `Privilege Escalation Detection: ${step.name}`,
-               description: `Detect potential privilege escalation for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 2. Privilege escalation detection
+            validations.push({
+                id: `security_privileges_${step.id}`,
+                name: `Privilege Escalation Detection: ${step.name}`,
+                description: `Detect potential privilege escalation for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as critical_privileges,
                        COUNT(CASE WHEN privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE') THEN 1 END) as dml_privileges,
@@ -4736,18 +5048,18 @@ export class MigrationManagement {
                    WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'
                    AND privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'REFERENCES', 'TRIGGER')
                `,
-               expectedResult: 'Privilege configuration is standard',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Privilege configuration is standard',
+                severity: 'info',
+                automated: true
+            });
 
-           // 3. SQL injection vulnerability assessment
-           validations.push({
-               id: `sql_injection_${step.id}`,
-               name: `SQL Injection Vulnerability: ${step.name}`,
-               description: `Assess SQL injection vulnerabilities for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 3. SQL injection vulnerability assessment
+            validations.push({
+                id: `sql_injection_${step.id}`,
+                name: `SQL Injection Vulnerability: ${step.name}`,
+                description: `Assess SQL injection vulnerabilities for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as function_count,
                        COUNT(CASE WHEN prolang = (SELECT oid FROM pg_language WHERE lanname = 'sql') THEN 1 END) as sql_functions,
@@ -4761,18 +5073,18 @@ export class MigrationManagement {
                    WHERE n.nspname = '${step.schema}'
                    AND (p.proname = '${step.objectName}' OR '${step.objectType}' = 'function')
                `,
-               expectedResult: 'No security definer functions found',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'No security definer functions found',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 4. Access pattern analysis
-           validations.push({
-               id: `access_patterns_${step.id}`,
-               name: `Access Pattern Analysis: ${step.name}`,
-               description: `Analyze access patterns for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 4. Access pattern analysis
+            validations.push({
+                id: `access_patterns_${step.id}`,
+                name: `Access Pattern Analysis: ${step.name}`,
+                description: `Analyze access patterns for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_access_patterns,
                        COUNT(CASE WHEN privilege_type = 'SELECT' AND grantee != 'PUBLIC' THEN 1 END) as restricted_select,
@@ -4784,18 +5096,18 @@ export class MigrationManagement {
                    FROM information_schema.role_table_grants
                    WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'
                `,
-               expectedResult: 'Access patterns are controlled',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Access patterns are controlled',
+                severity: 'info',
+                automated: true
+            });
 
-           // 5. Role-based access control validation
-           validations.push({
-               id: `rbac_validation_${step.id}`,
-               name: `RBAC Validation: ${step.name}`,
-               description: `Validate role-based access control for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 5. Role-based access control validation
+            validations.push({
+                id: `rbac_validation_${step.id}`,
+                name: `RBAC Validation: ${step.name}`,
+                description: `Validate role-based access control for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(DISTINCT grantee) as unique_roles,
                        COUNT(*) as total_grants,
@@ -4808,18 +5120,18 @@ export class MigrationManagement {
                    FROM information_schema.role_table_grants
                    WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'
                `,
-               expectedResult: 'RBAC configuration is appropriate',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'RBAC configuration is appropriate',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 6. Object ownership validation
-           validations.push({
-               id: `object_ownership_${step.id}`,
-               name: `Object Ownership Validation: ${step.name}`,
-               description: `Validate ownership security for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 6. Object ownership validation
+            validations.push({
+                id: `object_ownership_${step.id}`,
+                name: `Object Ownership Validation: ${step.name}`,
+                description: `Validate ownership security for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        ${step.objectType === 'table' ? 'tableowner' : step.objectType === 'view' ? 'viewowner' : step.objectType === 'function' ? '(SELECT usename FROM pg_user WHERE usesysid = p.proowner)' : 'owner'} as owner,
                        CASE
@@ -4830,18 +5142,18 @@ export class MigrationManagement {
                    WHERE ${step.objectType === 'function' ? 'n.nspname' : 'schemaname'} = '${step.schema}'
                    AND ${step.objectType === 'function' ? 'p.proname' : (step.objectType === 'table' ? 'tablename' : 'viewname')} = '${step.objectName}'
                `,
-               expectedResult: 'Ownership is appropriate',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Ownership is appropriate',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 7. Grant cascade analysis
-           validations.push({
-               id: `grant_cascade_${step.id}`,
-               name: `Grant Cascade Analysis: ${step.name}`,
-               description: `Analyze grant cascade effects for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 7. Grant cascade analysis
+            validations.push({
+                id: `grant_cascade_${step.id}`,
+                name: `Grant Cascade Analysis: ${step.name}`,
+                description: `Analyze grant cascade effects for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as direct_grants,
                        COUNT(CASE WHEN grantor != grantee THEN 1 END) as delegated_grants,
@@ -4852,18 +5164,18 @@ export class MigrationManagement {
                    FROM information_schema.role_table_grants
                    WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'
                `,
-               expectedResult: 'No grant delegation found',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'No grant delegation found',
+                severity: 'info',
+                automated: true
+            });
 
-           // 8. Sensitive data exposure check
-           validations.push({
-               id: `sensitive_data_${step.id}`,
-               name: `Sensitive Data Exposure: ${step.name}`,
-               description: `Check for potential sensitive data exposure in ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 8. Sensitive data exposure check
+            validations.push({
+                id: `sensitive_data_${step.id}`,
+                name: `Sensitive Data Exposure: ${step.name}`,
+                description: `Check for potential sensitive data exposure in ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as column_count,
                        COUNT(CASE WHEN column_name LIKE '%password%' THEN 1 END) as password_columns,
@@ -4879,19 +5191,19 @@ export class MigrationManagement {
                    FROM information_schema.columns
                    WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'
                `,
-               expectedResult: 'No obvious sensitive data columns found',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'No obvious sensitive data columns found',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 9. Function security definer analysis (for function objects)
-           if (step.objectType === 'function') {
-               validations.push({
-                   id: `function_security_definer_${step.id}`,
-                   name: `Function Security Definer: ${step.name}`,
-                   description: `Analyze security definer status for function ${step.objectName}`,
-                   type: 'security',
-                   sqlQuery: `
+            // 9. Function security definer analysis (for function objects)
+            if (step.objectType === 'function') {
+                validations.push({
+                    id: `function_security_definer_${step.id}`,
+                    name: `Function Security Definer: ${step.name}`,
+                    description: `Analyze security definer status for function ${step.objectName}`,
+                    type: 'security',
+                    sqlQuery: `
                        SELECT
                            proname,
                            prosecdef as is_security_definer,
@@ -4903,19 +5215,19 @@ export class MigrationManagement {
                        JOIN pg_namespace n ON p.pronamespace = n.oid
                        WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                    `,
-                   expectedResult: 'Function is INVOKER security context',
-                   severity: 'warning',
-                   automated: true
-               });
-           }
+                    expectedResult: 'Function is INVOKER security context',
+                    severity: 'warning',
+                    automated: true
+                });
+            }
 
-           // 10. Audit trail validation
-           validations.push({
-               id: `audit_trail_${step.id}`,
-               name: `Audit Trail Validation: ${step.name}`,
-               description: `Validate audit trail configuration for ${step.objectName}`,
-               type: 'security',
-               sqlQuery: `
+            // 10. Audit trail validation
+            validations.push({
+                id: `audit_trail_${step.id}`,
+                name: `Audit Trail Validation: ${step.name}`,
+                description: `Validate audit trail configuration for ${step.objectName}`,
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as audit_configurations,
                        CASE
@@ -4928,75 +5240,75 @@ export class MigrationManagement {
                    AND p.proname LIKE '%' || '${step.objectName}' || '%'
                    AND p.proname LIKE '%audit%'
                `,
-               expectedResult: 'Audit configuration found',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Audit configuration found',
+                severity: 'info',
+                automated: true
+            });
 
-           Logger.info('Advanced security validations generated', 'generateAdvancedSecurityValidations', {
-               stepId: step.id,
-               validationCount: validations.length,
-               objectName: step.objectName
-           });
+            Logger.info('Advanced security validations generated', 'generateAdvancedSecurityValidations', {
+                stepId: step.id,
+                validationCount: validations.length,
+                objectName: step.objectName
+            });
 
-           return validations;
+            return validations;
 
-       } catch (error) {
-           Logger.error('Failed to generate advanced security validations', error as Error, 'generateAdvancedSecurityValidations', {
-               stepId: step.id,
-               objectName: step.objectName,
-               schema: step.schema
-           });
+        } catch (error) {
+            Logger.error('Failed to generate advanced security validations', error as Error, 'generateAdvancedSecurityValidations', {
+                stepId: step.id,
+                objectName: step.objectName,
+                schema: step.schema
+            });
 
-           // Return basic validations as fallback
-           return [
-               {
-                   id: `fallback_security_permissions_${step.id}`,
-                   name: `Fallback Security Permissions: ${step.name}`,
-                   description: `Basic security permission check for ${step.objectName}`,
-                   type: 'security',
-                   sqlQuery: `SELECT COUNT(*) FROM information_schema.role_table_grants WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'`,
-                   expectedResult: '>= 0',
-                   severity: 'warning',
-                   automated: true
-               },
-               {
-                   id: `fallback_security_privileges_${step.id}`,
-                   name: `Fallback Security Privileges: ${step.name}`,
-                   description: `Basic privilege check for ${step.objectName}`,
-                   type: 'security',
-                   sqlQuery: `
+            // Return basic validations as fallback
+            return [
+                {
+                    id: `fallback_security_permissions_${step.id}`,
+                    name: `Fallback Security Permissions: ${step.name}`,
+                    description: `Basic security permission check for ${step.objectName}`,
+                    type: 'security',
+                    sqlQuery: `SELECT COUNT(*) FROM information_schema.role_table_grants WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'`,
+                    expectedResult: '>= 0',
+                    severity: 'warning',
+                    automated: true
+                },
+                {
+                    id: `fallback_security_privileges_${step.id}`,
+                    name: `Fallback Security Privileges: ${step.name}`,
+                    description: `Basic privilege check for ${step.objectName}`,
+                    type: 'security',
+                    sqlQuery: `
                        SELECT COUNT(*) FROM information_schema.role_table_grants
                        WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'
                        AND privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
                    `,
-                   expectedResult: '>= 0',
-                   severity: 'info',
-                   automated: true
-               }
-           ];
-       }
-   }
+                    expectedResult: '>= 0',
+                    severity: 'info',
+                    automated: true
+                }
+            ];
+        }
+    }
 
     /**
     * Generate global validations with comprehensive system-wide checks
     */
-   private async generateGlobalValidations(migrationSteps: MigrationStep[], connectionId: string): Promise<ValidationStep[]> {
-       const validations: ValidationStep[] = [];
+    private async generateGlobalValidations(migrationSteps: MigrationStep[], connectionId: string): Promise<ValidationStep[]> {
+        const validations: ValidationStep[] = [];
 
-       try {
-           Logger.info('Generating global validations', 'generateGlobalValidations', {
-               stepCount: migrationSteps.length,
-               connectionId
-           });
+        try {
+            Logger.info('Generating global validations', 'generateGlobalValidations', {
+                stepCount: migrationSteps.length,
+                connectionId
+            });
 
-           // 1. Overall schema consistency validation with enhanced checks
-           validations.push({
-               id: 'global_schema_consistency',
-               name: 'Global Schema Consistency',
-               description: 'Verify overall schema consistency after all migrations',
-               type: 'schema',
-               sqlQuery: `
+            // 1. Overall schema consistency validation with enhanced checks
+            validations.push({
+                id: 'global_schema_consistency',
+                name: 'Global Schema Consistency',
+                description: 'Verify overall schema consistency after all migrations',
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_tables,
                        COUNT(CASE WHEN table_type = 'BASE TABLE' THEN 1 END) as base_tables,
@@ -5011,18 +5323,18 @@ export class MigrationManagement {
                    FROM information_schema.tables t
                    WHERE t.table_schema NOT IN ('information_schema', 'pg_catalog')
                `,
-               expectedResult: 'Schema consistency validated',
-               severity: 'error',
-               automated: true
-           });
+                expectedResult: 'Schema consistency validated',
+                severity: 'error',
+                automated: true
+            });
 
-           // 2. Enhanced database connectivity validation
-           validations.push({
-               id: 'global_connectivity',
-               name: 'Database Connectivity & Health',
-               description: 'Verify database remains accessible and healthy after migrations',
-               type: 'data',
-               sqlQuery: `
+            // 2. Enhanced database connectivity validation
+            validations.push({
+                id: 'global_connectivity',
+                name: 'Database Connectivity & Health',
+                description: 'Verify database remains accessible and healthy after migrations',
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        1 as connectivity_test,
                        current_database() as database_name,
@@ -5033,18 +5345,18 @@ export class MigrationManagement {
                            ELSE 'WARNING: Older PostgreSQL version'
                        END as version_status
                `,
-               expectedResult: 1,
-               severity: 'error',
-               automated: true
-           });
+                expectedResult: 1,
+                severity: 'error',
+                automated: true
+            });
 
-           // 3. Cross-schema dependency validation
-           validations.push({
-               id: 'global_cross_schema_dependencies',
-               name: 'Cross-Schema Dependencies',
-               description: 'Validate cross-schema dependencies and references',
-               type: 'schema',
-               sqlQuery: `
+            // 3. Cross-schema dependency validation
+            validations.push({
+                id: 'global_cross_schema_dependencies',
+                name: 'Cross-Schema Dependencies',
+                description: 'Validate cross-schema dependencies and references',
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as cross_schema_refs,
                        COUNT(DISTINCT tc.table_schema) as schemas_referenced,
@@ -5060,18 +5372,18 @@ export class MigrationManagement {
                    AND tc.table_schema NOT IN ('information_schema', 'pg_catalog')
                    AND ccu.table_schema NOT IN ('information_schema', 'pg_catalog')
                `,
-               expectedResult: 'Cross-schema dependencies found and validated',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Cross-schema dependencies found and validated',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 4. Transaction consistency validation
-           validations.push({
-               id: 'global_transaction_consistency',
-               name: 'Transaction Consistency',
-               description: 'Validate transaction consistency across all migrations',
-               type: 'data',
-               sqlQuery: `
+            // 4. Transaction consistency validation
+            validations.push({
+                id: 'global_transaction_consistency',
+                name: 'Transaction Consistency',
+                description: 'Validate transaction consistency across all migrations',
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as active_transactions,
                        COUNT(CASE WHEN state = 'active' THEN 1 END) as truly_active,
@@ -5085,18 +5397,18 @@ export class MigrationManagement {
                    FROM pg_stat_activity
                    WHERE datname = current_database()
                `,
-               expectedResult: 'Transaction state is normal',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Transaction state is normal',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 5. System resource monitoring
-           validations.push({
-               id: 'global_system_resources',
-               name: 'System Resource Monitoring',
-               description: 'Monitor system resource usage after migrations',
-               type: 'performance',
-               sqlQuery: `
+            // 5. System resource monitoring
+            validations.push({
+                id: 'global_system_resources',
+                name: 'System Resource Monitoring',
+                description: 'Monitor system resource usage after migrations',
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        current_setting('shared_buffers') as shared_buffers,
                        current_setting('effective_cache_size') as effective_cache_size,
@@ -5108,18 +5420,18 @@ export class MigrationManagement {
                            ELSE 'System resources are adequately configured'
                        END as resource_status
                `,
-               expectedResult: 'System resources are adequately configured',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'System resources are adequately configured',
+                severity: 'info',
+                automated: true
+            });
 
-           // 6. Database object count validation
-           validations.push({
-               id: 'global_object_count',
-               name: 'Database Object Count',
-               description: 'Validate total database object count after migrations',
-               type: 'schema',
-               sqlQuery: `
+            // 6. Database object count validation
+            validations.push({
+                id: 'global_object_count',
+                name: 'Database Object Count',
+                description: 'Validate total database object count after migrations',
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog')) as table_count,
                        (SELECT COUNT(*) FROM information_schema.views WHERE table_schema NOT IN ('information_schema', 'pg_catalog')) as view_count,
@@ -5131,18 +5443,18 @@ export class MigrationManagement {
                            ELSE 'WARNING: Object count validation failed'
                        END as object_status
                `,
-               expectedResult: 'Object count validation completed',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Object count validation completed',
+                severity: 'info',
+                automated: true
+            });
 
-           // 7. Schema privilege consistency
-           validations.push({
-               id: 'global_privilege_consistency',
-               name: 'Schema Privilege Consistency',
-               description: 'Validate privilege consistency across schemas',
-               type: 'security',
-               sqlQuery: `
+            // 7. Schema privilege consistency
+            validations.push({
+                id: 'global_privilege_consistency',
+                name: 'Schema Privilege Consistency',
+                description: 'Validate privilege consistency across schemas',
+                type: 'security',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_privileges,
                        COUNT(DISTINCT grantee) as unique_grantees,
@@ -5155,18 +5467,18 @@ export class MigrationManagement {
                    FROM information_schema.schema_privileges
                    WHERE schema_name NOT IN ('information_schema', 'pg_catalog')
                `,
-               expectedResult: 'Schema privileges are properly configured',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Schema privileges are properly configured',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 8. Database configuration validation
-           validations.push({
-               id: 'global_database_config',
-               name: 'Database Configuration',
-               description: 'Validate database configuration after migrations',
-               type: 'schema',
-               sqlQuery: `
+            // 8. Database configuration validation
+            validations.push({
+                id: 'global_database_config',
+                name: 'Database Configuration',
+                description: 'Validate database configuration after migrations',
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        current_setting('log_destination') as log_destination,
                        current_setting('logging_collector') as logging_collector,
@@ -5181,18 +5493,18 @@ export class MigrationManagement {
                            ELSE 'WARNING: High query logging threshold'
                        END as query_logging_status
                `,
-               expectedResult: 'Logging collector is enabled',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Logging collector is enabled',
+                severity: 'info',
+                automated: true
+            });
 
-           // 9. Replication status validation (if applicable)
-           validations.push({
-               id: 'global_replication_status',
-               name: 'Replication Status',
-               description: 'Validate replication status after migrations',
-               type: 'data',
-               sqlQuery: `
+            // 9. Replication status validation (if applicable)
+            validations.push({
+                id: 'global_replication_status',
+                name: 'Replication Status',
+                description: 'Validate replication status after migrations',
+                type: 'data',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as replication_slots,
                        COUNT(CASE WHEN active THEN 1 END) as active_slots,
@@ -5202,18 +5514,18 @@ export class MigrationManagement {
                        END as replication_status
                    FROM pg_replication_slots
                `,
-               expectedResult: 'Replication slots configured',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Replication slots configured',
+                severity: 'info',
+                automated: true
+            });
 
-           // 10. Backup and recovery validation
-           validations.push({
-               id: 'global_backup_validation',
-               name: 'Backup & Recovery Validation',
-               description: 'Validate backup and recovery configuration',
-               type: 'schema',
-               sqlQuery: `
+            // 10. Backup and recovery validation
+            validations.push({
+                id: 'global_backup_validation',
+                name: 'Backup & Recovery Validation',
+                description: 'Validate backup and recovery configuration',
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as backup_configs,
                        current_setting('archive_mode') as archive_mode,
@@ -5223,18 +5535,18 @@ export class MigrationManagement {
                            ELSE 'WARNING: Archive mode not properly configured'
                        END as backup_status
                `,
-               expectedResult: 'Archive mode properly configured',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Archive mode properly configured',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 11. Connection pool health
-           validations.push({
-               id: 'global_connection_health',
-               name: 'Connection Pool Health',
-               description: 'Validate connection pool health after migrations',
-               type: 'performance',
-               sqlQuery: `
+            // 11. Connection pool health
+            validations.push({
+                id: 'global_connection_health',
+                name: 'Connection Pool Health',
+                description: 'Validate connection pool health after migrations',
+                type: 'performance',
+                sqlQuery: `
                    SELECT
                        COUNT(*) as total_connections,
                        COUNT(CASE WHEN state = 'active' THEN 1 END) as active_connections,
@@ -5249,18 +5561,18 @@ export class MigrationManagement {
                    FROM pg_stat_activity
                    WHERE datname = current_database()
                `,
-               expectedResult: 'Connection pool health is good',
-               severity: 'warning',
-               automated: true
-           });
+                expectedResult: 'Connection pool health is good',
+                severity: 'warning',
+                automated: true
+            });
 
-           // 12. Schema change impact assessment
-           validations.push({
-               id: 'global_impact_assessment',
-               name: 'Schema Change Impact Assessment',
-               description: 'Assess overall impact of schema changes',
-               type: 'schema',
-               sqlQuery: `
+            // 12. Schema change impact assessment
+            validations.push({
+                id: 'global_impact_assessment',
+                name: 'Schema Change Impact Assessment',
+                description: 'Assess overall impact of schema changes',
+                type: 'schema',
+                sqlQuery: `
                    SELECT
                        ${migrationSteps.length} as migration_steps,
                        ${migrationSteps.filter(s => s.objectType === 'table').length} as affected_tables,
@@ -5273,52 +5585,52 @@ export class MigrationManagement {
                            ELSE 'No migrations to assess'
                        END as impact_status
                `,
-               expectedResult: 'Schema impact assessment completed',
-               severity: 'info',
-               automated: true
-           });
+                expectedResult: 'Schema impact assessment completed',
+                severity: 'info',
+                automated: true
+            });
 
-           Logger.info('Global validations generated', 'generateGlobalValidations', {
-               validationCount: validations.length,
-               migrationStepCount: migrationSteps.length
-           });
+            Logger.info('Global validations generated', 'generateGlobalValidations', {
+                validationCount: validations.length,
+                migrationStepCount: migrationSteps.length
+            });
 
-           return validations;
+            return validations;
 
-       } catch (error) {
-           Logger.error('Failed to generate global validations', error as Error, 'generateGlobalValidations', {
-               stepCount: migrationSteps.length,
-               connectionId
-           });
+        } catch (error) {
+            Logger.error('Failed to generate global validations', error as Error, 'generateGlobalValidations', {
+                stepCount: migrationSteps.length,
+                connectionId
+            });
 
-           // Return basic validations as fallback
-           return [
-               {
-                   id: 'fallback_global_schema_consistency',
-                   name: 'Fallback Global Schema Consistency',
-                   description: 'Basic schema consistency check',
-                   type: 'schema',
-                   sqlQuery: `
+            // Return basic validations as fallback
+            return [
+                {
+                    id: 'fallback_global_schema_consistency',
+                    name: 'Fallback Global Schema Consistency',
+                    description: 'Basic schema consistency check',
+                    type: 'schema',
+                    sqlQuery: `
                        SELECT COUNT(*) FROM information_schema.tables t
                        WHERE t.table_schema NOT IN ('information_schema', 'pg_catalog')
                    `,
-                   expectedResult: '>= 0',
-                   severity: 'error',
-                   automated: true
-               },
-               {
-                   id: 'fallback_global_connectivity',
-                   name: 'Fallback Database Connectivity',
-                   description: 'Basic connectivity check',
-                   type: 'data',
-                   sqlQuery: 'SELECT 1 as connectivity_test',
-                   expectedResult: 1,
-                   severity: 'error',
-                   automated: true
-               }
-           ];
-       }
-   }
+                    expectedResult: '>= 0',
+                    severity: 'error',
+                    automated: true
+                },
+                {
+                    id: 'fallback_global_connectivity',
+                    name: 'Fallback Database Connectivity',
+                    description: 'Basic connectivity check',
+                    type: 'data',
+                    sqlQuery: 'SELECT 1 as connectivity_test',
+                    expectedResult: 1,
+                    severity: 'error',
+                    automated: true
+                }
+            ];
+        }
+    }
 
     /**
      * Generate data consistency validation query
@@ -5957,7 +6269,7 @@ export class MigrationManagement {
 
                 // Return true if dependency exists in either source or target
                 return totalDependencies > 0 || triggerFunctions > 0 || returnTypeFunctions > 0 || parameterFunctions > 0 ||
-                       sourceDependencyCount > 0 || sourceTriggerFunctions > 0 || sourceReturnTypeFunctions > 0 || sourceParameterFunctions > 0;
+                    sourceDependencyCount > 0 || sourceTriggerFunctions > 0 || sourceReturnTypeFunctions > 0 || sourceParameterFunctions > 0;
 
             } catch (sourceError) {
                 Logger.warn('Could not check source database for table-function dependencies', 'checkTableFunctionDependency', {
@@ -6125,7 +6437,7 @@ export class MigrationManagement {
 
                 // Return true if dependency exists in either source or target
                 return indexCount > 0 || partialIndexes > 0 || expressionIndexes > 0 || functionalIndexes > 0 || multiColumnIndexes > 0 ||
-                       sourceIndexCount > 0 || sourcePartialIndexes > 0 || sourceExpressionIndexes > 0 || sourceFunctionalIndexes > 0 || sourceMultiColumnIndexes > 0;
+                    sourceIndexCount > 0 || sourcePartialIndexes > 0 || sourceExpressionIndexes > 0 || sourceFunctionalIndexes > 0 || sourceMultiColumnIndexes > 0;
 
             } catch (sourceError) {
                 Logger.warn('Could not check source database for index dependencies', 'checkIndexDependency', {
@@ -6315,7 +6627,7 @@ export class MigrationManagement {
 
                 // Return true if dependency exists in either source or target
                 return totalIndexes > 0 || pkIndexes > 0 || fkIndexes > 0 || columnPatternIndexes > 0 || largeIndexes > 0 ||
-                       sourceTotalIndexes > 0 || sourcePkIndexes > 0 || sourceFkIndexes > 0 || sourceColumnPatternIndexes > 0 || sourceLargeIndexes > 0;
+                    sourceTotalIndexes > 0 || sourcePkIndexes > 0 || sourceFkIndexes > 0 || sourceColumnPatternIndexes > 0 || sourceLargeIndexes > 0;
 
             } catch (sourceError) {
                 Logger.warn('Could not check source database for table-index dependencies', 'checkTableIndexDependency', {
@@ -6517,7 +6829,7 @@ export class MigrationManagement {
 
                 // Return true if dependency exists in either source or target
                 return totalConstraints > 0 || crossTableFK > 0 || multiTableChecks > 0 || domainConstraints > 0 || assertionConstraints > 0 || exclusionConstraints > 0 ||
-                       sourceTotalConstraints > 0 || sourceCrossTableFK > 0 || sourceMultiTableChecks > 0 || sourceDomainConstraints > 0 || sourceAssertionConstraints > 0 || sourceExclusionConstraints > 0;
+                    sourceTotalConstraints > 0 || sourceCrossTableFK > 0 || sourceMultiTableChecks > 0 || sourceDomainConstraints > 0 || sourceAssertionConstraints > 0 || sourceExclusionConstraints > 0;
 
             } catch (sourceError) {
                 Logger.warn('Could not check source database for constraint dependencies', 'checkConstraintDependency', {
@@ -6781,9 +7093,9 @@ export class MigrationManagement {
 
                 // Return true if dependency exists in either source or target
                 return totalDependencies > 0 || crossSchemaFKCount > 0 || crossSchemaViewCount > 0 || crossSchemaFunctionCount > 0 ||
-                       schemaPermissionCount > 0 || searchPathCount > 0 || inheritanceCount > 0 ||
-                       sourceTotalDependencies > 0 || sourceFKCount > 0 || sourceViewCount > 0 || sourceFunctionCount > 0 ||
-                       sourcePermissionCount > 0 || sourcePathCount > 0 || sourceInheritanceCount > 0;
+                    schemaPermissionCount > 0 || searchPathCount > 0 || inheritanceCount > 0 ||
+                    sourceTotalDependencies > 0 || sourceFKCount > 0 || sourceViewCount > 0 || sourceFunctionCount > 0 ||
+                    sourcePermissionCount > 0 || sourcePathCount > 0 || sourceInheritanceCount > 0;
 
             } catch (sourceError) {
                 Logger.warn('Could not check source database for schema dependencies', 'checkSchemaDependency', {
@@ -6792,7 +7104,7 @@ export class MigrationManagement {
 
                 // Return target database results even if source check fails
                 return totalDependencies > 0 || crossSchemaFKCount > 0 || crossSchemaViewCount > 0 || crossSchemaFunctionCount > 0 ||
-                       schemaPermissionCount > 0 || searchPathCount > 0 || inheritanceCount > 0;
+                    schemaPermissionCount > 0 || searchPathCount > 0 || inheritanceCount > 0;
             }
 
         } catch (error) {
@@ -6805,6 +7117,12 @@ export class MigrationManagement {
             return false;
         }
     }
+    /**
+     * Assesses overall risk level of a migration based on its steps
+     * @param migrationSteps - Array of migration steps to evaluate
+     * @returns Risk level assessment
+     * @private
+     */
     private assessMigrationRiskLevel(migrationSteps: MigrationStep[]): 'low' | 'medium' | 'high' | 'critical' {
         const criticalSteps = migrationSteps.filter(step => step.riskLevel === 'critical').length;
         const highRiskSteps = migrationSteps.filter(step => step.riskLevel === 'high').length;
@@ -6814,6 +7132,14 @@ export class MigrationManagement {
         if (highRiskSteps > 0) return 'medium';
         return 'low';
     }
+    /**
+     * Executes a single migration step with pre/post conditions and error handling
+     * @param step - Migration step to execute
+     * @param connectionId - Connection ID for the target database
+     * @returns Promise that resolves when step execution completes
+     * @throws Error if step execution fails
+     * @private
+     */
     private async executeMigrationStep(step: MigrationStep, connectionId: string): Promise<void> {
         try {
             Logger.info('Executing migration step', 'executeMigrationStep', {
@@ -6881,6 +7207,14 @@ export class MigrationManagement {
             throw error;
         }
     }
+    /**
+     * Executes pre-condition checks for a migration step
+     * @param step - Migration step containing pre-conditions
+     * @param connectionId - Connection ID for the database
+     * @returns Promise that resolves if all pre-conditions pass
+     * @throws Error if any pre-condition fails
+     * @private
+     */
     private async executePreConditions(step: MigrationStep, connectionId: string): Promise<void> {
         for (const condition of step.preConditions) {
             try {
@@ -6911,6 +7245,13 @@ export class MigrationManagement {
             }
         }
     }
+    /**
+     * Executes post-condition checks for a migration step (non-blocking)
+     * @param step - Migration step containing post-conditions
+     * @param connectionId - Connection ID for the database
+     * @returns Promise that resolves after post-condition checks (warnings logged but not thrown)
+     * @private
+     */
     private async executePostConditions(step: MigrationStep, connectionId: string): Promise<void> {
         for (const condition of step.postConditions) {
             try {
@@ -6947,6 +7288,13 @@ export class MigrationManagement {
             }
         }
     }
+    /**
+     * Validates if an actual result matches expected result with various comparison operators
+     * @param actualResult - Actual result from database query
+     * @param expectedResult - Expected result to compare against
+     * @returns True if condition is met, false otherwise
+     * @private
+     */
     private validateConditionResult(actualResult: any, expectedResult: any): boolean {
         if (expectedResult === undefined || expectedResult === null) {
             return true; // No expectation to validate
@@ -6978,6 +7326,13 @@ export class MigrationManagement {
         // Default equality check
         return actualResult == expectedResult;
     }
+    /**
+     * Splits a SQL script into individual executable statements
+     * Handles comments, strings, and complex SQL constructs properly
+     * @param sqlScript - Complete SQL script to split
+     * @returns Array of individual SQL statements
+     * @private
+     */
     private splitSQLStatements(sqlScript: string): string[] {
         try {
             Logger.debug('Splitting SQL statements', 'splitSQLStatements', {
@@ -7097,6 +7452,12 @@ export class MigrationManagement {
                 .filter(stmt => stmt.length > 0);
         }
     }
+    /**
+     * Generates a default rollback script when automatic rollback generation fails
+     * Provides manual rollback guidance and fallback procedures
+     * @returns Default rollback script with manual intervention steps
+     * @private
+     */
     private getDefaultRollbackScript(): RollbackScript {
         try {
             Logger.info('Generating default rollback script', 'getDefaultRollbackScript');
@@ -7176,7 +7537,15 @@ export class MigrationManagement {
             };
         }
     }
-    private async performFrameworkValidation(script: EnhancedMigrationScript, connectionId: string): Promise<ValidationReport> {
+    /**
+     * Performs validation using the ValidationFramework with migration-specific context
+     * @param script - Enhanced migration script to validate
+     * @param connectionId - Connection ID for the database to validate against
+     * @returns Promise resolving to validation report from ValidationFramework
+     * @throws Error if ValidationFramework validation fails
+     * @private
+     */
+    private async performFrameworkValidation(script: EnhancedMigrationScript, connectionId: string): Promise<any> {
         Logger.info('Performing ValidationFramework validation', 'performFrameworkValidation', {
             scriptId: script.id,
             connectionId
@@ -7196,7 +7565,7 @@ export class MigrationManagement {
             };
 
             // Create validation request
-            const validationRequest: ValidationRequest = {
+            const validationRequest: any = {
                 connectionId,
                 rules: ['migration_script_validation', 'schema_consistency', 'data_integrity'], // Use specific validation rules
                 failOnWarnings: false,
@@ -7248,14 +7617,21 @@ export class MigrationManagement {
         }
     }
 
-    private combineValidationResults(frameworkReport: ValidationReport, legacyResults: ValidationResult[]): ValidationResult[] {
+    /**
+     * Combines ValidationFramework results with legacy validation results for compatibility
+     * @param frameworkReport - Report from ValidationFramework
+     * @param legacyResults - Legacy validation results array
+     * @returns Combined array of validation results
+     * @private
+     */
+    private combineValidationResults(frameworkReport: any, legacyResults: ValidationResult[]): ValidationResult[] {
         Logger.info('Combining validation results', 'combineValidationResults', {
             frameworkResults: frameworkReport.results.length,
             legacyResults: legacyResults.length
         });
 
         // Convert framework validation results to legacy format for compatibility
-        const frameworkResults: ValidationResult[] = frameworkReport.results.map(result => ({
+        const frameworkResults: ValidationResult[] = frameworkReport.results.map((result: any) => ({
             stepId: result.ruleId,
             validationId: result.ruleId,
             passed: result.passed,
@@ -7276,9 +7652,18 @@ export class MigrationManagement {
 
         return combinedResults;
     }
+    /**
+     * Generates a unique identifier for migration scripts and executions
+     * @returns Unique UUID string
+     * @private
+     */
     private generateId(): string {
         return crypto.randomUUID();
     }
+
+    /**
+     * Disposes of MigrationManagement resources and cleans up
+     */
     dispose(): void {
         Logger.info('MigrationManagement disposed', 'dispose');
     }

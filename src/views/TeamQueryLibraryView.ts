@@ -862,7 +862,7 @@ export class TeamQueryLibraryView {
                     function updateSnippetsGrid(snippets) {
                         const grid = document.getElementById('snippetsGrid');
                         // Update grid with search results
-                        console.log('Updating grid with', snippets.length, 'snippets');
+                        // Log removed for production - was: console.log('Updating grid with', snippets.length, 'snippets');
                     }
                 </script>
             </body>
