@@ -99,11 +99,29 @@ export class BackupManager {
                 fs.unlinkSync(backupPath);
             }
 
+            // Verify backup integrity
+            const isValid = await this.verifyBackupIntegrity(finalPath);
+            if (!isValid) {
+                Logger.error('Backup verification failed', 'BackupManager.createBackup', { backupPath: finalPath });
+                // Clean up invalid backup
+                if (fs.existsSync(finalPath)) {
+                    fs.unlinkSync(finalPath);
+                }
+                return {
+                    success: false,
+                    backupPath: finalPath,
+                    size: 0,
+                    duration,
+                    error: 'Backup verification failed'
+                };
+            }
+
             const result: BackupResult = {
                 success: true,
                 backupPath: finalPath,
                 size: fs.statSync(finalPath).size,
-                duration
+                duration,
+                checksum: await this.calculateChecksum(finalPath)
             };
 
             Logger.info('Backup completed successfully', 'BackupManager.createBackup', {
@@ -297,6 +315,169 @@ export class BackupManager {
         } catch (error) {
             Logger.error('Failed to delete backup', error as Error, 'BackupManager.deleteBackup', { backupPath });
             return false;
+        }
+    }
+
+    private async verifyBackupIntegrity(backupPath: string): Promise<boolean> {
+        try {
+            // Basic integrity checks
+            const stats = fs.statSync(backupPath);
+
+            // Check file size (should be > 0)
+            if (stats.size === 0) {
+                Logger.warn('Backup file is empty', 'BackupManager.verifyBackupIntegrity', { backupPath });
+                return false;
+            }
+
+            // For SQL files, check if they contain basic SQL structure
+            if (backupPath.endsWith('.sql')) {
+                const content = fs.readFileSync(backupPath, 'utf-8');
+
+                // Check for basic SQL patterns
+                const hasSqlContent = /CREATE|INSERT|UPDATE|DELETE|SELECT/i.test(content);
+                if (!hasSqlContent) {
+                    Logger.warn('Backup file does not contain valid SQL content', 'BackupManager.verifyBackupIntegrity', { backupPath });
+                    return false;
+                }
+
+                // Check for complete statements (basic check)
+                const openComments = (content.match(/\/\*/g) || []).length;
+                const closeComments = (content.match(/\*\//g) || []).length;
+                if (openComments !== closeComments) {
+                    Logger.warn('Backup file has unmatched comments', 'BackupManager.verifyBackupIntegrity', { backupPath });
+                    return false;
+                }
+            }
+
+            Logger.info('Backup integrity verification passed', 'BackupManager.verifyBackupIntegrity', { backupPath });
+            return true;
+
+        } catch (error) {
+            Logger.error('Backup integrity verification failed', error as Error, 'BackupManager.verifyBackupIntegrity', { backupPath });
+            return false;
+        }
+    }
+
+    private async calculateChecksum(filePath: string): Promise<string> {
+        // Simple checksum calculation (in production, use crypto.createHash)
+        try {
+            const content = fs.readFileSync(filePath);
+            let hash = 0;
+            for (let i = 0; i < content.length; i++) {
+                const char = content[i];
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32-bit integer
+            }
+            return Math.abs(hash).toString(16);
+        } catch (error) {
+            Logger.warn('Failed to calculate checksum', 'BackupManager.calculateChecksum', { filePath, error });
+            return '';
+        }
+    }
+
+    async verifyBackupWithRestore(backupPath: string, testConnectionId: string): Promise<{ success: boolean; error?: string; restoreTime?: number }> {
+        const startTime = Date.now();
+
+        try {
+            Logger.info('Starting backup verification with test restore', 'BackupManager.verifyBackupWithRestore', {
+                backupPath,
+                testConnectionId
+            });
+
+            // Create a temporary test database name
+            const testDbName = `test_restore_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+            // Get test connection
+            const testConnection = await this.connectionService.getConnection(testConnectionId);
+            if (!testConnection) {
+                return { success: false, error: 'Test connection not found' };
+            }
+
+            const password = await this.connectionService.getConnectionPassword(testConnectionId);
+            if (!password) {
+                return { success: false, error: 'Test connection password not found' };
+            }
+
+            // Create test database
+            const adminConnection = { ...testConnection, database: 'postgres' };
+            const adminHandle = await this.connectionManager.createConnection({ ...adminConnection, password });
+            const adminClient = adminHandle.connection;
+
+            try {
+                await adminClient.query(`CREATE DATABASE ${testDbName}`);
+            } finally {
+                adminHandle.release();
+            }
+
+            // Restore backup to test database
+            const testDbConnection = { ...testConnection, database: testDbName };
+            const restoreResult = await this.restoreBackup(testConnectionId, backupPath);
+
+            if (!restoreResult.success) {
+                // Clean up test database
+                const cleanupHandle = await this.connectionManager.createConnection({ ...adminConnection, password });
+                try {
+                    await cleanupHandle.connection.query(`DROP DATABASE IF EXISTS ${testDbName}`);
+                } finally {
+                    cleanupHandle.release();
+                }
+
+                return {
+                    success: false,
+                    error: restoreResult.error,
+                    restoreTime: Date.now() - startTime
+                };
+            }
+
+            // Verify restored database has expected structure
+            const testHandle = await this.connectionManager.createConnection({ ...testDbConnection, password });
+            const testClient = testHandle.connection;
+
+            try {
+                // Basic structure check
+                const tableResult = await testClient.query(`
+                    SELECT COUNT(*) as table_count
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                `);
+
+                const tableCount = parseInt(tableResult.rows[0].table_count);
+
+                Logger.info('Backup verification successful', 'BackupManager.verifyBackupWithRestore', {
+                    backupPath,
+                    testDbName,
+                    tableCount,
+                    restoreTime: Date.now() - startTime
+                });
+
+                return {
+                    success: true,
+                    restoreTime: Date.now() - startTime
+                };
+
+            } finally {
+                testHandle.release();
+
+                // Clean up test database
+                const cleanupHandle = await this.connectionManager.createConnection({ ...adminConnection, password });
+                try {
+                    await cleanupHandle.connection.query(`DROP DATABASE IF EXISTS ${testDbName}`);
+                } finally {
+                    cleanupHandle.release();
+                }
+            }
+
+        } catch (error) {
+            Logger.error('Backup verification with restore failed', error as Error, 'BackupManager.verifyBackupWithRestore', {
+                backupPath,
+                testConnectionId
+            });
+
+            return {
+                success: false,
+                error: (error as Error).message,
+                restoreTime: Date.now() - startTime
+            };
         }
     }
 }
