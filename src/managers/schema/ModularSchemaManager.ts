@@ -13,6 +13,9 @@ import { MetadataManagement } from "./MetadataManagement";
 import { DependencyAnalysis } from "./DependencyAnalysis";
 import { ImpactAnalysis } from "./ImpactAnalysis";
 import { MigrationManagement } from "./MigrationManagement";
+import { MigrationScriptGenerator } from "./MigrationScriptGenerator";
+import { MigrationExecutor } from "./MigrationExecutor";
+import { MigrationValidator } from "./MigrationValidator";
 import { PerformanceAnalysis } from "./PerformanceAnalysis";
 
 // Re-export key interfaces for backward compatibility (selective exports to avoid conflicts)
@@ -61,15 +64,13 @@ export {
   RollbackScript,
   ValidationStep,
   MigrationDependency,
-  MigrationMetadata,
   MigrationExecutionResult,
   ExecutionLogEntry,
-  MigrationPerformanceMetrics,
   ValidationResult,
-} from "./MigrationManagement";
+} from "./MigrationTypes";
 
-// TODO: ConflictResolution module needs to be created
-// For now, commenting out exports to fix compilation errors
+// Note: ConflictResolution module interfaces are not exported as the module is not yet implemented.
+// When the ConflictResolution module is created, these exports should be uncommented and updated.
 // export {
 //     ConflictResolutionStrategyInfo,
 //     ConflictType,
@@ -137,9 +138,17 @@ export class ModularSchemaManager {
       this.schemaComparison,
       this.dependencyAnalysis
     );
+    // Initialize migration modules
+    const scriptGenerator = new MigrationScriptGenerator(this.queryService, this.validationFramework);
+    const executor = new MigrationExecutor(this.queryService);
+    const validator = new MigrationValidator(this.queryService, this.validationFramework);
+
     this.migrationManagement = new MigrationManagement(
       this.queryService,
-      this.validationFramework
+      this.validationFramework,
+      scriptGenerator,
+      executor,
+      validator
     );
     this.conflictResolutionService = new ConflictResolutionService();
     this.performanceAnalysis = new PerformanceAnalysis(this.queryService);

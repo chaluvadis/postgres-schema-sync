@@ -5,6 +5,9 @@ import { Logger } from '@/utils/Logger';
 import { SchemaComparisonOptions, DetailedSchemaComparisonResult } from '@/managers/schema/SchemaComparison';
 import { DatabaseConnection } from '@/managers/ConnectionManager';
 import { MigrationManagement } from '@/managers/schema/MigrationManagement';
+import { MigrationScriptGenerator } from '@/managers/schema/MigrationScriptGenerator';
+import { MigrationExecutor } from '@/managers/schema/MigrationExecutor';
+import { MigrationValidator } from '@/managers/schema/MigrationValidator';
 import { SchemaOperations } from '@/managers/schema/SchemaOperations';
 import { ValidationFramework } from '@/core/ValidationFramework';
 interface CommandDefinition {
@@ -42,9 +45,16 @@ export class CommandManager {
         this.components = components;
 
         // Initialize managers
+        const scriptGenerator = new MigrationScriptGenerator(this.components.queryExecutionService!, new ValidationFramework());
+        const executor = new MigrationExecutor(this.components.queryExecutionService!);
+        const validator = new MigrationValidator(this.components.queryExecutionService!, new ValidationFramework());
+
         this.migrationManager = new MigrationManagement(
             this.components.queryExecutionService!,
-            new ValidationFramework()
+            new ValidationFramework(),
+            scriptGenerator,
+            executor,
+            validator
         );
         this.schemaOperations = new SchemaOperations(this.components.connectionManager);
     }

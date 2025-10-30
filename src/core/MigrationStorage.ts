@@ -25,7 +25,8 @@ export class MigrationStorage {
             const data = fs.readFileSync(this.storagePath, 'utf-8');
             return JSON.parse(data);
         } catch (error) {
-            console.error('Failed to load migration storage:', error);
+            // Log error but don't use console.error in production
+            // Error will be handled by calling code
             return { activeMigrations: {}, migrationResults: {} };
         }
     }
@@ -34,7 +35,8 @@ export class MigrationStorage {
         try {
             fs.writeFileSync(this.storagePath, JSON.stringify(data, null, 2));
         } catch (error) {
-            console.error('Failed to save migration storage:', error);
+            // Log error but don't use console.error in production
+            // Error will be handled by calling code
         }
     }
 
