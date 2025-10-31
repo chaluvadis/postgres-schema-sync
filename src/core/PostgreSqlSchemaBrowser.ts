@@ -99,15 +99,15 @@ export class PostgreSqlSchemaBrowser {
     try {
       const objects: DatabaseObject[] = [];
 
-      // Get all object types
-      const tables = await this.getTablesAsync(handle, schemaFilter, cancellationToken);
-      const views = await this.getViewsAsync(handle, schemaFilter, cancellationToken);
-      const functions = await this.getFunctionsAsync(handle, schemaFilter, cancellationToken);
-      const sequences = await this.getSequencesAsync(handle, schemaFilter, cancellationToken);
-      const types = await this.getTypesAsync(handle, schemaFilter, cancellationToken);
-      const indexes = await this.getIndexesAsync(handle, schemaFilter, cancellationToken);
-      const triggers = await this.getTriggersAsync(handle, schemaFilter, cancellationToken);
-      const constraints = await this.getConstraintsAsync(handle, schemaFilter, cancellationToken);
+      // Get all object types with complete data
+      const tables = await this.getTablesAsync(handle, schemaFilter, cancellationToken, connectionInfo);
+      const views = await this.getViewsAsync(handle, schemaFilter, cancellationToken, connectionInfo);
+      const functions = await this.getFunctionsAsync(handle, schemaFilter, cancellationToken, connectionInfo);
+      const sequences = await this.getSequencesAsync(handle, schemaFilter, cancellationToken, connectionInfo);
+      const types = await this.getTypesAsync(handle, schemaFilter, cancellationToken, connectionInfo);
+      const indexes = await this.getIndexesAsync(handle, schemaFilter, cancellationToken, connectionInfo);
+      const triggers = await this.getTriggersAsync(handle, schemaFilter, cancellationToken, connectionInfo);
+      const constraints = await this.getConstraintsAsync(handle, schemaFilter, cancellationToken, connectionInfo);
 
       objects.push(...tables, ...views, ...functions, ...sequences, ...types, ...indexes, ...triggers, ...constraints);
 
@@ -129,8 +129,9 @@ export class PostgreSqlSchemaBrowser {
 
   private async getTablesAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -155,7 +156,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.table_name,
       schema: row.table_schema,
       type: ObjectType.Table,
-      database: 'unknown', // PoolClient doesn't expose database name
+      database: connectionInfo.database,
       owner: row.owner,
       sizeInBytes: parseInt(row.size_bytes) || undefined,
       definition: `CREATE TABLE "${row.table_schema}"."${row.table_name}" (...);`, // Simplified
@@ -164,14 +165,16 @@ export class PostgreSqlSchemaBrowser {
         estimatedRowCount: parseFloat(row.estimated_row_count) || 0
       },
       createdAt: new Date(),
+      modifiedAt: this.getObjectModificationTime(handle.connection, 'pg_class', row.table_schema, row.table_name),
       dependencies: []
     }));
   }
 
   private async getViewsAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -195,21 +198,23 @@ export class PostgreSqlSchemaBrowser {
       name: row.table_name,
       schema: row.table_schema,
       type: ObjectType.View,
-      database: 'unknown', // connectionInfo not available in scope
+      database: connectionInfo.database,
       owner: row.owner,
       definition: row.view_definition || '',
       properties: {
         description: row.description
       },
       createdAt: new Date(),
+      modifiedAt: undefined,
       dependencies: []
     }));
   }
 
   private async getFunctionsAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -234,7 +239,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.function_name,
       schema: row.function_schema,
       type: ObjectType.Function,
-      database: 'unknown', // PoolClient doesn't expose database name
+      database: connectionInfo.database,
       owner: row.owner,
       definition: row.function_definition || '',
       properties: {
@@ -242,14 +247,16 @@ export class PostgreSqlSchemaBrowser {
         description: row.description
       },
       createdAt: new Date(),
+      modifiedAt: undefined,
       dependencies: []
     }));
   }
 
   private async getSequencesAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -272,21 +279,23 @@ export class PostgreSqlSchemaBrowser {
       name: row.sequence_name,
       schema: row.sequence_schema,
       type: ObjectType.Sequence,
-      database: 'unknown', // PoolClient doesn't expose database name
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `CREATE SEQUENCE "${row.sequence_schema}"."${row.sequence_name}";`,
       properties: {
         description: row.description
       },
       createdAt: new Date(),
+      modifiedAt: undefined,
       dependencies: []
     }));
   }
 
   private async getTypesAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -309,21 +318,23 @@ export class PostgreSqlSchemaBrowser {
       name: row.type_name,
       schema: row.type_schema,
       type: ObjectType.Type,
-      database: 'unknown', // PoolClient doesn't expose database name
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `CREATE TYPE "${row.type_schema}"."${row.type_name}" (...);`,
       properties: {
         description: row.description
       },
       createdAt: new Date(),
+      modifiedAt: undefined,
       dependencies: []
     }));
   }
 
   private async getIndexesAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -350,7 +361,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.index_name,
       schema: row.index_schema,
       type: ObjectType.Index,
-      database: 'unknown', // PoolClient doesn't expose database name
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `CREATE INDEX "${row.index_name}" ON "${row.index_schema}"."${row.table_name}" (...);`,
       properties: {
@@ -358,14 +369,16 @@ export class PostgreSqlSchemaBrowser {
         description: row.description
       },
       createdAt: new Date(),
+      modifiedAt: undefined,
       dependencies: []
     }));
   }
 
   private async getTriggersAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -390,7 +403,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.trigger_name,
       schema: row.trigger_schema,
       type: ObjectType.Trigger,
-      database: 'unknown', // PoolClient doesn't expose database name
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `CREATE TRIGGER "${row.trigger_name}" ...;`,
       properties: {
@@ -398,14 +411,16 @@ export class PostgreSqlSchemaBrowser {
         description: row.description
       },
       createdAt: new Date(),
+      modifiedAt: undefined,
       dependencies: []
     }));
   }
 
   private async getConstraintsAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -430,7 +445,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.constraint_name,
       schema: row.constraint_schema,
       type: ObjectType.Constraint,
-      database: 'unknown', // PoolClient doesn't expose database name
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `ALTER TABLE "${row.constraint_schema}"."${row.table_name}" ADD CONSTRAINT "${row.constraint_name}" ...;`,
       properties: {
@@ -439,7 +454,18 @@ export class PostgreSqlSchemaBrowser {
         description: row.description
       },
       createdAt: new Date(),
+      modifiedAt: undefined,
       dependencies: []
     }));
+  }
+  private getObjectModificationTime(connection: any, catalogTable: string, schema: string, name: string): Date | undefined {
+    try {
+      // PostgreSQL doesn't have a direct modification time for objects, but we can use the last DDL time from event triggers
+      // For now, return undefined as PostgreSQL doesn't easily track this
+      return undefined;
+    } catch (error) {
+      Logger.warn('Failed to get modification time', 'getObjectModificationTime', { error: (error as Error).message });
+      return undefined;
+    }
   }
 }

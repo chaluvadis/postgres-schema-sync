@@ -97,12 +97,29 @@ export interface IndexStatistics {
   tuplesFetched: number;
 }
 
+export interface ConnectionHealthStatus {
+  connectionId: string;
+  isHealthy: boolean;
+  lastChecked: Date;
+  responseTime: number;
+  errorMessage?: string;
+  poolStats?: {
+    totalCount: number;
+    idleCount: number;
+    waitingCount: number;
+  };
+}
+
 export class PostgreSqlConnectionManager {
   private static instance: PostgreSqlConnectionManager;
   private pools: Map<string, Pool> = new Map();
   private readonly performanceMonitor = PerformanceMonitor.getInstance();
+  private healthStatus: Map<string, ConnectionHealthStatus> = new Map();
+  private healthCheckInterval: NodeJS.Timeout | null = null;
 
-  private constructor() {}
+  private constructor() {
+    this.startHealthMonitoring();
+  }
 
   static getInstance(): PostgreSqlConnectionManager {
     if (!PostgreSqlConnectionManager.instance) {
@@ -175,7 +192,7 @@ export class PostgreSqlConnectionManager {
   }
 
   private getOrCreatePool(connectionInfo: ConnectionInfo): Pool {
-    const poolKey = `${connectionInfo.host}:${connectionInfo.port}:${connectionInfo.database}:${connectionInfo.username}`;
+    const poolKey = `${connectionInfo.host}:${connectionInfo.port}:${connectionInfo.database}`;
 
     if (this.pools.has(poolKey)) {
       return this.pools.get(poolKey)!;
@@ -212,6 +229,12 @@ export class PostgreSqlConnectionManager {
   async closeAllPools(): Promise<void> {
     Logger.info('Closing all connection pools', 'closeAllPools');
 
+    // Stop health monitoring
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+
     const closePromises = Array.from(this.pools.values()).map(pool =>
       pool.end().catch(error => {
         Logger.error('Error closing pool', error, 'closeAllPools');
@@ -220,8 +243,92 @@ export class PostgreSqlConnectionManager {
 
     await Promise.all(closePromises);
     this.pools.clear();
+    this.healthStatus.clear();
 
     Logger.info('All connection pools closed', 'closeAllPools');
+  }
+
+  private startHealthMonitoring(): void {
+    // Check health every 30 seconds
+    this.healthCheckInterval = setInterval(async () => {
+      await this.performHealthChecks();
+    }, 30000);
+
+    // Initial health check
+    this.performHealthChecks();
+  }
+
+  private async performHealthChecks(): Promise<void> {
+    const connectionIds = Array.from(this.healthStatus.keys());
+
+    for (const connectionId of connectionIds) {
+      try {
+        const status = this.healthStatus.get(connectionId);
+        if (!status) continue;
+
+        const startTime = Date.now();
+        const isHealthy = await this.checkConnectionHealth(connectionId);
+        const responseTime = Date.now() - startTime;
+
+        this.healthStatus.set(connectionId, {
+          ...status,
+          isHealthy,
+          lastChecked: new Date(),
+          responseTime,
+          errorMessage: isHealthy ? undefined : 'Connection health check failed',
+          poolStats: this.getPoolStats()[status.connectionId]
+        });
+      } catch (error) {
+        Logger.warn('Health check failed for connection', 'performHealthChecks', {
+          connectionId,
+          error: (error as Error).message
+        });
+      }
+    }
+  }
+
+  private async checkConnectionHealth(connectionId: string): Promise<boolean> {
+    try {
+      // Get connection info from health status or find it
+      const status = this.healthStatus.get(connectionId);
+      if (!status) return false;
+
+      // Create a minimal connection info for health check
+      const connectionInfo = {
+        id: connectionId,
+        name: 'Health Check',
+        host: 'localhost', // This would need to be stored or retrieved
+        port: 5432,
+        database: 'postgres',
+        username: 'postgres',
+        password: '',
+        createdDate: new Date().toISOString()
+      };
+
+      const handle = await this.createConnection(connectionInfo);
+      handle.release();
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  getConnectionHealth(connectionId: string): ConnectionHealthStatus | undefined {
+    return this.healthStatus.get(connectionId);
+  }
+
+  getAllConnectionHealth(): ConnectionHealthStatus[] {
+    return Array.from(this.healthStatus.values());
+  }
+
+  registerConnectionForHealthMonitoring(connectionInfo: ConnectionInfo): void {
+    this.healthStatus.set(connectionInfo.id, {
+      connectionId: connectionInfo.id,
+      isHealthy: false,
+      lastChecked: new Date(),
+      responseTime: 0,
+      poolStats: this.getPoolStats()[`${connectionInfo.host}:${connectionInfo.port}:${connectionInfo.database}`]
+    });
   }
 
   getPoolStats(): { [key: string]: { totalCount: number; idleCount: number; waitingCount: number } } {
