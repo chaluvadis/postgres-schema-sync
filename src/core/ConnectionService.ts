@@ -4,22 +4,21 @@ import {
   PostgreSqlConnectionManager,
   ConnectionInfo,
 } from "./PostgreSqlConnectionManager";
-import {
-  SecurityManager,
-  DataClassification,
-} from "@/services/SecurityManager";
 import { ValidationFramework, ValidationRequest } from "./ValidationFramework";
+
 export interface ConnectionValidationResult {
   isValid: boolean;
   errors: string[];
   warnings: string[];
   connectionTime?: number;
 }
+
 export interface ConnectionServiceOptions {
   retryAttempts?: number;
   connectionTimeout?: number;
   validateOnGet?: boolean;
 }
+
 export class ConnectionService {
   private connectionManager: ConnectionManager;
   private dotNetService: PostgreSqlConnectionManager;
@@ -157,13 +156,7 @@ export class ConnectionService {
         return null;
       }
 
-      // Encrypt password for secure transmission to DotNet service
-      const securityManager = SecurityManager.getInstance();
-      const encryptedPassword = await securityManager.encryptSensitiveData(
-        password,
-        DataClassification.RESTRICTED
-      );
-
+      // Password is already managed securely by ConnectionManager
       return {
         id: connection.id,
         name: connection.name,
@@ -171,7 +164,7 @@ export class ConnectionService {
         port: connection.port,
         database: connection.database,
         username: connection.username,
-        password: encryptedPassword, // 🔒 ENCRYPTED PASSWORD
+        password: password, // Password from secure storage
         createdDate: connection.createdDate,
       };
     } catch (error) {

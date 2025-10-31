@@ -58,33 +58,17 @@ export class QueryExecutionService {
         options,
       });
 
-      // Get connection and validate
-      const connection = this.connectionManager.getConnection(connectionId);
-      if (!connection) {
-        throw new Error(`Connection ${connectionId} not found`);
-      }
-
-      // Get password
-      const password = await this.connectionManager.getConnectionPassword(
-        connectionId
+      // Use ConnectionService for consistent connection handling
+      const connectionService = new (await import("@/core/ConnectionService")).ConnectionService(
+        this.connectionManager,
+        null as any // ValidationFramework not needed here
       );
-      if (!password) {
-        throw new Error("Connection password not found");
+      const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
+      if (!dotNetConnection) {
+        throw new Error("Failed to create connection info");
       }
 
-      // Create .NET connection info
-      const dotNetConnection = {
-        id: connection.id,
-        name: connection.name,
-        host: connection.host,
-        port: connection.port,
-        database: connection.database,
-        username: connection.username,
-        password: password,
-        createdDate: new Date().toISOString(),
-      };
-
-      // Execute query via native service
+      // Execute query via native service using pooled connection
       const dotNetResult = await this.dotNetService.createConnection(dotNetConnection).then(async (handle) => {
         try {
           const queryResult = await handle.connection.query(query);
@@ -179,31 +163,15 @@ export class QueryExecutionService {
         { label: "DISTINCT", kind: "keyword", detail: "Remove duplicates" },
       ];
 
-      // Get connection and validate
-      const connection = this.connectionManager.getConnection(connectionId);
-      if (!connection) {
-        return basicKeywords;
-      }
-
-      // Get password
-      const password = await this.connectionManager.getConnectionPassword(
-        connectionId
+      // Use ConnectionService for consistent connection handling
+      const connectionService = new (await import("@/core/ConnectionService")).ConnectionService(
+        this.connectionManager,
+        null as any // ValidationFramework not needed here
       );
-      if (!password) {
+      const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
+      if (!dotNetConnection) {
         return basicKeywords;
       }
-
-      // Create .NET connection info
-      const dotNetConnection = {
-        id: connection.id,
-        name: connection.name,
-        host: connection.host,
-        port: connection.port,
-        database: connection.database,
-        username: connection.username,
-        password: password,
-        createdDate: new Date().toISOString(),
-      };
 
       // Try to get schema objects for more specific suggestions
       try {

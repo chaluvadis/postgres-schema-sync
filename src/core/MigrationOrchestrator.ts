@@ -823,91 +823,101 @@ export class MigrationOrchestrator {
         });
 
         try {
-            // Get target connection
-            const targetConnection = await this.connectionService.getConnection(request.targetConnectionId);
-            if (!targetConnection) {
-                throw new Error('Target connection not found');
-            }
-
             // Generate migration script first
             const migrationScript = await this.generateMigration(request);
 
-            // Execute the script using the connection manager
-            const targetPassword = await this.connectionService.getConnectionPassword(request.targetConnectionId);
-            if (!targetPassword) {
-                throw new Error('Failed to retrieve target connection password');
-            }
+            // Use MigrationExecutor for proper script execution
+            const migrationExecutor = new (await import("@/managers/schema/MigrationExecutor")).MigrationExecutor(
+                new (await import("@/services/QueryExecutionService")).QueryExecutionService(
+                    new (await import("@/managers/ConnectionManager")).ConnectionManager(null as any, null as any)
+                )
+            );
 
-            const targetConnectionWithPassword = { ...targetConnection, password: targetPassword };
-            const handle = await this.connectionManager.createConnection(targetConnectionWithPassword);
-            const client = handle.connection;
-
-            // Store transaction ID for rollback tracking
-            const transactionIdResult = await client.query('SELECT pg_backend_pid() as pid');
-            const transactionId = transactionIdResult.rows[0].pid;
-
-            // Update metadata with transaction ID
-            request.metadata = {
-                ...request.metadata,
-                transactionId
+            // Create enhanced migration script with proper structure
+            const enhancedScript = {
+                id: migrationId,
+                name: `Migration ${migrationId}`,
+                description: `Migration from ${request.sourceConnectionId} to ${request.targetConnectionId}`,
+                version: '1.0.0',
+                sourceSchema: {
+                    connectionId: request.sourceConnectionId,
+                    schemaHash: '',
+                    objectCount: 0,
+                    capturedAt: new Date(),
+                    objects: [],
+                    relationships: []
+                },
+                targetSchema: {
+                    connectionId: request.targetConnectionId,
+                    schemaHash: '',
+                    objectCount: 0,
+                    capturedAt: new Date(),
+                    objects: [],
+                    relationships: []
+                },
+                migrationSteps: [{
+                    id: `step-${migrationId}`,
+                    order: 1,
+                    name: `Execute migration script`,
+                    description: `Execute the generated migration script`,
+                    sqlScript: migrationScript.sqlScript,
+                    objectType: 'migration',
+                    objectName: migrationId,
+                    schema: 'public',
+                    operation: 'CREATE' as const,
+                    riskLevel: 'medium' as const,
+                    dependencies: [],
+                    estimatedDuration: 1000,
+                    rollbackSql: migrationScript.rollbackScript,
+                    preConditions: [],
+                    postConditions: []
+                }],
+                rollbackScript: {
+                    isComplete: !!migrationScript.rollbackScript,
+                    steps: migrationScript.rollbackScript ? [{
+                        order: 1,
+                        description: 'Execute rollback script',
+                        estimatedDuration: 500,
+                        riskLevel: 'medium' as const,
+                        dependencies: [],
+                        verificationSteps: []
+                    }] : [],
+                    estimatedRollbackTime: 5,
+                    successRate: 80,
+                    warnings: [],
+                    limitations: []
+                },
+                validationSteps: [],
+                dependencies: [],
+                metadata: {
+                    author: request.options?.author || 'system',
+                    reviewedBy: undefined,
+                    approvedBy: undefined,
+                    tags: request.options?.tags || [],
+                    businessJustification: request.options?.businessJustification || '',
+                    changeType: request.options?.changeType || 'feature',
+                    environment: request.options?.environment || 'development',
+                    testingRequired: true,
+                    documentationUpdated: false
+                },
+                generatedAt: new Date(),
+                estimatedExecutionTime: 10,
+                riskLevel: migrationScript.riskLevel.toLowerCase() as 'low' | 'medium' | 'high' | 'critical'
             };
 
-            try {
-                await client.query('BEGIN');
+            const executionResult = await migrationExecutor.executeMigrationScript(
+                enhancedScript,
+                request.targetConnectionId,
+                { dryRun: false, stopOnError: !request.options?.executeInTransaction }
+            );
 
-                // Split script into statements and execute with batching support
-                const statements = migrationScript.sqlScript.split(';').filter(stmt => stmt.trim().length > 0);
-                let operationsProcessed = 0;
-
-                const batchSize = request.options?.useBatching ? (request.options.batchSize || 50) : statements.length;
-
-                for (let i = 0; i < statements.length; i += batchSize) {
-                    const batch = statements.slice(i, i + batchSize);
-
-                    // Execute batch
-                    for (const statement of batch) {
-                        if (statement.trim()) {
-                            await client.query(statement.trim());
-                            operationsProcessed++;
-
-                            // Update progress for large migrations
-                            if (request.options?.useBatching && operationsProcessed % 10 === 0) {
-                                const progressPercent = 50 + (operationsProcessed / statements.length) * 30; // 50-80% range
-                                this.realtimeMonitor.publishProgress({
-                                    migrationId,
-                                    phase: 'execution',
-                                    message: `Executing migration: ${operationsProcessed}/${statements.length} statements`,
-                                    percentage: Math.min(progressPercent, 80),
-                                    currentStep: operationsProcessed,
-                                    totalSteps: statements.length,
-                                    timestamp: new Date()
-                                });
-                            }
-                        }
-                    }
-
-                    // Commit batch if batching is enabled
-                    if (request.options?.useBatching && i + batchSize < statements.length) {
-                        await client.query('COMMIT');
-                        await client.query('BEGIN');
-                    }
-                }
-
-                await client.query('COMMIT');
-
-                return {
-                    operationsProcessed,
-                    errors: [],
-                    warnings: migrationScript.warnings,
-                    executionLog: [`Migration completed successfully with ${operationsProcessed} operations`]
-                };
-
-            } catch (error) {
-                await client.query('ROLLBACK');
-                throw error;
-            } finally {
-                handle.release();
-            }
+            // Convert execution result to expected format
+            return {
+                operationsProcessed: executionResult.completedSteps,
+                errors: executionResult.executionLog.filter(log => log.level === 'error').map(log => log.message),
+                warnings: executionResult.executionLog.filter(log => log.level === 'warning').map(log => log.message),
+                executionLog: executionResult.executionLog.map(log => `[${log.level.toUpperCase()}] ${log.message}`)
+            };
 
         } catch (error) {
             Logger.error('Migration script execution failed', error as Error, 'MigrationOrchestrator.executeMigrationScript', {

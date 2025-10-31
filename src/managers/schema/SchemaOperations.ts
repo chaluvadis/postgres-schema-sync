@@ -141,24 +141,15 @@ export class SchemaOperations {
         message: "Querying schema objects...",
       });
 
-      // Encrypt password for secure transmission to DotNet service
-      const securityManager = SecurityManager.getInstance();
-      const encryptedPassword = await securityManager.encryptSensitiveData(
-        password,
-        DataClassification.RESTRICTED
+      // Create connection info using ConnectionService for consistency
+      const connectionService = new (await import("@/core/ConnectionService")).ConnectionService(
+        this.connectionManager,
+        null as any // ValidationFramework not needed here
       );
-
-      // Create .NET connection info
-      const dotNetConnection: ConnectionInfo = {
-        id: connection.id,
-        name: connection.name,
-        host: connection.host,
-        port: connection.port,
-        database: connection.database,
-        username: connection.username,
-        password: encryptedPassword, // 🔒 ENCRYPTED PASSWORD
-        createdDate: new Date().toISOString(),
-      };
+      const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
+      if (!dotNetConnection) {
+        throw new Error("Failed to create connection info");
+      }
 
       // Get objects via native service - use PostgreSqlSchemaBrowser
       const schemaBrowser = new (await import("@/core/PostgreSqlSchemaBrowser")).PostgreSqlSchemaBrowser();
@@ -183,13 +174,21 @@ export class SchemaOperations {
         return [];
       }
 
-      // Convert from .NET format to local format with simplified mapping
+      // Convert from .NET format to local format preserving ALL details
       const objects: DatabaseObject[] = dotNetObjects.map((dotNetObj) => ({
         id: dotNetObj.id,
         name: dotNetObj.name,
         type: this.mapDotNetTypeToLocal(dotNetObj.type),
         schema: dotNetObj.schema,
         database: dotNetObj.database,
+        owner: dotNetObj.owner,
+        sizeInBytes: dotNetObj.sizeInBytes,
+        definition: dotNetObj.definition,
+        createdAt: dotNetObj.createdAt.toISOString(),
+        modifiedAt: dotNetObj.modifiedAt?.toISOString(),
+        dependencies: dotNetObj.dependencies,
+        dependents: [], // Will be populated by dependency analysis
+        properties: dotNetObj.properties || {}
       }));
 
       // Complete operation
@@ -233,53 +232,15 @@ export class SchemaOperations {
         objectName,
       });
 
-      // Get connection and password directly
-      const connection = this.connectionManager.getConnection(connectionId);
-      if (!connection) {
-        throw new Error(`Connection ${connectionId} not found`);
-      }
-
-      const password = await this.connectionManager.getConnectionPassword(
-        connectionId
+      // Use ConnectionService for consistent connection handling
+      const connectionService = new (await import("@/core/ConnectionService")).ConnectionService(
+        this.connectionManager,
+        null as any // ValidationFramework not needed here
       );
-      if (!password) {
-        throw new Error("Password not found for connection");
+      const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
+      if (!dotNetConnection) {
+        throw new Error("Failed to create connection info");
       }
-
-      // Encrypt password for secure transmission to DotNet service
-      const securityManager = SecurityManager.getInstance();
-      const encryptedPassword = await securityManager.encryptSensitiveData(
-        password,
-        DataClassification.RESTRICTED
-      );
-
-      // Create extended connection info with environment support
-      const extendedConnection: ExtendedConnectionInfo = {
-        id: connection.id,
-        name: connection.name,
-        host: connection.host,
-        port: connection.port,
-        database: connection.database,
-        username: connection.username,
-        password: encryptedPassword, // 🔒 ENCRYPTED PASSWORD
-        createdDate: new Date().toISOString(),
-        comparisonMetadata: {
-          comparisonCount: 0,
-          averageComparisonTime: 0,
-        },
-      };
-
-      // Convert to ConnectionInfo for compatibility (password is already encrypted)
-      const dotNetConnection: ConnectionInfo = {
-        id: extendedConnection.id,
-        name: extendedConnection.name,
-        host: extendedConnection.host,
-        port: extendedConnection.port,
-        database: extendedConnection.database,
-        username: extendedConnection.username,
-        password: extendedConnection.password, // Already encrypted
-        createdDate: extendedConnection.createdDate,
-      };
 
       // Get object details via native service - use PostgreSqlSchemaBrowser
       const schemaBrowser = new (await import("@/core/PostgreSqlSchemaBrowser")).PostgreSqlSchemaBrowser();
