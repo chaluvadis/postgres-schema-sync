@@ -92,30 +92,33 @@ Manage PostgreSQL schemas without leaving VSCode. Visual schema comparison, migr
             +------------+          +----------------+
 ```
 
-```
+```mermaid
 flowchart TD
-    subgraph VSCode Extension
-        UI[UI Webview Panel]
-        Tree[Database Explorer Treeview]
-        Cmd[Command Palette]
+    subgraph "VSCode Extension"
+        UI["UI Webview Panel"]
+        Tree["Database Explorer Treeview"]
+        Cmd["Command Palette"]
         UI --> Backend
         Tree --> Backend
         Cmd --> Backend
     end
-    subgraph Extension Backend
-        Backend[Controller/Coordinator]
-        Compare[Schema Comparison Module]
-        Migrate[Migration Generator]
+
+    subgraph "Extension Backend"
+        Backend["Controller/Coordinator"]
+        Compare["Schema Comparison Module"]
+        Migrate["Migration Generator"]
         Backend --> Compare
         Backend --> Migrate
     end
-    subgraph Databases
-        Local[Local PostgreSQL]
-        Prod[Production PostgreSQL]
+
+    subgraph "Databases"
+        Local["Local PostgreSQL"]
+        Prod["Production PostgreSQL"]
     end
-    Compare -- Fetches Metadata --> Local
-    Compare -- Fetches Metadata --> Prod
-    Migrate -- Generates SQL --> Prod
+
+    Compare -->|"Fetches Metadata"| Local
+    Compare -->|"Fetches Metadata"| Prod
+    Migrate -->|"Generates SQL"| Prod
 ```
 
 ### 🚀 Performance-Optimized Architecture
