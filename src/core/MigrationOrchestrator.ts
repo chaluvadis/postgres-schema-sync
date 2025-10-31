@@ -1,6 +1,6 @@
 import { ConnectionService } from './ConnectionService';
 import { ProgressTracker } from './ProgressTracker';
-import { ValidationFramework } from './ValidationFramework';
+import { ValidationFramework, ValidationRequest } from './ValidationFramework';
 import { PostgreSqlSchemaBrowser } from './PostgreSqlSchemaBrowser';
 import { PostgreSqlConnectionManager } from './PostgreSqlConnectionManager';
 import { MigrationStorage } from './MigrationStorage';
@@ -77,7 +77,7 @@ export interface ValidationReport {
     failedRules: number;
     warningRules: number;
     results: ValidationResult[];
-    overallStatus: 'passed' | 'failed' | 'warning';
+    overallStatus: 'passed' | 'failed' | 'warnings';
     canProceed: boolean;
     recommendations: string[];
     executionTime: number;
@@ -86,9 +86,13 @@ export interface ValidationReport {
 export interface ValidationResult {
     ruleId: string;
     ruleName: string;
-    status: 'passed' | 'failed' | 'warning';
+    passed: boolean;
+    severity: 'error' | 'warning' | 'info';
     message: string;
-    details?: Record<string, unknown>;
+    details?: any;
+    executionTime: number;
+    timestamp: Date;
+    retryCount?: number;
 }
 
 export interface MigrationResult {
@@ -523,7 +527,7 @@ export class MigrationOrchestrator {
                 lastUpdated: new Date().toISOString()
             };
 
-            // Perform comprehensive validation before migration
+            // Perform comprehensive validation before migration using ValidationFramework
             const validationReport = await this.performPreMigrationValidation(migrationId, request);
 
             if (!validationReport.canProceed) {
@@ -1113,13 +1117,11 @@ export class MigrationOrchestrator {
 
     private async performPreMigrationValidation(migrationId: string, request: MigrationRequest): Promise<ValidationReport> {
         const startTime = Date.now();
-        Logger.info('Starting pre-migration validation', 'MigrationOrchestrator.performPreMigrationValidation', {
+        Logger.info('Starting pre-migration validation using ValidationFramework', 'MigrationOrchestrator.performPreMigrationValidation', {
             migrationId,
             sourceConnectionId: request.sourceConnectionId,
             targetConnectionId: request.targetConnectionId
         });
-
-        const results: ValidationResult[] = [];
 
         try {
             // Get connection information for validation context
@@ -1127,98 +1129,49 @@ export class MigrationOrchestrator {
             const targetConnection = await this.connectionService.getConnection(request.targetConnectionId);
 
             if (!sourceConnection || !targetConnection) {
-                results.push({
-                    ruleId: 'connections_exist',
-                    ruleName: 'Connection Validation',
-                    status: 'failed',
-                    message: 'Source or target connection not found'
-                });
-            } else {
-                // Basic validation - check connections are accessible
-                const sourceValidation = await this.connectionService.validateConnection(request.sourceConnectionId);
-                const targetValidation = await this.connectionService.validateConnection(request.targetConnectionId);
-
-                results.push({
-                    ruleId: 'connection_accessibility',
-                    ruleName: 'Connection Accessibility',
-                    status: sourceValidation.isValid && targetValidation.isValid ? 'passed' : 'failed',
-                    message: sourceValidation.isValid && targetValidation.isValid
-                        ? 'Both connections are accessible'
-                        : 'One or more connections are not accessible',
-                    details: { sourceValidation, targetValidation }
-                });
-
-                // Schema compatibility check
-                if (sourceValidation.isValid && targetValidation.isValid) {
-                    const schemaCompatibility = await this.validateSchemaCompatibility(request);
-                    results.push(schemaCompatibility);
-                }
-
-                // Business rules validation
-                if (request.options?.businessRules && request.options.businessRules.length > 0) {
-                    const businessRulesValidation = await this.validateBusinessRules(request);
-                    results.push(businessRulesValidation);
-                }
-
-                // Permission validation
-                const permissionValidation = await this.validatePermissions(request);
-                results.push(permissionValidation);
-
-                // Target environment safety check
-                const environmentValidation = await this.validateTargetEnvironment(request);
-                results.push(environmentValidation);
+                throw new Error('Source or target connection not found');
             }
 
-            // Calculate summary
-            const passedRules = results.filter(r => r.status === 'passed').length;
-            const failedRules = results.filter(r => r.status === 'failed').length;
-            const warningRules = results.filter(r => r.status === 'warning').length;
-            const totalRules = results.length;
+            const startTime = Date.now();
 
-            const overallStatus = failedRules > 0 ? 'failed' : warningRules > 0 ? 'warning' : 'passed';
-            const canProceed = overallStatus !== 'failed';
+            // Prepare validation context
+            const validationContext = {
+                sourceConnectionId: request.sourceConnectionId,
+                targetConnectionId: request.targetConnectionId,
+                sourceConnection,
+                targetConnection,
+                migrationOptions: request.options,
+                migrationMetadata: request.metadata,
+                environment: request.options?.environment || 'development'
+            };
 
-            const recommendations = this.generateValidationRecommendations(results);
+            // Execute validation using ValidationFramework with predefined rules
+            const validationRequest: ValidationRequest = {
+                connectionId: request.targetConnectionId,
+                rules: ['data_integrity_check', 'performance_impact_check', 'security_validation'],
+                context: validationContext
+            };
 
-            const executionTime = Date.now() - startTime;
+            const validationReport = await this.validationFramework.executeValidation(validationRequest);
 
-            Logger.info('Pre-migration validation completed', 'MigrationOrchestrator.performPreMigrationValidation', {
+            Logger.info('Pre-migration validation completed using ValidationFramework', 'MigrationOrchestrator.performPreMigrationValidation', {
                 migrationId,
-                totalRules,
-                passedRules,
-                failedRules,
-                warningRules,
-                overallStatus,
-                canProceed
+                totalRules: validationReport.totalRules,
+                passedRules: validationReport.passedRules,
+                failedRules: validationReport.failedRules,
+                warningRules: validationReport.warningRules,
+                overallStatus: validationReport.overallStatus,
+                canProceed: validationReport.canProceed
             });
 
-            return {
-                requestId: migrationId,
-                validationTimestamp: new Date(),
-                totalRules,
-                passedRules,
-                failedRules,
-                warningRules,
-                results,
-                overallStatus,
-                canProceed,
-                recommendations,
-                executionTime
-            };
+            return validationReport;
 
         } catch (error) {
             Logger.error('Pre-migration validation failed', error as Error, 'MigrationOrchestrator.performPreMigrationValidation', {
                 migrationId
             });
 
-            results.push({
-                ruleId: 'validation_system',
-                ruleName: 'Validation System',
-                status: 'failed',
-                message: `Validation system error: ${(error as Error).message}`,
-                details: { error: String(error) }
-            });
-
+            // Return a failure report if ValidationFramework fails
             return {
                 requestId: migrationId,
                 validationTimestamp: new Date(),
@@ -1226,7 +1179,16 @@ export class MigrationOrchestrator {
                 passedRules: 0,
                 failedRules: 1,
                 warningRules: 0,
-                results,
+                results: [{
+                    ruleId: 'validation_system',
+                    ruleName: 'Validation System',
+                    passed: false,
+                    severity: 'error',
+                    message: `Validation system error: ${(error as Error).message}`,
+                    details: { error: String(error) },
+                    executionTime: Date.now() - startTime,
+                    timestamp: new Date()
+                }],
                 overallStatus: 'failed',
                 canProceed: false,
                 recommendations: ['Fix validation system error before proceeding'],
@@ -1281,6 +1243,7 @@ export class MigrationOrchestrator {
     }
 
     private async validateSchemaCompatibility(request: MigrationRequest): Promise<ValidationResult> {
+        const startTime = Date.now();
         try {
             // Get schema objects from both databases
             const sourceConnection = await this.connectionService.getConnection(request.sourceConnectionId);
@@ -1290,8 +1253,11 @@ export class MigrationOrchestrator {
                 return {
                     ruleId: 'schema_compatibility',
                     ruleName: 'Schema Compatibility',
-                    status: 'failed',
-                    message: 'Cannot validate schema compatibility - connections not available'
+                    passed: false,
+                    severity: 'error',
+                    message: 'Cannot validate schema compatibility - connections not available',
+                    executionTime: Date.now() - startTime,
+                    timestamp: new Date()
                 };
             }
 
@@ -1302,8 +1268,11 @@ export class MigrationOrchestrator {
                 return {
                     ruleId: 'schema_compatibility',
                     ruleName: 'Schema Compatibility',
-                    status: 'failed',
-                    message: 'Cannot validate schema compatibility - passwords not available'
+                    passed: false,
+                    severity: 'error',
+                    message: 'Cannot validate schema compatibility - passwords not available',
+                    executionTime: Date.now() - startTime,
+                    timestamp: new Date()
                 };
             }
 
@@ -1337,25 +1306,32 @@ export class MigrationOrchestrator {
             return {
                 ruleId: 'schema_compatibility',
                 ruleName: 'Schema Compatibility',
-                status: conflicts.length > 0 ? 'warning' : 'passed',
+                passed: conflicts.length === 0,
+                severity: conflicts.length > 0 ? 'warning' : 'info',
                 message: conflicts.length > 0
                     ? `Schema compatibility issues detected: ${conflicts.join(', ')}`
                     : 'Source and target schemas are compatible',
-                details: { conflicts, sourceObjectsCount: sourceObjects.length, targetObjectsCount: targetObjects.length }
+                details: { conflicts, sourceObjectsCount: sourceObjects.length, targetObjectsCount: targetObjects.length },
+                executionTime: Date.now() - startTime,
+                timestamp: new Date()
             };
 
         } catch (error) {
             return {
                 ruleId: 'schema_compatibility',
                 ruleName: 'Schema Compatibility',
-                status: 'failed',
+                passed: false,
+                severity: 'error',
                 message: `Schema compatibility check failed: ${(error as Error).message}`,
-                details: { error: String(error) }
+                details: { error: String(error) },
+                executionTime: Date.now() - startTime,
+                timestamp: new Date()
             };
         }
     }
 
     private async validateBusinessRules(request: MigrationRequest): Promise<ValidationResult> {
+        const startTime = Date.now();
         try {
             // Generate migration to get schema differences for business rule evaluation
             const migrationScript = await this.generateMigration(request);
@@ -1381,26 +1357,33 @@ export class MigrationOrchestrator {
             return {
                 ruleId: 'business_rules',
                 ruleName: 'Business Rules Validation',
-                status: violations.length > 0 ? 'failed' : warnings.length > 0 ? 'warning' : 'passed',
+                passed: violations.length === 0,
+                severity: violations.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'info',
                 message: violations.length > 0
                     ? `Business rule violations: ${violations.map(v => v.message).join(', ')}`
                     : warnings.length > 0
-                        ? `Business rule warnings: ${warnings.map(w => w.message).join(', ')}`
-                        : 'All business rules validated successfully',
-                details: { ruleResults, violations, warnings }
+                      ? `Business rule warnings: ${warnings.map(w => w.message).join(', ')}`
+                      : 'All business rules validated successfully',
+                details: { ruleResults, violations, warnings },
+                executionTime: Date.now() - startTime,
+                timestamp: new Date()
             };
         } catch (error) {
             return {
                 ruleId: 'business_rules',
                 ruleName: 'Business Rules Validation',
-                status: 'failed',
+                passed: false,
+                severity: 'error',
                 message: `Business rules validation failed: ${(error as Error).message}`,
-                details: { error: String(error) }
+                details: { error: String(error) },
+                executionTime: Date.now() - startTime,
+                timestamp: new Date()
             };
         }
     }
 
     private async validatePermissions(request: MigrationRequest): Promise<ValidationResult> {
+        const startTime = Date.now();
         try {
             // Check if user has necessary permissions on target database
             const targetConnection = await this.connectionService.getConnection(request.targetConnectionId);
@@ -1408,8 +1391,11 @@ export class MigrationOrchestrator {
                 return {
                     ruleId: 'permissions',
                     ruleName: 'Permission Validation',
-                    status: 'failed',
-                    message: 'Cannot validate permissions - target connection not available'
+                    passed: false,
+                    severity: 'error',
+                    message: 'Cannot validate permissions - target connection not available',
+                    executionTime: Date.now() - startTime,
+                    timestamp: new Date()
                 };
             }
 
@@ -1418,8 +1404,11 @@ export class MigrationOrchestrator {
                 return {
                     ruleId: 'permissions',
                     ruleName: 'Permission Validation',
-                    status: 'failed',
-                    message: 'Cannot validate permissions - target password not available'
+                    passed: false,
+                    severity: 'error',
+                    message: 'Cannot validate permissions - target password not available',
+                    executionTime: Date.now() - startTime,
+                    timestamp: new Date()
                 };
             }
 
@@ -1437,11 +1426,14 @@ export class MigrationOrchestrator {
                 return {
                     ruleId: 'permissions',
                     ruleName: 'Permission Validation',
-                    status: hasSchemaPermissions ? 'passed' : 'failed',
+                    passed: hasSchemaPermissions,
+                    severity: hasSchemaPermissions ? 'info' : 'error',
                     message: hasSchemaPermissions
                         ? 'User has sufficient permissions for migration'
                         : 'User lacks necessary permissions for schema modifications',
-                    details: { user: targetConnection.username, hasSchemaPermissions }
+                    details: { user: targetConnection.username, hasSchemaPermissions },
+                    executionTime: Date.now() - startTime,
+                    timestamp: new Date()
                 };
 
             } finally {
@@ -1452,14 +1444,18 @@ export class MigrationOrchestrator {
             return {
                 ruleId: 'permissions',
                 ruleName: 'Permission Validation',
-                status: 'failed',
+                passed: false,
+                severity: 'error',
                 message: `Permission validation failed: ${(error as Error).message}`,
-                details: { error: String(error) }
+                details: { error: String(error) },
+                executionTime: Date.now() - startTime,
+                timestamp: new Date()
             };
         }
     }
 
     private async validateTargetEnvironment(request: MigrationRequest): Promise<ValidationResult> {
+        const startTime = Date.now();
         const environment = request.options?.environment || 'development';
         const warnings: string[] = [];
 
@@ -1479,11 +1475,14 @@ export class MigrationOrchestrator {
         return {
             ruleId: 'environment_safety',
             ruleName: 'Environment Safety Check',
-            status: warnings.length > 0 ? 'warning' : 'passed',
+            passed: warnings.length === 0,
+            severity: warnings.length > 0 ? 'warning' : 'info',
             message: warnings.length > 0
-                ? `Environment safety warnings: ${warnings.join(', ')}`
-                : `Environment ${environment} safety check passed`,
-            details: { environment, warnings }
+              ? `Environment safety warnings: ${warnings.join(', ')}`
+              : `Environment ${environment} safety check passed`,
+            details: { environment, warnings },
+            executionTime: Date.now() - startTime,
+            timestamp: new Date()
         };
     }
 
@@ -1491,7 +1490,7 @@ export class MigrationOrchestrator {
         const recommendations: string[] = [];
 
         for (const result of results) {
-            if (result.status === 'failed') {
+            if (!result.passed && result.severity === 'error') {
                 switch (result.ruleId) {
                     case 'connection_accessibility':
                         recommendations.push('Verify database connection credentials and network connectivity');
@@ -1509,7 +1508,7 @@ export class MigrationOrchestrator {
                         recommendations.push('Check system logs and resolve validation framework issues');
                         break;
                 }
-            } else if (result.status === 'warning') {
+            } else if (result.severity === 'warning') {
                 recommendations.push(`Review warning: ${result.message}`);
             }
         }

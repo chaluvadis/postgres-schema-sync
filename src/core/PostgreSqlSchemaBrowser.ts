@@ -129,9 +129,9 @@ export class PostgreSqlSchemaBrowser {
 
   private async getTablesAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal,
-    connectionInfo?: ConnectionInfo
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -156,7 +156,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.table_name,
       schema: row.table_schema,
       type: ObjectType.Table,
-      database: connectionInfo?.database || 'unknown', // Use actual database name from connection
+      database: connectionInfo.database,
       owner: row.owner,
       sizeInBytes: parseInt(row.size_bytes) || undefined,
       definition: `CREATE TABLE "${row.table_schema}"."${row.table_name}" (...);`, // Simplified
@@ -165,16 +165,16 @@ export class PostgreSqlSchemaBrowser {
         estimatedRowCount: parseFloat(row.estimated_row_count) || 0
       },
       createdAt: new Date(),
-      modifiedAt: undefined, // PostgreSQL doesn't track table modification time easily
+      modifiedAt: this.getObjectModificationTime(handle.connection, 'pg_class', row.table_schema, row.table_name),
       dependencies: []
     }));
   }
 
   private async getViewsAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal,
-    connectionInfo?: ConnectionInfo
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -198,7 +198,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.table_name,
       schema: row.table_schema,
       type: ObjectType.View,
-      database: connectionInfo?.database || 'unknown',
+      database: connectionInfo.database,
       owner: row.owner,
       definition: row.view_definition || '',
       properties: {
@@ -212,9 +212,9 @@ export class PostgreSqlSchemaBrowser {
 
   private async getFunctionsAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal,
-    connectionInfo?: ConnectionInfo
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -239,7 +239,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.function_name,
       schema: row.function_schema,
       type: ObjectType.Function,
-      database: connectionInfo?.database || 'unknown',
+      database: connectionInfo.database,
       owner: row.owner,
       definition: row.function_definition || '',
       properties: {
@@ -254,9 +254,9 @@ export class PostgreSqlSchemaBrowser {
 
   private async getSequencesAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal,
-    connectionInfo?: ConnectionInfo
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -279,7 +279,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.sequence_name,
       schema: row.sequence_schema,
       type: ObjectType.Sequence,
-      database: connectionInfo?.database || 'unknown',
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `CREATE SEQUENCE "${row.sequence_schema}"."${row.sequence_name}";`,
       properties: {
@@ -293,9 +293,9 @@ export class PostgreSqlSchemaBrowser {
 
   private async getTypesAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal,
-    connectionInfo?: ConnectionInfo
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -318,7 +318,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.type_name,
       schema: row.type_schema,
       type: ObjectType.Type,
-      database: connectionInfo?.database || 'unknown',
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `CREATE TYPE "${row.type_schema}"."${row.type_name}" (...);`,
       properties: {
@@ -332,9 +332,9 @@ export class PostgreSqlSchemaBrowser {
 
   private async getIndexesAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal,
-    connectionInfo?: ConnectionInfo
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -361,7 +361,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.index_name,
       schema: row.index_schema,
       type: ObjectType.Index,
-      database: connectionInfo?.database || 'unknown',
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `CREATE INDEX "${row.index_name}" ON "${row.index_schema}"."${row.table_name}" (...);`,
       properties: {
@@ -376,9 +376,9 @@ export class PostgreSqlSchemaBrowser {
 
   private async getTriggersAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal,
-    connectionInfo?: ConnectionInfo
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -403,7 +403,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.trigger_name,
       schema: row.trigger_schema,
       type: ObjectType.Trigger,
-      database: connectionInfo?.database || 'unknown',
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `CREATE TRIGGER "${row.trigger_name}" ...;`,
       properties: {
@@ -418,9 +418,9 @@ export class PostgreSqlSchemaBrowser {
 
   private async getConstraintsAsync(
     handle: ConnectionHandle,
-    schemaFilter?: string,
-    cancellationToken?: AbortSignal,
-    connectionInfo?: ConnectionInfo
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
   ): Promise<DatabaseObject[]> {
     const query = `
       SELECT
@@ -445,7 +445,7 @@ export class PostgreSqlSchemaBrowser {
       name: row.constraint_name,
       schema: row.constraint_schema,
       type: ObjectType.Constraint,
-      database: connectionInfo?.database || 'unknown',
+      database: connectionInfo.database,
       owner: row.owner,
       definition: `ALTER TABLE "${row.constraint_schema}"."${row.table_name}" ADD CONSTRAINT "${row.constraint_name}" ...;`,
       properties: {
@@ -457,5 +457,15 @@ export class PostgreSqlSchemaBrowser {
       modifiedAt: undefined,
       dependencies: []
     }));
+  }
+  private getObjectModificationTime(connection: any, catalogTable: string, schema: string, name: string): Date | undefined {
+    try {
+      // PostgreSQL doesn't have a direct modification time for objects, but we can use the last DDL time from event triggers
+      // For now, return undefined as PostgreSQL doesn't easily track this
+      return undefined;
+    } catch (error) {
+      Logger.warn('Failed to get modification time', 'getObjectModificationTime', { error: (error as Error).message });
+      return undefined;
+    }
   }
 }

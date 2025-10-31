@@ -3,7 +3,20 @@ export {
   ConnectionValidationResult,
   ConnectionServiceOptions,
 } from "./ConnectionService";
-export { ConnectionInfo } from "./PostgreSqlConnectionManager";
+export {
+  ConnectionInfo,
+  ConnectionHandle,
+  NativeColumnMetadata,
+  NativeIndexMetadata,
+  NativeConstraintMetadata,
+  NativeViewMetadata,
+  NativeFunctionMetadata,
+  ViewColumn,
+  ViewDependency,
+  FunctionParameter,
+  ColumnStatistics,
+  IndexStatistics,
+} from "./PostgreSqlConnectionManager";
 export {
   ProgressTracker,
   ProgressInfo,
@@ -25,7 +38,19 @@ export {
   MigrationOptions,
   MigrationMetadata,
   MigrationResult,
+  MigrationLock,
+  ValidationReport as MigrationValidationReport,
 } from "./MigrationOrchestrator";
+export {
+  PostgreSqlSchemaBrowser,
+  DatabaseObject,
+  DatabaseObjectDetails,
+  ColumnInfo,
+  ConstraintInfo,
+  IndexInfo,
+  TriggerInfo,
+  ObjectType,
+} from "./PostgreSqlSchemaBrowser";
 
 import { ConnectionManager } from "@/managers/ConnectionManager";
 import { ConnectionService } from "./ConnectionService";
