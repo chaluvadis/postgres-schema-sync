@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { Logger } from "@/utils/Logger";
 import { PostgreSqlConnectionManager, ConnectionInfo } from "@/core/PostgreSqlConnectionManager";
 import { SecurityManager, DataClassification } from "@/services/SecurityManager";
-import { ActivityBarProvider } from "@/providers/ActivityBarProvider";
 
 export interface DatabaseConnection {
   id: string;
@@ -59,15 +58,10 @@ export class ConnectionManager {
   private healthCheckInterval?: NodeJS.Timeout;
   private secrets: vscode.SecretStorage | undefined;
   private dotNetService: PostgreSqlConnectionManager;
-  private activityBarProvider?: ActivityBarProvider | undefined;
 
-  constructor(
-    context: vscode.ExtensionContext,
-    activityBarProvider?: ActivityBarProvider
-  ) {
+  constructor(context: vscode.ExtensionContext) {
     this.context = context;
     this.dotNetService = PostgreSqlConnectionManager.getInstance();
-    this.activityBarProvider = activityBarProvider;
     this.loadConnections();
     this.secrets = context.secrets;
     this.startHealthMonitoring();
@@ -106,11 +100,6 @@ export class ConnectionManager {
       });
 
       await this.saveConnections();
-
-      // Update activity bar with new connection count
-      if (this.activityBarProvider) {
-        this.activityBarProvider.updateActivityBar();
-      }
 
       Logger.info(`Connection added: ${connection.id}`);
     } catch (error) {
@@ -163,11 +152,6 @@ export class ConnectionManager {
 
       await this.saveConnections();
 
-      // Update activity bar with updated connection count
-      if (this.activityBarProvider) {
-        this.activityBarProvider.updateActivityBar();
-      }
-
       Logger.info(`Connection updated: ${id}`);
     } catch (error) {
       Logger.error(
@@ -193,7 +177,6 @@ export class ConnectionManager {
 
       this.connections.delete(id);
       await this.saveConnections();
-      this.activityBarProvider?.updateActivityBar();
       Logger.info(`Connection removed: ${id}`);
     } catch (error) {
       Logger.error(`Failed to remove connection: ${(error as Error).message}`);

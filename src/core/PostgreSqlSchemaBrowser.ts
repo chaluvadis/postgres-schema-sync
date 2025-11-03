@@ -1,5 +1,4 @@
 import { Logger } from '@/utils/Logger';
-import { PerformanceMonitor } from '@/services/PerformanceMonitor';
 import { PostgreSqlConnectionManager, ConnectionInfo, ConnectionHandle } from './PostgreSqlConnectionManager';
 
 export interface DatabaseObject {
@@ -83,18 +82,12 @@ export enum ObjectType {
 
 export class PostgreSqlSchemaBrowser {
   private readonly connectionManager = PostgreSqlConnectionManager.getInstance();
-  private readonly performanceMonitor = PerformanceMonitor.getInstance();
 
   async getDatabaseObjectsAsync(
     connectionInfo: ConnectionInfo,
     schemaFilter?: string,
     cancellationToken?: AbortSignal
   ): Promise<DatabaseObject[]> {
-    const operationId = this.performanceMonitor.startOperation('getDatabaseObjects', {
-      connectionId: connectionInfo.id,
-      schemaFilter
-    });
-
     const handle = await this.connectionManager.createConnection(connectionInfo, cancellationToken);
     try {
       const objects: DatabaseObject[] = [];
@@ -117,10 +110,8 @@ export class PostgreSqlSchemaBrowser {
         objectCount: objects.length
       });
 
-      this.performanceMonitor.endOperation(operationId, true);
       return objects;
     } catch (error) {
-      this.performanceMonitor.endOperation(operationId, false, (error as Error).message);
       Logger.error('Failed to get database objects', error as Error);
       throw error;
     } finally {
