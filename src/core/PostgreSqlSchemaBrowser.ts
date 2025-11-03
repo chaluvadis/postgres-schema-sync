@@ -100,6 +100,7 @@ export class PostgreSqlSchemaBrowser {
       const objects: DatabaseObject[] = [];
 
       // Get all object types with complete data
+      const schemas = await this.getSchemasAsync(handle, schemaFilter, cancellationToken, connectionInfo);
       const tables = await this.getTablesAsync(handle, schemaFilter, cancellationToken, connectionInfo);
       const views = await this.getViewsAsync(handle, schemaFilter, cancellationToken, connectionInfo);
       const functions = await this.getFunctionsAsync(handle, schemaFilter, cancellationToken, connectionInfo);
@@ -109,7 +110,7 @@ export class PostgreSqlSchemaBrowser {
       const triggers = await this.getTriggersAsync(handle, schemaFilter, cancellationToken, connectionInfo);
       const constraints = await this.getConstraintsAsync(handle, schemaFilter, cancellationToken, connectionInfo);
 
-      objects.push(...tables, ...views, ...functions, ...sequences, ...types, ...indexes, ...triggers, ...constraints);
+      objects.push(...schemas, ...tables, ...views, ...functions, ...sequences, ...types, ...indexes, ...triggers, ...constraints);
 
       Logger.info('Retrieved database objects', 'getDatabaseObjects', {
         connectionId: connectionInfo.id,
@@ -451,6 +452,42 @@ export class PostgreSqlSchemaBrowser {
       properties: {
         tableName: row.table_name,
         constraintType: row.constraint_type,
+        description: row.description
+      },
+      createdAt: new Date(),
+      modifiedAt: undefined,
+      dependencies: []
+    }));
+  }
+
+  private async getSchemasAsync(
+    handle: ConnectionHandle,
+    schemaFilter: string | undefined,
+    cancellationToken: AbortSignal | undefined,
+    connectionInfo: ConnectionInfo
+  ): Promise<DatabaseObject[]> {
+    const query = `
+      SELECT
+        n.nspname as schema_name,
+        pg_get_userbyid(n.nspowner) AS owner,
+        obj_description(n.oid) as description
+      FROM pg_namespace n
+      WHERE n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+        AND ($1 IS NULL OR n.nspname = $1)
+      ORDER BY n.nspname
+    `;
+
+    const result = await handle.connection.query(query, [schemaFilter]);
+
+    return result.rows.map(row => ({
+      id: row.schema_name,
+      name: row.schema_name,
+      schema: row.schema_name,
+      type: ObjectType.Schema,
+      database: connectionInfo.database,
+      owner: row.owner,
+      definition: `CREATE SCHEMA "${row.schema_name}";`,
+      properties: {
         description: row.description
       },
       createdAt: new Date(),

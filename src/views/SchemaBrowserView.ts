@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { ModularSchemaManager, DatabaseObject } from '@/managers/schema';
+import { ModularSchemaManager } from '@/managers/schema';
+import { DatabaseObject } from '@/core/PostgreSqlSchemaBrowser';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { Logger } from '@/utils/Logger';
 

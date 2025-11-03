@@ -3,7 +3,6 @@ export { ModularSchemaManager } from './ModularSchemaManager';
 
 // Export core interfaces and types
 export type {
-    DatabaseObject,
     SchemaCache,
     ExtendedConnectionInfo,
     EnvironmentInfo,

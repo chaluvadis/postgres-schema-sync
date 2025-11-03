@@ -1,13 +1,9 @@
-import { SchemaOperations, DatabaseObject } from "./SchemaOperations";
+import { SchemaOperations } from "./SchemaOperations";
+import { DatabaseObject, ObjectType } from "@/core/PostgreSqlSchemaBrowser";
 import { Logger } from "@/utils/Logger";
 import {
   PostgreSqlConnectionManager,
   ConnectionInfo,
-  NativeColumnMetadata,
-  NativeIndexMetadata,
-  NativeConstraintMetadata,
-  NativeViewMetadata,
-  NativeFunctionMetadata,
 } from "@/core/PostgreSqlConnectionManager";
 import {
   SecurityManager,
@@ -146,10 +142,10 @@ export interface CacheAnalytics {
 
 export interface CacheRecommendation {
   type:
-    | "increase_size"
-    | "decrease_size"
-    | "change_policy"
-    | "optimize_schedule";
+  | "increase_size"
+  | "decrease_size"
+  | "change_policy"
+  | "optimize_schedule";
   priority: "low" | "medium" | "high";
   description: string;
   expectedBenefit: string;
@@ -300,7 +296,7 @@ export class MetadataManagement {
     objectType: string,
     schema: string,
     objectName: string,
-    options: { includeDependencies?: boolean; includePerformance?: boolean }
+    options: { includeDependencies?: boolean; includePerformance?: boolean; }
   ): Promise<RichMetadataObject> {
     try {
       Logger.info(
@@ -390,7 +386,7 @@ export class MetadataManagement {
     objectType: string,
     schema: string,
     objectName: string,
-    options: { includeDependencies?: boolean; includePerformance?: boolean }
+    options: { includeDependencies?: boolean; includePerformance?: boolean; }
   ): Promise<{
     owner: string;
     sizeInBytes: number;
@@ -536,7 +532,7 @@ export class MetadataManagement {
     connection: ConnectionInfo,
     schema: string,
     tableName: string,
-    options: { includeDependencies?: boolean; includePerformance?: boolean }
+    options: { includeDependencies?: boolean; includePerformance?: boolean; }
   ): Promise<any> {
     try {
       Logger.info("Extracting table metadata", "extractTableMetadata", {
@@ -567,7 +563,7 @@ export class MetadataManagement {
 
       // Calculate table metrics based on available metadata
       const avgRowSize = columnMetadata.reduce((total, col) => {
-        const typeSizes: { [key: string]: number } = {
+        const typeSizes: { [key: string]: number; } = {
           integer: 4,
           bigint: 8,
           smallint: 2,
@@ -611,10 +607,10 @@ export class MetadataManagement {
       const partitionKey =
         isPartitioned && columnMetadata.length > 0
           ? columnMetadata.find(
-              (col) =>
-                col.dataType.toLowerCase().includes("date") ||
-                col.dataType.toLowerCase().includes("timestamp")
-            )?.name || "id"
+            (col) =>
+              col.dataType.toLowerCase().includes("date") ||
+              col.dataType.toLowerCase().includes("timestamp")
+          )?.name || "id"
           : undefined;
 
       // Generate realistic permissions based on table characteristics
@@ -806,7 +802,7 @@ export class MetadataManagement {
     connection: ConnectionInfo,
     schema: string,
     viewName: string,
-    options: { includeDependencies?: boolean; includePerformance?: boolean }
+    options: { includeDependencies?: boolean; includePerformance?: boolean; }
   ): Promise<any> {
     try {
       Logger.info("Extracting view metadata", "extractViewMetadata", {
@@ -1146,7 +1142,7 @@ export class MetadataManagement {
     connection: ConnectionInfo,
     schema: string,
     functionName: string,
-    options: { includeDependencies?: boolean; includePerformance?: boolean }
+    options: { includeDependencies?: boolean; includePerformance?: boolean; }
   ): Promise<any> {
     try {
       Logger.info("Extracting function metadata", "extractFunctionMetadata", {
@@ -1301,8 +1297,8 @@ export class MetadataManagement {
     const returnType = returnMatch
       ? returnMatch[1]
       : isProcedure
-      ? "void"
-      : "unknown";
+        ? "void"
+        : "unknown";
 
     // Count parameters (rough estimation)
     const paramMatches = definition.match(/\$\d+/g) || [];
@@ -1428,8 +1424,8 @@ export class MetadataManagement {
     )
       ? "restricted"
       : sql.includes("current_setting") || sql.includes("set")
-      ? "unsafe"
-      : "safe";
+        ? "unsafe"
+        : "safe";
 
     return {
       isProcedure,
@@ -1720,8 +1716,8 @@ export class MetadataManagement {
   }
   private parseSQLDependencies(
     sql: string
-  ): Array<{ name: string; schema: string; type: string }> {
-    const dependencies: Array<{ name: string; schema: string; type: string }> =
+  ): Array<{ name: string; schema: string; type: string; }> {
+    const dependencies: Array<{ name: string; schema: string; type: string; }> =
       [];
 
     if (!sql) return dependencies;
@@ -3006,9 +3002,9 @@ export class MetadataManagement {
       const averageResponseTime =
         entries.length > 0
           ? entries.reduce(
-              (sum, entry) => sum + entry.performanceMetrics.averageAccessTime,
-              0
-            ) / entries.length
+            (sum, entry) => sum + entry.performanceMetrics.averageAccessTime,
+            0
+          ) / entries.length
           : 0;
 
       const recommendations = this.generateCacheRecommendations(
@@ -3030,8 +3026,8 @@ export class MetadataManagement {
         errorRate:
           entries.length > 0
             ? (entries.reduce((sum, entry) => sum + entry.errorCount, 0) /
-                entries.length) *
-              100
+              entries.length) *
+            100
             : 0,
         recommendations,
       };
@@ -3325,7 +3321,7 @@ export class MetadataManagement {
           schema
         );
         const tableObjects = allObjects.filter(
-          (obj: DatabaseObject) => obj.type === "table"
+          (obj: DatabaseObject) => obj.type === ObjectType.Table
         );
 
         for (const tableObj of tableObjects) {
