@@ -6,7 +6,6 @@ import { PostgreSqlConnectionManager } from './PostgreSqlConnectionManager';
 import { MigrationStorage } from './MigrationStorage';
 import { SchemaDiffer, SchemaObject, SchemaDifference } from './SchemaDiffer';
 import { BackupManager } from './BackupManager';
-import { BusinessRuleEngine, BusinessRuleContext } from './BusinessRuleEngine';
 import { RealtimeMonitor } from './RealtimeMonitor';
 import { Logger } from '../utils/Logger';
 import * as path from 'path';
@@ -426,7 +425,6 @@ export class MigrationOrchestrator {
     private migrationStorage: MigrationStorage;
     private backupManager: BackupManager;
     private concurrencyManager: MigrationConcurrencyManager;
-    private businessRuleEngine: BusinessRuleEngine;
     private realtimeMonitor: RealtimeMonitor;
 
     constructor(
@@ -444,7 +442,6 @@ export class MigrationOrchestrator {
         this.migrationStorage = new MigrationStorage(storagePath);
         this.backupManager = new BackupManager(connectionService);
         this.concurrencyManager = new MigrationConcurrencyManager(connectionService, this.connectionManager);
-        this.businessRuleEngine = new BusinessRuleEngine();
         this.realtimeMonitor = new RealtimeMonitor();
     }
 
@@ -1336,23 +1333,22 @@ export class MigrationOrchestrator {
             // Generate migration to get schema differences for business rule evaluation
             const migrationScript = await this.generateMigration(request);
 
-            const context: BusinessRuleContext = {
-                migrationId: request.id || this.generateId(),
-                sourceConnection: await this.connectionService.getConnection(request.sourceConnectionId),
-                targetConnection: await this.connectionService.getConnection(request.targetConnectionId),
-                migrationOptions: request.options,
-                migrationMetadata: request.metadata,
-                schemaDifferences: migrationScript.operationCount > 0 ? [/* Would need to extract differences */] : [],
-                environment: request.options?.environment || 'development',
-                user: request.options?.author || 'unknown',
-                timestamp: new Date()
-            };
+            // Simplified business rule validation without BusinessRuleEngine
+            const warnings: string[] = [];
+            const violations: string[] = [];
 
-            // Evaluate business rules using the engine
-            const ruleResults = this.businessRuleEngine.evaluateRules(context);
+            // Basic business rules
+            if (request.options?.environment === 'production' && !request.options?.createBackupBeforeExecution) {
+                violations.push('Production migrations must have backup enabled');
+            }
 
-            const violations = ruleResults.filter(r => !r.passed);
-            const warnings = ruleResults.filter(r => r.passed === false && r.message.includes('warning'));
+            if (request.options?.environment === 'production' && !request.options?.businessJustification) {
+                violations.push('Production migrations require business justification');
+            }
+
+            if (migrationScript.riskLevel === 'High' && request.options?.environment === 'production') {
+                violations.push('High-risk migrations not allowed in production without approval');
+            }
 
             return {
                 ruleId: 'business_rules',
@@ -1360,11 +1356,11 @@ export class MigrationOrchestrator {
                 passed: violations.length === 0,
                 severity: violations.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'info',
                 message: violations.length > 0
-                    ? `Business rule violations: ${violations.map(v => v.message).join(', ')}`
+                    ? `Business rule violations: ${violations.join(', ')}`
                     : warnings.length > 0
-                      ? `Business rule warnings: ${warnings.map(w => w.message).join(', ')}`
+                      ? `Business rule warnings: ${warnings.join(', ')}`
                       : 'All business rules validated successfully',
-                details: { ruleResults, violations, warnings },
+                details: { violations, warnings },
                 executionTime: Date.now() - startTime,
                 timestamp: new Date()
             };

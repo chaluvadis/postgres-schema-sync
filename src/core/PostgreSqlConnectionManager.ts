@@ -1,6 +1,5 @@
 import { Pool, Client, PoolClient } from 'pg';
 import { Logger } from '@/utils/Logger';
-import { PerformanceMonitor } from '@/services/PerformanceMonitor';
 
 export interface ConnectionInfo {
   id: string;
@@ -113,7 +112,6 @@ export interface ConnectionHealthStatus {
 export class PostgreSqlConnectionManager {
   private static instance: PostgreSqlConnectionManager;
   private pools: Map<string, Pool> = new Map();
-  private readonly performanceMonitor = PerformanceMonitor.getInstance();
   private healthStatus: Map<string, ConnectionHealthStatus> = new Map();
   private healthCheckInterval: NodeJS.Timeout | null = null;
 
@@ -129,12 +127,6 @@ export class PostgreSqlConnectionManager {
   }
 
   async createConnection(connectionInfo: ConnectionInfo, cancellationToken?: AbortSignal): Promise<ConnectionHandle> {
-    const operationId = this.performanceMonitor.startOperation('createConnection', {
-      connectionId: connectionInfo.id,
-      hostname: connectionInfo.host,
-      database: connectionInfo.database
-    });
-
     try {
       const pool = this.getOrCreatePool(connectionInfo);
 
@@ -152,8 +144,6 @@ export class PostgreSqlConnectionManager {
         database: connectionInfo.database
       });
 
-      this.performanceMonitor.endOperation(operationId, true);
-
       return {
         connection: client,
         release: () => {
@@ -164,7 +154,6 @@ export class PostgreSqlConnectionManager {
         }
       };
     } catch (error) {
-      this.performanceMonitor.endOperation(operationId, false, (error as Error).message);
       Logger.error('Failed to create database connection', error as Error, 'createConnection', {
         connectionId: connectionInfo.id,
         database: connectionInfo.database
