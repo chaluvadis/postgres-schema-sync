@@ -1,4 +1,5 @@
-import { SchemaOperations, DatabaseObject } from "./SchemaOperations";
+import { SchemaOperations } from "./SchemaOperations";
+import { DatabaseObject, ObjectType } from "@/core/PostgreSqlSchemaBrowser";
 import { Logger } from "@/utils/Logger";
 import {
   PostgreSqlConnectionManager,
@@ -175,12 +176,12 @@ export interface ComplianceViolation {
   objectName?: string;
   schema?: string;
   violationType:
-    | "naming"
-    | "structure"
-    | "permission"
-    | "data_quality"
-    | "performance"
-    | "security";
+  | "naming"
+  | "structure"
+  | "permission"
+  | "data_quality"
+  | "performance"
+  | "security";
   severity: "low" | "medium" | "high" | "critical";
   description: string;
   actualValue: any;
@@ -312,10 +313,10 @@ export class SchemaComparison {
 
       const allTableNames = new Set([
         ...sourceTables
-          .filter((obj) => obj.type === "table")
+          .filter((obj) => obj.type === ObjectType.Table)
           .map((obj) => `${obj.schema}.${obj.name}`),
         ...targetTables
-          .filter((obj) => obj.type === "table")
+          .filter((obj) => obj.type === ObjectType.Table)
           .map((obj) => `${obj.schema}.${obj.name}`),
       ]);
 
@@ -519,10 +520,10 @@ export class SchemaComparison {
   ): Promise<void> {
     const allViews = new Set([
       ...sourceTables
-        .filter((obj) => obj.type === "view")
+        .filter((obj) => obj.type === ObjectType.View)
         .map((obj) => `${obj.schema}.${obj.name}`),
       ...targetTables
-        .filter((obj) => obj.type === "view")
+        .filter((obj) => obj.type === ObjectType.View)
         .map((obj) => `${obj.schema}.${obj.name}`),
     ]);
 
@@ -571,10 +572,10 @@ export class SchemaComparison {
   /**
     * Compare columns in detail
     */
-   private compareColumnsDetailed(
-     sourceColumns: NativeColumnMetadata[],
-     targetColumns: NativeColumnMetadata[]
-   ): ColumnComparisonDetail[] {
+  private compareColumnsDetailed(
+    sourceColumns: NativeColumnMetadata[],
+    targetColumns: NativeColumnMetadata[]
+  ): ColumnComparisonDetail[] {
     const differences: ColumnComparisonDetail[] = [];
 
     // Create lookup maps
@@ -641,9 +642,9 @@ export class SchemaComparison {
         if (sourceColumn.statistics && targetColumn.statistics) {
           if (
             sourceColumn.statistics.distinctValues !==
-              targetColumn.statistics.distinctValues ||
+            targetColumn.statistics.distinctValues ||
             sourceColumn.statistics.nullCount !==
-              targetColumn.statistics.nullCount
+            targetColumn.statistics.nullCount
           ) {
             columnDiff.statisticsDifference = {
               sourceStats: sourceColumn.statistics,
@@ -687,10 +688,10 @@ export class SchemaComparison {
   /**
     * Compare indexes in detail
     */
-   private compareIndexesDetailed(
-     sourceIndexes: NativeIndexMetadata[],
-     targetIndexes: NativeIndexMetadata[]
-   ): IndexComparisonDetail[] {
+  private compareIndexesDetailed(
+    sourceIndexes: NativeIndexMetadata[],
+    targetIndexes: NativeIndexMetadata[]
+  ): IndexComparisonDetail[] {
     const differences: IndexComparisonDetail[] = [];
 
     const sourceMap = new Map(sourceIndexes.map((idx) => [idx.name, idx]));
@@ -734,9 +735,9 @@ export class SchemaComparison {
         if (sourceIndex.statistics && targetIndex.statistics) {
           if (
             sourceIndex.statistics.sizeInBytes !==
-              targetIndex.statistics.sizeInBytes ||
+            targetIndex.statistics.sizeInBytes ||
             sourceIndex.statistics.indexScans !==
-              targetIndex.statistics.indexScans
+            targetIndex.statistics.indexScans
           ) {
             indexDiff.performanceDifference = {
               sourceStats: sourceIndex.statistics,
@@ -762,10 +763,10 @@ export class SchemaComparison {
   /**
     * Compare constraints in detail
     */
-   private compareConstraintsDetailed(
-     sourceConstraints: NativeConstraintMetadata[],
-     targetConstraints: NativeConstraintMetadata[]
-   ): ConstraintDifference[] {
+  private compareConstraintsDetailed(
+    sourceConstraints: NativeConstraintMetadata[],
+    targetConstraints: NativeConstraintMetadata[]
+  ): ConstraintDifference[] {
     const differences: ConstraintDifference[] = [];
 
     const sourceMap = new Map(sourceConstraints.map((c) => [c.name, c]));
@@ -1048,90 +1049,90 @@ export class SchemaComparison {
   /**
     * Extract column metadata using native service
     */
-   private async extractColumnMetadata(
-     connection: ConnectionInfo,
-     tableName: string,
-     schema: string
-   ): Promise<NativeColumnMetadata[]> {
-     const nativeService = PostgreSqlConnectionManager.getInstance();
-     return await nativeService.extractColumnMetadata(
-       connection,
-       tableName,
-       schema
-     );
-   }
+  private async extractColumnMetadata(
+    connection: ConnectionInfo,
+    tableName: string,
+    schema: string
+  ): Promise<NativeColumnMetadata[]> {
+    const nativeService = PostgreSqlConnectionManager.getInstance();
+    return await nativeService.extractColumnMetadata(
+      connection,
+      tableName,
+      schema
+    );
+  }
 
   /**
     * Extract index metadata using native service
     */
-   private async extractIndexMetadata(
-     connection: ConnectionInfo,
-     tableName: string,
-     schema: string
-   ): Promise<NativeIndexMetadata[]> {
-     const nativeService = PostgreSqlConnectionManager.getInstance();
-     return await nativeService.extractIndexMetadata(
-       connection,
-       tableName,
-       schema
-     );
-   }
+  private async extractIndexMetadata(
+    connection: ConnectionInfo,
+    tableName: string,
+    schema: string
+  ): Promise<NativeIndexMetadata[]> {
+    const nativeService = PostgreSqlConnectionManager.getInstance();
+    return await nativeService.extractIndexMetadata(
+      connection,
+      tableName,
+      schema
+    );
+  }
 
   /**
     * Extract constraint metadata using native service
     */
-   private async extractConstraintMetadata(
-     connection: ConnectionInfo,
-     tableName: string,
-     schema: string
-   ): Promise<NativeConstraintMetadata[]> {
-     const nativeService = PostgreSqlConnectionManager.getInstance();
-     return await nativeService.extractConstraintMetadata(
-       connection,
-       tableName,
-       schema
-     );
-   }
+  private async extractConstraintMetadata(
+    connection: ConnectionInfo,
+    tableName: string,
+    schema: string
+  ): Promise<NativeConstraintMetadata[]> {
+    const nativeService = PostgreSqlConnectionManager.getInstance();
+    return await nativeService.extractConstraintMetadata(
+      connection,
+      tableName,
+      schema
+    );
+  }
 
   /**
     * Extract view metadata using native service
     */
-   private async extractViewMetadata(
-     connection: ConnectionInfo,
-     viewName: string,
-     schema: string
-   ): Promise<NativeViewMetadata[]> {
-     const nativeService = PostgreSqlConnectionManager.getInstance();
-     return await nativeService.extractViewMetadata(
-       connection,
-       viewName,
-       schema
-     );
-   }
+  private async extractViewMetadata(
+    connection: ConnectionInfo,
+    viewName: string,
+    schema: string
+  ): Promise<NativeViewMetadata[]> {
+    const nativeService = PostgreSqlConnectionManager.getInstance();
+    return await nativeService.extractViewMetadata(
+      connection,
+      viewName,
+      schema
+    );
+  }
 
   /**
     * Analyze view dependencies from metadata
     */
-   private analyzeViewDependenciesFromMetadata(
-     sourceViewMetadata: NativeViewMetadata[],
-     targetViewMetadata: NativeViewMetadata[]
-   ): ViewDependencyNode | null {
-     if (sourceViewMetadata.length > 0 || targetViewMetadata.length > 0) {
-       const viewMeta = sourceViewMetadata[0] || targetViewMetadata[0];
-       return {
-         viewName: viewMeta.name,
-         schema: viewMeta.schema,
-         dependencies: viewMeta.dependencies.map(dep => ({
-           type: dep.type,
-           name: dep.name,
-           schema: dep.schema
-         })),
-         dependents: [],
-         level: 0,
-       };
-     }
-     return null;
-   }
+  private analyzeViewDependenciesFromMetadata(
+    sourceViewMetadata: NativeViewMetadata[],
+    targetViewMetadata: NativeViewMetadata[]
+  ): ViewDependencyNode | null {
+    if (sourceViewMetadata.length > 0 || targetViewMetadata.length > 0) {
+      const viewMeta = sourceViewMetadata[0] || targetViewMetadata[0];
+      return {
+        viewName: viewMeta.name,
+        schema: viewMeta.schema,
+        dependencies: viewMeta.dependencies.map(dep => ({
+          type: dep.type,
+          name: dep.name,
+          schema: dep.schema
+        })),
+        dependents: [],
+        level: 0,
+      };
+    }
+    return null;
+  }
 
   /**
    * Check if data types are compatible

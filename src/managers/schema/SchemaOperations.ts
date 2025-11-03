@@ -4,28 +4,8 @@ import {
   PostgreSqlConnectionManager,
   ConnectionInfo,
 } from "@/core/PostgreSqlConnectionManager";
-import {
-  SecurityManager,
-  DataClassification,
-} from "@/services/SecurityManager";
 import { ExtensionInitializer } from "@/utils/ExtensionInitializer";
-
-// Core schema operation interfaces
-export interface DatabaseObject {
-  id: string;
-  name: string;
-  type: string;
-  schema: string;
-  database: string;
-  owner?: string;
-  sizeInBytes?: number;
-  definition?: string;
-  createdAt?: string;
-  modifiedAt?: string;
-  dependencies?: string[];
-  dependents?: string[];
-  properties?: Record<string, any>;
-}
+import { DatabaseObject, ObjectType } from "@/core/PostgreSqlSchemaBrowser";
 
 export interface SchemaCache {
   connectionId: string;
@@ -88,34 +68,6 @@ export class SchemaOperations {
 
       // Start operation tracking
       const statusBarProvider = ExtensionInitializer.getStatusBarProvider();
-      const operationSteps = [
-        {
-          id: "connect",
-          name: "Connecting to database",
-          status: "pending" as const,
-        },
-        {
-          id: "query",
-          name: "Querying schema objects",
-          status: "pending" as const,
-        },
-        {
-          id: "process",
-          name: "Processing objects",
-          status: "pending" as const,
-        },
-      ];
-
-      const operationIndicator = statusBarProvider.startOperation(
-        operationId,
-        `Load Schema: ${connectionId}`,
-        {
-          message: "Loading database schema...",
-          cancellable: true,
-          steps: operationSteps,
-          estimatedDuration: 15000, // 15 seconds estimated
-        }
-      );
 
       // Step 1: Connect
       statusBarProvider.updateOperationStep(operationId, 0, "running", {
@@ -178,17 +130,16 @@ export class SchemaOperations {
       const objects: DatabaseObject[] = dotNetObjects.map((dotNetObj) => ({
         id: dotNetObj.id,
         name: dotNetObj.name,
-        type: this.mapDotNetTypeToLocal(dotNetObj.type),
+        type: this.mapDotNetTypeToLocal(dotNetObj.type) as ObjectType,
         schema: dotNetObj.schema,
         database: dotNetObj.database,
         owner: dotNetObj.owner,
         sizeInBytes: dotNetObj.sizeInBytes,
         definition: dotNetObj.definition,
-        createdAt: dotNetObj.createdAt.toISOString(),
-        modifiedAt: dotNetObj.modifiedAt?.toISOString(),
-        dependencies: dotNetObj.dependencies,
-        dependents: [], // Will be populated by dependency analysis
-        properties: dotNetObj.properties || {}
+        properties: dotNetObj.properties || {},
+        createdAt: dotNetObj.createdAt,
+        modifiedAt: dotNetObj.modifiedAt,
+        dependencies: dotNetObj.dependencies
       }));
 
       // Complete operation
@@ -337,7 +288,7 @@ export class SchemaOperations {
   /**
    * Get cache statistics for monitoring
    */
-  getCacheStats(): { size: number; entries: string[] } {
+  getCacheStats(): { size: number; entries: string[]; } {
     return {
       size: this.schemaCache.size,
       entries: Array.from(this.schemaCache.keys()),
@@ -348,7 +299,7 @@ export class SchemaOperations {
    * Map .NET object type to local type
    */
   private mapDotNetTypeToLocal(dotNetType: string): string {
-    const typeMap: { [key: string]: string } = {
+    const typeMap: { [key: string]: string; } = {
       table: "table",
       view: "view",
       function: "function",

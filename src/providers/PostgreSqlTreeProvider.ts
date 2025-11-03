@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConnectionManager, DatabaseConnection } from '@/managers/ConnectionManager';
-import { ModularSchemaManager, DatabaseObject } from '@/managers/schema';
+import { ModularSchemaManager } from '@/managers/schema';
+import { DatabaseObject, ObjectType } from '@/core/PostgreSqlSchemaBrowser';
 import { Logger } from '@/utils/Logger';
 import { ExtensionInitializer } from '@/utils/ExtensionInitializer';
 export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem> {
@@ -247,14 +248,14 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
             // Group objects by schema
             const schemaGroups = new Map<string, DatabaseObject[]>();
             for (const obj of objects) {
-                if (obj.type === 'schema') {
+                if (obj.type === ObjectType.Schema) {
                     schemaGroups.set(obj.name, []);
                 }
             }
 
             // Add objects to their respective schemas
             for (const obj of objects) {
-                if (obj.type !== 'schema' && obj.schema) {
+                if (obj.type !== ObjectType.Schema && obj.schema) {
                     const schemaObjects = schemaGroups.get(obj.schema) || [];
                     schemaObjects.push(obj);
                     schemaGroups.set(obj.schema, schemaObjects);
@@ -312,7 +313,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
             }
 
             const schemaObjects = objects.filter(obj =>
-                obj.schema === schemaName && obj.type !== 'schema'
+                obj.schema === schemaName && obj.type !== ObjectType.Schema
             );
 
             return schemaObjects.map(obj => {

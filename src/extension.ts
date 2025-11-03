@@ -46,7 +46,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             () => new PostgreSqlExtension(
                 context,
                 components!.connectionManager,
-                components!.streamlinedServices,
                 components!.treeProvider
             ),
             true

@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { ConnectionManager } from "../managers/ConnectionManager";
 import { ModularSchemaManager } from "../managers/schema";
-import { StreamlinedServices } from "../services/StreamlinedServices";
 import { PostgreSqlTreeProvider } from "@/providers/PostgreSqlTreeProvider";
 import { ActivityBarProvider } from "@/providers/ActivityBarProvider";
 import { EnhancedStatusBarProvider } from "@/providers/EnhancedStatusBarProvider";
@@ -30,7 +29,6 @@ import { DriftReportView } from "@/views/DriftReportView";
 export interface ExtensionComponents {
   connectionManager: ConnectionManager;
   schemaManager: ModularSchemaManager;
-  streamlinedServices: StreamlinedServices; // New streamlined architecture
   treeProvider: PostgreSqlTreeProvider;
   treeView?: vscode.TreeView<any>;
   activityBarProvider?: ActivityBarProvider;
@@ -100,10 +98,6 @@ export class ExtensionInitializer {
         validationFramework
       );
 
-      // Initialize streamlined services (replaces legacy managers)
-      const streamlinedServices =
-        StreamlinedServices.getInstance(connectionManager);
-
       const treeProvider = new PostgreSqlTreeProvider(
         connectionManager,
         schemaManager
@@ -112,7 +106,6 @@ export class ExtensionInitializer {
       const components: ExtensionComponents = {
         connectionManager,
         schemaManager,
-        streamlinedServices,
         treeProvider,
       };
 
