@@ -164,13 +164,14 @@ export enum DataClassification {
   RESTRICTED = "restricted",
 }
 
-export enum ComplianceFramework {
+enum ComplianceFramework {
   GDPR = "GDPR",
   HIPAA = "HIPAA",
   SOX = "SOX",
   PCI_DSS = "PCI_DSS",
   ISO_27001 = "ISO_27001",
 }
+
 
 export interface DataClassificationRule {
   id: string;
@@ -182,7 +183,7 @@ export interface DataClassificationRule {
   maskingStrategy?: DataMaskingStrategy;
 }
 
-export interface DataMaskingStrategy {
+interface DataMaskingStrategy {
   type: "partial" | "full" | "hash" | "tokenize";
   preserveLength?: boolean;
   showFirst?: number; // For partial masking
@@ -190,7 +191,17 @@ export interface DataMaskingStrategy {
   hashAlgorithm?: "sha256" | "sha512" | "bcrypt";
 }
 
-export interface EncryptionKey {
+interface EncryptionKey {
+  id: string;
+  name: string;
+  algorithm: "AES-256-GCM" | "ChaCha20-Poly1305";
+  keySize: number;
+  created: Date;
+  expires?: Date;
+  usage: string[];
+}
+
+interface EncryptionKey {
   id: string;
   name: string;
   algorithm: "AES-256-GCM" | "ChaCha20-Poly1305";
@@ -1207,17 +1218,17 @@ export class SecurityManager {
     }
 
     // Character variety checks
-    if (/[a-z]/.test(password)) score += 15;
-    else feedback.push("Add lowercase letters");
+    if (/[a-z]/.test(password)) {score += 15;}
+    else {feedback.push("Add lowercase letters");}
 
-    if (/[A-Z]/.test(password)) score += 15;
-    else feedback.push("Add uppercase letters");
+    if (/[A-Z]/.test(password)) {score += 15;}
+    else {feedback.push("Add uppercase letters");}
 
-    if (/[0-9]/.test(password)) score += 15;
-    else feedback.push("Add numbers");
+    if (/[0-9]/.test(password)) {score += 15;}
+    else {feedback.push("Add numbers");}
 
-    if (/[^a-zA-Z0-9]/.test(password)) score += 15;
-    else feedback.push("Add special characters (!@#$%^&*)");
+    if (/[^a-zA-Z0-9]/.test(password)) {score += 15;}
+    else {feedback.push("Add special characters (!@#$%^&*)");}
 
     // Complexity bonus
     if (/(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^a-zA-Z0-9])/.test(password)) {
@@ -1240,11 +1251,11 @@ export class SecurityManager {
 
     // Determine strength category
     let strength: "very-weak" | "weak" | "fair" | "good" | "strong";
-    if (score >= 90) strength = "strong";
-    else if (score >= 70) strength = "good";
-    else if (score >= 50) strength = "fair";
-    else if (score >= 30) strength = "weak";
-    else strength = "very-weak";
+    if (score >= 90) {strength = "strong";}
+    else if (score >= 70) {strength = "good";}
+    else if (score >= 50) {strength = "fair";}
+    else if (score >= 30) {strength = "weak";}
+    else {strength = "very-weak";}
 
     const isAcceptable = score >= 60; // Minimum acceptable score
 
@@ -1750,7 +1761,7 @@ export class SecurityManager {
     for (const rule of this.networkSecurityRules.sort(
       (a, b) => b.priority - a.priority
     )) {
-      if (!rule.enabled) continue;
+      if (!rule.enabled) {continue;}
 
       const matches = this.evaluateNetworkRule(rule, hostname, port, sourceIP);
       if (matches) {
@@ -3008,9 +3019,9 @@ export class SecurityManager {
    * Gets classification by priority level
    */
   private getClassificationByPriority(priority: number): DataClassification {
-    if (priority >= 8) return DataClassification.RESTRICTED;
-    if (priority >= 5) return DataClassification.CONFIDENTIAL;
-    if (priority >= 3) return DataClassification.INTERNAL;
+    if (priority >= 8) {return DataClassification.RESTRICTED;}
+    if (priority >= 5) {return DataClassification.CONFIDENTIAL;}
+    if (priority >= 3) {return DataClassification.INTERNAL;}
     return DataClassification.PUBLIC;
   }
 
@@ -3463,7 +3474,7 @@ export class SecurityManager {
     ];
 
     for (const port of commonPorts) {
-      if (port === 5432) continue; // Skip PostgreSQL port
+      if (port === 5432) {continue;} // Skip PostgreSQL port
 
       // Simulate finding some open ports
       if (Math.random() > 0.8) {

@@ -494,10 +494,10 @@ export class ImpactAnalysis {
         ["table", "view"].includes(change.objectType)
     ).length;
 
-    if (criticalChanges > 3) return "severe";
-    if (criticalChanges > 1) return "significant";
-    if (criticalChanges > 0) return "moderate";
-    if (schemaChanges.length > 10) return "minimal";
+    if (criticalChanges > 3) {return "severe";}
+    if (criticalChanges > 1) {return "significant";}
+    if (criticalChanges > 0) {return "moderate";}
+    if (schemaChanges.length > 10) {return "minimal";}
     return "none";
   }
 
@@ -515,11 +515,11 @@ export class ImpactAnalysis {
     ).length;
 
     if (removedObjects > 5 || removedObjects + modifiedObjects > 20)
-      return "critical";
+      {return "critical";}
     if (removedObjects > 2 || removedObjects + modifiedObjects > 10)
-      return "high";
-    if (removedObjects > 0 || modifiedObjects > 5) return "medium";
-    if (modifiedObjects > 0) return "low";
+      {return "high";}
+    if (removedObjects > 0 || modifiedObjects > 5) {return "medium";}
+    if (modifiedObjects > 0) {return "low";}
     return "none";
   }
 
@@ -537,13 +537,13 @@ export class ImpactAnalysis {
           change.objectName.toLowerCase().includes("log"))
     );
 
-    if (auditTableChanges.length > 0) return "high";
+    if (auditTableChanges.length > 0) {return "high";}
     if (
       schemaChanges.some(
         (change) => change.objectType === "table" && change.type === "Removed"
       )
     )
-      return "medium";
+      {return "medium";}
     return "low";
   }
 
@@ -560,9 +560,9 @@ export class ImpactAnalysis {
           change.objectName.toLowerCase().includes("user"))
     );
 
-    if (uiRelatedChanges.length > 3) return "severe";
-    if (uiRelatedChanges.length > 1) return "significant";
-    if (uiRelatedChanges.length > 0) return "moderate";
+    if (uiRelatedChanges.length > 3) {return "severe";}
+    if (uiRelatedChanges.length > 1) {return "significant";}
+    if (uiRelatedChanges.length > 0) {return "moderate";}
     return "minimal";
   }
 
@@ -577,15 +577,15 @@ export class ImpactAnalysis {
     // Identify business processes based on object names and types
     for (const change of schemaChanges) {
       if (change.objectName.toLowerCase().includes("order"))
-        processes.push("Order Management");
+        {processes.push("Order Management");}
       if (change.objectName.toLowerCase().includes("customer"))
-        processes.push("Customer Management");
+        {processes.push("Customer Management");}
       if (change.objectName.toLowerCase().includes("product"))
-        processes.push("Product Management");
+        {processes.push("Product Management");}
       if (change.objectName.toLowerCase().includes("invoice"))
-        processes.push("Billing");
+        {processes.push("Billing");}
       if (change.objectName.toLowerCase().includes("payment"))
-        processes.push("Payment Processing");
+        {processes.push("Payment Processing");}
     }
 
     return [...new Set(processes)]; // Remove duplicates
@@ -603,9 +603,9 @@ export class ImpactAnalysis {
         ["table", "view"].includes(change.objectType)
     ).length;
 
-    if (criticalObjectChanges > 5) return "critical";
-    if (criticalObjectChanges > 2) return "high";
-    if (criticalObjectChanges > 0) return "medium";
+    if (criticalObjectChanges > 5) {return "critical";}
+    if (criticalObjectChanges > 2) {return "high";}
+    if (criticalObjectChanges > 0) {return "medium";}
     return "low";
   }
 
@@ -641,9 +641,9 @@ export class ImpactAnalysis {
       (change) => change.objectType === "table"
     ).length;
 
-    if (indexChanges > 5 || tableChanges > 3) return "significant";
-    if (indexChanges > 2 || tableChanges > 1) return "moderate";
-    if (indexChanges > 0 || tableChanges > 0) return "minimal";
+    if (indexChanges > 5 || tableChanges > 3) {return "significant";}
+    if (indexChanges > 2 || tableChanges > 1) {return "moderate";}
+    if (indexChanges > 0 || tableChanges > 0) {return "minimal";}
     return "none";
   }
 
@@ -660,7 +660,7 @@ export class ImpactAnalysis {
         change.objectName.toLowerCase().includes("role")
     );
 
-    if (permissionChanges.length > 0) return "critical";
+    if (permissionChanges.length > 0) {return "critical";}
     return "none";
   }
 
@@ -680,7 +680,7 @@ export class ImpactAnalysis {
         )
     );
 
-    if (largeTableChanges.length > 0) return "positive";
+    if (largeTableChanges.length > 0) {return "positive";}
     return "none";
   }
 
@@ -700,8 +700,8 @@ export class ImpactAnalysis {
         )
     );
 
-    if (complexChanges.length > 3) return "degraded";
-    if (complexChanges.length > 0) return "critical";
+    if (complexChanges.length > 3) {return "degraded";}
+    if (complexChanges.length > 0) {return "critical";}
     return "none";
   }
 
@@ -715,9 +715,9 @@ export class ImpactAnalysis {
       this.isBreakingChange(change)
     );
 
-    if (breakingChanges.length > 5) return "breaking";
-    if (breakingChanges.length > 2) return "high";
-    if (breakingChanges.length > 0) return "medium";
+    if (breakingChanges.length > 5) {return "breaking";}
+    if (breakingChanges.length > 2) {return "high";}
+    if (breakingChanges.length > 0) {return "medium";}
     return "low";
   }
 
@@ -729,11 +729,11 @@ export class ImpactAnalysis {
 
     // Identify affected systems based on schema names and object types
     for (const change of schemaChanges) {
-      if (change.schema.includes("billing")) systems.push("Billing System");
-      if (change.schema.includes("inventory")) systems.push("Inventory System");
-      if (change.schema.includes("customer")) systems.push("CRM System");
+      if (change.schema.includes("billing")) {systems.push("Billing System");}
+      if (change.schema.includes("inventory")) {systems.push("Inventory System");}
+      if (change.schema.includes("customer")) {systems.push("CRM System");}
       if (change.schema.includes("order"))
-        systems.push("Order Management System");
+        {systems.push("Order Management System");}
     }
 
     return [...new Set(systems)];
@@ -753,7 +753,7 @@ export class ImpactAnalysis {
       )
     );
 
-    if (deprecatedObjects.length > 0) return "high";
+    if (deprecatedObjects.length > 0) {return "high";}
     return "low";
   }
 
@@ -986,12 +986,12 @@ export class ImpactAnalysis {
     change: SchemaDifference
   ): "low" | "medium" | "high" | "critical" {
     if (change.type === "Removed" && change.objectType === "table")
-      return "critical";
+      {return "critical";}
     if (change.type === "Removed" && change.objectType === "column")
-      return "high";
+      {return "high";}
     if (change.type === "Modified" && change.objectType === "column")
-      return "medium";
-    if (change.type === "Added") return "low";
+      {return "medium";}
+    if (change.type === "Added") {return "low";}
     return "medium";
   }
 
@@ -1444,22 +1444,22 @@ export class ImpactAnalysis {
     let impactScore = 0;
 
     // Data volume impact (0-40 points)
-    if (dataVolumeAnalysis.totalRowsAffected > 1000000) impactScore += 40;
-    else if (dataVolumeAnalysis.totalRowsAffected > 100000) impactScore += 30;
-    else if (dataVolumeAnalysis.totalRowsAffected > 10000) impactScore += 20;
-    else if (dataVolumeAnalysis.totalRowsAffected > 1000) impactScore += 10;
+    if (dataVolumeAnalysis.totalRowsAffected > 1000000) {impactScore += 40;}
+    else if (dataVolumeAnalysis.totalRowsAffected > 100000) {impactScore += 30;}
+    else if (dataVolumeAnalysis.totalRowsAffected > 10000) {impactScore += 20;}
+    else if (dataVolumeAnalysis.totalRowsAffected > 1000) {impactScore += 10;}
 
     // Business process impact (0-30 points)
     if (businessProcessAnalysis.criticalBusinessProcesses.length > 5)
-      impactScore += 30;
+      {impactScore += 30;}
     else if (businessProcessAnalysis.criticalBusinessProcesses.length > 3)
-      impactScore += 20;
+      {impactScore += 20;}
     else if (businessProcessAnalysis.criticalBusinessProcesses.length > 1)
-      impactScore += 10;
+      {impactScore += 10;}
 
     // Peak hours impact (0-20 points)
-    if (businessProcessAnalysis.businessHoursImpact) impactScore += 10;
-    if (businessProcessAnalysis.peakUsageImpact) impactScore += 10;
+    if (businessProcessAnalysis.businessHoursImpact) {impactScore += 10;}
+    if (businessProcessAnalysis.peakUsageImpact) {impactScore += 10;}
 
     // Schema change complexity (0-10 points)
     const criticalChanges = _schemaChanges.filter(
@@ -1471,10 +1471,10 @@ export class ImpactAnalysis {
     impactScore += criticalChanges * 5 + highRiskChanges * 2;
 
     // Convert score to impact level
-    if (impactScore >= 80) return "severe";
-    if (impactScore >= 60) return "significant";
-    if (impactScore >= 40) return "moderate";
-    if (impactScore >= 20) return "minimal";
+    if (impactScore >= 80) {return "severe";}
+    if (impactScore >= 60) {return "significant";}
+    if (impactScore >= 40) {return "moderate";}
+    if (impactScore >= 20) {return "minimal";}
     return "none";
   }
 
@@ -1497,29 +1497,29 @@ export class ImpactAnalysis {
     let impactScore = 0;
 
     // Direct cost impact (0-50 points)
-    if (totalCost > 100000) impactScore += 50;
-    else if (totalCost > 50000) impactScore += 40;
-    else if (totalCost > 25000) impactScore += 30;
-    else if (totalCost > 10000) impactScore += 20;
-    else if (totalCost > 5000) impactScore += 10;
+    if (totalCost > 100000) {impactScore += 50;}
+    else if (totalCost > 50000) {impactScore += 40;}
+    else if (totalCost > 25000) {impactScore += 30;}
+    else if (totalCost > 10000) {impactScore += 20;}
+    else if (totalCost > 5000) {impactScore += 10;}
 
     // Revenue impact consideration (0-30 points)
     if (financialAnalysis.revenueImpact < 0) {
       const revenueLoss = Math.abs(financialAnalysis.revenueImpact);
-      if (revenueLoss > 50000) impactScore += 30;
-      else if (revenueLoss > 25000) impactScore += 20;
-      else if (revenueLoss > 10000) impactScore += 10;
+      if (revenueLoss > 50000) {impactScore += 30;}
+      else if (revenueLoss > 25000) {impactScore += 20;}
+      else if (revenueLoss > 10000) {impactScore += 10;}
     }
 
     // Payback period consideration (0-20 points)
-    if (financialAnalysis.paybackPeriod > 12) impactScore += 20;
-    else if (financialAnalysis.paybackPeriod > 6) impactScore += 10;
+    if (financialAnalysis.paybackPeriod > 12) {impactScore += 20;}
+    else if (financialAnalysis.paybackPeriod > 6) {impactScore += 10;}
 
     // Convert score to impact level
-    if (impactScore >= 80) return "critical";
-    if (impactScore >= 60) return "high";
-    if (impactScore >= 40) return "medium";
-    if (impactScore >= 20) return "low";
+    if (impactScore >= 80) {return "critical";}
+    if (impactScore >= 60) {return "high";}
+    if (impactScore >= 40) {return "medium";}
+    if (impactScore >= 20) {return "low";}
     return "none";
   }
 
@@ -1581,10 +1581,10 @@ export class ImpactAnalysis {
     }
 
     // Convert risk score to compliance impact
-    if (complianceRisk >= 80) return "critical";
-    if (complianceRisk >= 60) return "high";
-    if (complianceRisk >= 40) return "medium";
-    if (complianceRisk >= 20) return "low";
+    if (complianceRisk >= 80) {return "critical";}
+    if (complianceRisk >= 60) {return "high";}
+    if (complianceRisk >= 40) {return "medium";}
+    if (complianceRisk >= 20) {return "low";}
     return "none";
   }
 
@@ -1610,23 +1610,23 @@ export class ImpactAnalysis {
     }
 
     // Concurrent user impact (0-30 points)
-    if (userActivityAnalysis.concurrentUsers > 500) impactScore += 30;
-    else if (userActivityAnalysis.concurrentUsers > 200) impactScore += 20;
-    else if (userActivityAnalysis.concurrentUsers > 50) impactScore += 10;
+    if (userActivityAnalysis.concurrentUsers > 500) {impactScore += 30;}
+    else if (userActivityAnalysis.concurrentUsers > 200) {impactScore += 20;}
+    else if (userActivityAnalysis.concurrentUsers > 50) {impactScore += 10;}
 
     // Business hours impact (0-20 points)
-    if (businessProcessAnalysis.businessHoursImpact) impactScore += 10;
-    if (businessProcessAnalysis.peakUsageImpact) impactScore += 10;
+    if (businessProcessAnalysis.businessHoursImpact) {impactScore += 10;}
+    if (businessProcessAnalysis.peakUsageImpact) {impactScore += 10;}
 
     // Session duration impact (0-10 points)
-    if (userActivityAnalysis.sessionDuration > 60) impactScore += 10;
-    else if (userActivityAnalysis.sessionDuration > 30) impactScore += 5;
+    if (userActivityAnalysis.sessionDuration > 60) {impactScore += 10;}
+    else if (userActivityAnalysis.sessionDuration > 30) {impactScore += 5;}
 
     // Convert score to impact level
-    if (impactScore >= 80) return "severe";
-    if (impactScore >= 60) return "significant";
-    if (impactScore >= 40) return "moderate";
-    if (impactScore >= 20) return "minimal";
+    if (impactScore >= 80) {return "severe";}
+    if (impactScore >= 60) {return "significant";}
+    if (impactScore >= 40) {return "moderate";}
+    if (impactScore >= 20) {return "minimal";}
     return "none";
   }
 
@@ -1804,28 +1804,28 @@ export class ImpactAnalysis {
         "Payment Processing"
       )
     )
-      riskScore += 40;
+      {riskScore += 40;}
     else if (
       businessProcessAnalysis.criticalBusinessProcesses.includes(
         "Order Processing"
       )
     )
-      riskScore += 35;
+      {riskScore += 35;}
     else if (
       businessProcessAnalysis.criticalBusinessProcesses.includes(
         "Customer Management"
       )
     )
-      riskScore += 30;
+      {riskScore += 30;}
     else if (businessProcessAnalysis.criticalBusinessProcesses.length > 3)
-      riskScore += 25;
+      {riskScore += 25;}
     else if (businessProcessAnalysis.criticalBusinessProcesses.length > 1)
-      riskScore += 15;
+      {riskScore += 15;}
 
     // Data volume risk (0-30 points)
-    if (dataVolumeAnalysis.totalRowsAffected > 1000000) riskScore += 30;
-    else if (dataVolumeAnalysis.totalRowsAffected > 100000) riskScore += 20;
-    else if (dataVolumeAnalysis.totalRowsAffected > 10000) riskScore += 10;
+    if (dataVolumeAnalysis.totalRowsAffected > 1000000) {riskScore += 30;}
+    else if (dataVolumeAnalysis.totalRowsAffected > 100000) {riskScore += 20;}
+    else if (dataVolumeAnalysis.totalRowsAffected > 10000) {riskScore += 10;}
 
     // Peak hours risk (0-20 points)
     if (
@@ -1850,9 +1850,9 @@ export class ImpactAnalysis {
     riskScore += criticalChanges * 5 + highRiskChanges * 2;
 
     // Convert score to risk level
-    if (riskScore >= 80) return "critical";
-    if (riskScore >= 60) return "high";
-    if (riskScore >= 40) return "medium";
+    if (riskScore >= 80) {return "critical";}
+    if (riskScore >= 60) {return "high";}
+    if (riskScore >= 40) {return "medium";}
     return "low";
   }
   dispose(): void {

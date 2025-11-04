@@ -422,11 +422,11 @@ export class ConflictResolutionService {
     // Extract constraint information from SQL definition (simplified)
     const constraints: string[] = [];
 
-    if (definition.includes("PRIMARY KEY")) constraints.push("PRIMARY KEY");
-    if (definition.includes("FOREIGN KEY")) constraints.push("FOREIGN KEY");
-    if (definition.includes("NOT NULL")) constraints.push("NOT NULL");
-    if (definition.includes("UNIQUE")) constraints.push("UNIQUE");
-    if (definition.includes("CHECK")) constraints.push("CHECK");
+    if (definition.includes("PRIMARY KEY")) {constraints.push("PRIMARY KEY");}
+    if (definition.includes("FOREIGN KEY")) {constraints.push("FOREIGN KEY");}
+    if (definition.includes("NOT NULL")) {constraints.push("NOT NULL");}
+    if (definition.includes("UNIQUE")) {constraints.push("UNIQUE");}
+    if (definition.includes("CHECK")) {constraints.push("CHECK");}
 
     return constraints;
   }

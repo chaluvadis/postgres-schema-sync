@@ -85,7 +85,7 @@ export class SchemaDiffer {
                     riskLevel: 'high'
                 };
             case 'alter':
-                if (!targetObj) throw new Error('Target object required for alter');
+                if (!targetObj) {throw new Error('Target object required for alter');}
                 return {
                     ...baseDiff,
                     sql: this.generateAlterSql(sourceObj, targetObj),
@@ -236,7 +236,7 @@ export class SchemaDiffer {
     }
 
     private formatColumnType(definition: any): string {
-        if (!definition) return 'unknown';
+        if (!definition) {return 'unknown';}
 
         if (definition.dataType) {
             let type = definition.dataType;
@@ -390,10 +390,10 @@ export class SchemaDiffer {
                 const createSequenceAst = ast[0];
                 if (createSequenceAst.type === 'create' && createSequenceAst.keyword === 'sequence') {
                     const params: any = {};
-                    if (createSequenceAst.start) params.start = parseInt(createSequenceAst.start);
-                    if (createSequenceAst.increment) params.increment = parseInt(createSequenceAst.increment);
-                    if (createSequenceAst.minvalue) params.minvalue = parseInt(createSequenceAst.minvalue);
-                    if (createSequenceAst.maxvalue) params.maxvalue = parseInt(createSequenceAst.maxvalue);
+                    if (createSequenceAst.start) {params.start = parseInt(createSequenceAst.start);}
+                    if (createSequenceAst.increment) {params.increment = parseInt(createSequenceAst.increment);}
+                    if (createSequenceAst.minvalue) {params.minvalue = parseInt(createSequenceAst.minvalue);}
+                    if (createSequenceAst.maxvalue) {params.maxvalue = parseInt(createSequenceAst.maxvalue);}
                     return params;
                 }
             }
@@ -406,10 +406,10 @@ export class SchemaDiffer {
         // Parse sequence parameters (simplified)
         const params: any = {};
         const startMatch = definition.match(/START\s+(?:WITH\s+)?(\d+)/i);
-        if (startMatch) params.start = parseInt(startMatch[1]);
+        if (startMatch) {params.start = parseInt(startMatch[1]);}
 
         const incrementMatch = definition.match(/INCREMENT\s+(?:BY\s+)?(\d+)/i);
-        if (incrementMatch) params.increment = parseInt(incrementMatch[1]);
+        if (incrementMatch) {params.increment = parseInt(incrementMatch[1]);}
 
         return params;
     }
@@ -419,7 +419,7 @@ export class SchemaDiffer {
     }
 
     private arraysEqual(a: any[], b: any[]): boolean {
-        if (a.length !== b.length) return false;
+        if (a.length !== b.length) {return false;}
         return a.every((val, index) => this.deepEqual(val, b[index]));
     }
 
@@ -428,9 +428,9 @@ export class SchemaDiffer {
     }
 
     private deepEqual(a: any, b: any): boolean {
-        if (a === b) return true;
-        if (a == null || b == null) return a === b;
-        if (typeof a !== typeof b) return false;
+        if (a === b) {return true;}
+        if (a == null || b == null) {return a === b;}
+        if (typeof a !== typeof b) {return false;}
 
         if (Array.isArray(a)) {
             return this.arraysEqual(a, b);
@@ -439,7 +439,7 @@ export class SchemaDiffer {
         if (typeof a === 'object') {
             const keysA = Object.keys(a);
             const keysB = Object.keys(b);
-            if (keysA.length !== keysB.length) return false;
+            if (keysA.length !== keysB.length) {return false;}
             return keysA.every(key => this.deepEqual(a[key], b[key]));
         }
 
@@ -675,7 +675,7 @@ export class SchemaDiffer {
         const visiting = new Set<string>();
 
         const visit = (key: string) => {
-            if (visited.has(key)) return;
+            if (visited.has(key)) {return;}
             if (visiting.has(key)) {
                 Logger.warn('Circular dependency detected', 'SchemaDiffer.sortByDependencies', { key });
                 return;
@@ -798,8 +798,8 @@ export class SchemaDiffer {
         const visiting = new Set<string>();
 
         const visit = (node: string) => {
-            if (visited.has(node)) return;
-            if (visiting.has(node)) return; // Skip cycles
+            if (visited.has(node)) {return;}
+            if (visiting.has(node)) {return;} // Skip cycles
 
             visiting.add(node);
 

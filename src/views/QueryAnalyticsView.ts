@@ -79,7 +79,7 @@ export class QueryAnalyticsView {
                     { placeHolder: 'Select a database connection for analytics' }
                 );
 
-                if (!selected) return;
+                if (!selected) {return;}
                 selectedConnectionId = selected.connectionId;
             } else if (!selectedConnectionId) {
                 selectedConnectionId = connections[0].id;
@@ -122,7 +122,7 @@ export class QueryAnalyticsView {
     }
 
     private setupMessageHandler(): void {
-        if (!this.webviewPanel) return;
+        if (!this.webviewPanel) {return;}
 
         this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
             try {
@@ -164,7 +164,7 @@ export class QueryAnalyticsView {
     }
 
     private async changeTimeRange(_hours: number): Promise<void> {
-        if (!this.currentReport) return;
+        if (!this.currentReport) {return;}
 
         // Regenerate report with new time range
         const connectionId = this.currentReport.summary.totalQueries > 0 ?
@@ -331,7 +331,7 @@ export class QueryAnalyticsView {
     }
 
     private async updateWebviewContent(): Promise<void> {
-        if (!this.webviewPanel || !this.currentReport) return;
+        if (!this.webviewPanel || !this.currentReport) {return;}
 
         const html = await this.generateAnalyticsHtml(this.currentReport);
         this.webviewPanel.webview.html = html;

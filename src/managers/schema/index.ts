@@ -57,19 +57,8 @@ export type {
     StakeholderImpact
 } from './ImpactAnalysis';
 
-export type {
-    EnhancedMigrationScript,
-    SchemaSnapshot,
-    MigrationStep,
-    PreCondition,
-    PostCondition,
-    RollbackScript,
-    ValidationStep,
-    MigrationDependency,
-    MigrationExecutionResult,
-    ExecutionLogEntry,
-    ValidationResult
-} from './MigrationTypes';
+// Migration types are now defined inline in their respective modules
+// to reduce complexity and improve maintainability
 
 // Export classes
 export { SchemaOperations } from './SchemaOperations';

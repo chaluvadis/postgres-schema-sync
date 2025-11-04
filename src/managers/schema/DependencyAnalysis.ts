@@ -764,7 +764,7 @@ export class DependencyAnalysis {
 
     // Build edges for dependents (reverse relationships)
     for (const otherObj of allObjects) {
-      if (otherObj.id === obj.id) continue;
+      if (otherObj.id === obj.id) {continue;}
 
       const isDependent = otherObj.dependencies.some(
         (dep) => dep.objectId === obj.id
@@ -976,10 +976,10 @@ export class DependencyAnalysis {
 
     // View relationships - views typically read from other objects
     if (normalizedSourceType === "view") {
-      if (normalizedTargetType === "table") return "data_flow";
-      if (normalizedTargetType === "view") return "data_flow"; // Chained views
-      if (normalizedTargetType === "function") return "functional";
-      if (normalizedTargetType === "index") return "structural"; // Indexed views
+      if (normalizedTargetType === "table") {return "data_flow";}
+      if (normalizedTargetType === "view") {return "data_flow";} // Chained views
+      if (normalizedTargetType === "function") {return "functional";}
+      if (normalizedTargetType === "index") {return "structural";} // Indexed views
     }
 
     // Function relationships - functions can read from or modify data
@@ -997,54 +997,54 @@ export class DependencyAnalysis {
         }
         return "functional"; // Read-only functions
       }
-      if (normalizedTargetType === "view") return "functional";
-      if (normalizedTargetType === "function") return "functional"; // Function calls
-      if (normalizedTargetType === "type") return "structural"; // Typed functions
+      if (normalizedTargetType === "view") {return "functional";}
+      if (normalizedTargetType === "function") {return "functional";} // Function calls
+      if (normalizedTargetType === "type") {return "structural";} // Typed functions
     }
 
     // Index relationships - indexes support tables and views
     if (normalizedSourceType === "index") {
-      if (normalizedTargetType === "table") return "structural";
-      if (normalizedTargetType === "view") return "structural";
-      if (normalizedTargetType === "column") return "structural";
+      if (normalizedTargetType === "table") {return "structural";}
+      if (normalizedTargetType === "view") {return "structural";}
+      if (normalizedTargetType === "column") {return "structural";}
     }
 
     // Constraint relationships - enforce data integrity
     if (normalizedSourceType === "constraint") {
-      if (normalizedTargetType === "table") return "structural";
-      if (normalizedTargetType === "column") return "structural";
-      if (normalizedTargetType === "domain") return "structural";
+      if (normalizedTargetType === "table") {return "structural";}
+      if (normalizedTargetType === "column") {return "structural";}
+      if (normalizedTargetType === "domain") {return "structural";}
     }
 
     // Trigger relationships - respond to table events
     if (normalizedSourceType === "trigger") {
-      if (normalizedTargetType === "table") return "control_flow";
-      if (normalizedTargetType === "function") return "control_flow"; // Trigger functions
-      if (normalizedTargetType === "view") return "control_flow";
+      if (normalizedTargetType === "table") {return "control_flow";}
+      if (normalizedTargetType === "function") {return "control_flow";} // Trigger functions
+      if (normalizedTargetType === "view") {return "control_flow";}
     }
 
     // Sequence relationships - provide auto-incrementing values
     if (normalizedSourceType === "sequence") {
-      if (normalizedTargetType === "table") return "functional";
-      if (normalizedTargetType === "column") return "functional";
-      if (normalizedTargetType === "function") return "functional";
+      if (normalizedTargetType === "table") {return "functional";}
+      if (normalizedTargetType === "column") {return "functional";}
+      if (normalizedTargetType === "function") {return "functional";}
     }
 
     // Type/Domain relationships - define data types
     if (normalizedSourceType === "type" || normalizedSourceType === "domain") {
-      if (normalizedTargetType === "table") return "structural";
-      if (normalizedTargetType === "column") return "structural";
-      if (normalizedTargetType === "function") return "structural";
-      if (normalizedTargetType === "domain") return "structural";
+      if (normalizedTargetType === "table") {return "structural";}
+      if (normalizedTargetType === "column") {return "structural";}
+      if (normalizedTargetType === "function") {return "structural";}
+      if (normalizedTargetType === "domain") {return "structural";}
     }
 
     // Column relationships - columns are part of tables
     if (normalizedSourceType === "column") {
-      if (normalizedTargetType === "table") return "structural";
-      if (normalizedTargetType === "index") return "structural";
-      if (normalizedTargetType === "constraint") return "structural";
-      if (normalizedTargetType === "type") return "structural";
-      if (normalizedTargetType === "domain") return "structural";
+      if (normalizedTargetType === "table") {return "structural";}
+      if (normalizedTargetType === "index") {return "structural";}
+      if (normalizedTargetType === "constraint") {return "structural";}
+      if (normalizedTargetType === "type") {return "structural";}
+      if (normalizedTargetType === "domain") {return "structural";}
     }
 
     // Schema relationships - schemas contain objects
@@ -1095,65 +1095,65 @@ export class DependencyAnalysis {
 
     // Materialized view relationships - pre-computed views
     if (normalizedSourceType === "materialized view") {
-      if (normalizedTargetType === "table") return "data_flow";
-      if (normalizedTargetType === "view") return "data_flow";
-      if (normalizedTargetType === "function") return "functional";
-      if (normalizedTargetType === "index") return "structural";
+      if (normalizedTargetType === "table") {return "data_flow";}
+      if (normalizedTargetType === "view") {return "data_flow";}
+      if (normalizedTargetType === "function") {return "functional";}
+      if (normalizedTargetType === "index") {return "structural";}
     }
 
     // Foreign table relationships - external data sources
     if (normalizedSourceType === "foreign table") {
-      if (normalizedTargetType === "table") return "data_flow";
-      if (normalizedTargetType === "server") return "structural";
-      if (normalizedTargetType === "schema") return "structural";
+      if (normalizedTargetType === "table") {return "data_flow";}
+      if (normalizedTargetType === "server") {return "structural";}
+      if (normalizedTargetType === "schema") {return "structural";}
     }
 
     // Partition relationships - table partitioning
     if (normalizedSourceType === "partition") {
-      if (normalizedTargetType === "table") return "structural";
-      if (normalizedTargetType === "index") return "structural";
+      if (normalizedTargetType === "table") {return "structural";}
+      if (normalizedTargetType === "index") {return "structural";}
     }
 
     // Policy relationships - row-level security
     if (normalizedSourceType === "policy") {
-      if (normalizedTargetType === "table") return "structural";
-      if (normalizedTargetType === "role") return "structural";
+      if (normalizedTargetType === "table") {return "structural";}
+      if (normalizedTargetType === "role") {return "structural";}
     }
 
     // Rule relationships - query rewrite rules
     if (normalizedSourceType === "rule") {
-      if (normalizedTargetType === "table") return "control_flow";
-      if (normalizedTargetType === "view") return "control_flow";
+      if (normalizedTargetType === "table") {return "control_flow";}
+      if (normalizedTargetType === "view") {return "control_flow";}
     }
 
     // Operator relationships - custom operators
     if (normalizedSourceType === "operator") {
-      if (normalizedTargetType === "function") return "functional";
-      if (normalizedTargetType === "type") return "structural";
+      if (normalizedTargetType === "function") {return "functional";}
+      if (normalizedTargetType === "type") {return "structural";}
     }
 
     // Collation relationships - text sorting rules
     if (normalizedSourceType === "collation") {
-      if (normalizedTargetType === "column") return "structural";
-      if (normalizedTargetType === "database") return "structural";
+      if (normalizedTargetType === "column") {return "structural";}
+      if (normalizedTargetType === "database") {return "structural";}
     }
 
     // Cast relationships - type conversion rules
     if (normalizedSourceType === "cast") {
-      if (normalizedTargetType === "type") return "functional";
-      if (normalizedTargetType === "function") return "functional";
+      if (normalizedTargetType === "type") {return "functional";}
+      if (normalizedTargetType === "function") {return "functional";}
     }
 
     // Aggregate relationships - aggregate functions
     if (normalizedSourceType === "aggregate") {
-      if (normalizedTargetType === "function") return "functional";
-      if (normalizedTargetType === "type") return "structural";
+      if (normalizedTargetType === "function") {return "functional";}
+      if (normalizedTargetType === "type") {return "structural";}
     }
 
     // Language relationships - procedural languages
     if (normalizedSourceType === "language") {
-      if (normalizedTargetType === "function") return "structural";
-      if (normalizedTargetType === "procedure") return "structural";
+      if (normalizedTargetType === "function") {return "structural";}
+      if (normalizedTargetType === "procedure") {return "structural";}
     }
 
     // Default fallback - no specific relationship identified
@@ -1446,8 +1446,8 @@ export class DependencyAnalysis {
     const hasViews = nodes.some((node) => node.type === "view");
     const hasFunctions = nodes.some((node) => node.type === "function");
 
-    if (hasTables && (hasViews || hasFunctions)) return "high";
-    if (hasTables) return "medium";
+    if (hasTables && (hasViews || hasFunctions)) {return "high";}
+    if (hasTables) {return "medium";}
     return "low";
   }
   private calculateRelationshipStrengths(
@@ -1571,8 +1571,8 @@ export class DependencyAnalysis {
     objectIds: string[],
     edges: RichDependencyEdge[]
   ): "simple" | "moderate" | "complex" {
-    if (objectIds.length <= 2) return "simple";
-    if (objectIds.length <= 4) return "moderate";
+    if (objectIds.length <= 2) {return "simple";}
+    if (objectIds.length <= 4) {return "moderate";}
     return "complex";
   }
   private assessLineageBusinessImpact(
@@ -1583,8 +1583,8 @@ export class DependencyAnalysis {
       .map((id) => allObjects.find((obj) => obj.id === id))
       .filter(Boolean);
 
-    if (objects.some((obj) => obj?.type === "table")) return "high";
-    if (objects.some((obj) => obj?.type === "view")) return "medium";
+    if (objects.some((obj) => obj?.type === "table")) {return "high";}
+    if (objects.some((obj) => obj?.type === "view")) {return "medium";}
     return "low";
   }
   private calculateMaxDepthFromNodes(
@@ -2085,9 +2085,9 @@ export class DependencyAnalysis {
     dependencies: DependencyInfo[],
     circularDependencies: CircularDependency[]
   ): "simple" | "moderate" | "complex" {
-    if (circularDependencies.length > 0) return "complex";
-    if (dependencies.length > 20) return "complex";
-    if (dependencies.length > 10) return "moderate";
+    if (circularDependencies.length > 0) {return "complex";}
+    if (dependencies.length > 20) {return "complex";}
+    if (dependencies.length > 10) {return "moderate";}
     return "simple";
   }
   private generateDependencySummary(
@@ -2305,9 +2305,9 @@ export class DependencyAnalysis {
     ).length;
     const highFactors = riskFactors.filter((f) => f.severity === "high").length;
 
-    if (criticalFactors > 0) overallRisk = "critical";
-    else if (highFactors > 1) overallRisk = "high";
-    else if (highFactors > 0 || riskFactors.length > 3) overallRisk = "medium";
+    if (criticalFactors > 0) {overallRisk = "critical";}
+    else if (highFactors > 1) {overallRisk = "high";}
+    else if (highFactors > 0 || riskFactors.length > 3) {overallRisk = "medium";}
 
     return {
       overallRisk,

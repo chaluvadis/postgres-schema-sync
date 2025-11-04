@@ -87,11 +87,11 @@ export async function executeSQLContent(
             let errorCount = 0;
 
             for (let i = 0; i < statements.length; i++) {
-                if (!queryExecutionState.isExecuting) break;
+                if (!queryExecutionState.isExecuting) {break;}
 
                 const statement = statements[i];
                 const trimmedStatement = statement.trim();
-                if (trimmedStatement.length === 0) continue;
+                if (trimmedStatement.length === 0) {continue;}
 
                 queryExecutionState.currentStatement = i + 1;
 
@@ -347,10 +347,10 @@ function analyzePerformance(avgDuration: number, totalDuration: number): { ratin
 
 function getPerformanceIndicator(duration: number, avgDuration: number): string {
     const ratio = duration / avgDuration;
-    if (ratio < 0.5) return '⚡';
-    if (ratio < 0.8) return '🚀';
-    if (ratio < 1.2) return '✅';
-    if (ratio < 2.0) return '⚠️';
+    if (ratio < 0.5) {return '⚡';}
+    if (ratio < 0.8) {return '🚀';}
+    if (ratio < 1.2) {return '✅';}
+    if (ratio < 2.0) {return '⚠️';}
     return '🐌';
 }
 

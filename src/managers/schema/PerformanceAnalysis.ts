@@ -444,9 +444,9 @@ export class PerformanceAnalysis {
         };
 
         comparison.summary.metricsCompared++;
-        if (status === "normal") comparison.summary.normalMetrics++;
-        if (status === "warning") comparison.summary.warningMetrics++;
-        if (status === "critical") comparison.summary.criticalMetrics++;
+        if (status === "normal") {comparison.summary.normalMetrics++;}
+        if (status === "warning") {comparison.summary.warningMetrics++;}
+        if (status === "critical") {comparison.summary.criticalMetrics++;}
       }
     }
 
@@ -1349,11 +1349,11 @@ export class PerformanceAnalysis {
     const calls = parseInt(queryRow.calls) || 1;
 
     // Simple scoring algorithm: lower mean time and higher calls = better score
-    if (meanTime === 0) return 100;
-    if (meanTime > 10000) return 0; // Very slow queries
-    if (meanTime > 1000) return 25; // Slow queries
-    if (meanTime > 100) return 50; // Moderate queries
-    if (meanTime > 10) return 75; // Fast queries
+    if (meanTime === 0) {return 100;}
+    if (meanTime > 10000) {return 0;} // Very slow queries
+    if (meanTime > 1000) {return 25;} // Slow queries
+    if (meanTime > 100) {return 50;} // Moderate queries
+    if (meanTime > 10) {return 75;} // Fast queries
     return 90; // Very fast queries
   }
 
@@ -1379,7 +1379,7 @@ export class PerformanceAnalysis {
   private calculateTrend(
     dataPoints: number[]
   ): "increasing" | "decreasing" | "stable" {
-    if (dataPoints.length < 2) return "stable";
+    if (dataPoints.length < 2) {return "stable";}
 
     const firstHalf = dataPoints.slice(0, Math.floor(dataPoints.length / 2));
     const secondHalf = dataPoints.slice(Math.floor(dataPoints.length / 2));
@@ -1393,8 +1393,8 @@ export class PerformanceAnalysis {
 
     const change = ((secondAvg - firstAvg) / firstAvg) * 100;
 
-    if (change > 5) return "increasing";
-    if (change < -5) return "decreasing";
+    if (change > 5) {return "increasing";}
+    if (change < -5) {return "decreasing";}
     return "stable";
   }
 
@@ -1405,20 +1405,20 @@ export class PerformanceAnalysis {
     let healthScore = 100;
 
     // Deduct points for issues
-    if (metrics.databaseMetrics?.blocks?.hitRate < 90) healthScore -= 20;
-    if (metrics.databaseMetrics?.blocks?.hitRate < 80) healthScore -= 30;
+    if (metrics.databaseMetrics?.blocks?.hitRate < 90) {healthScore -= 20;}
+    if (metrics.databaseMetrics?.blocks?.hitRate < 80) {healthScore -= 30;}
 
-    if (metrics.databaseMetrics?.deadlocks > 0) healthScore -= 25;
-    if (metrics.databaseMetrics?.deadlocks > 5) healthScore -= 35;
+    if (metrics.databaseMetrics?.deadlocks > 0) {healthScore -= 25;}
+    if (metrics.databaseMetrics?.deadlocks > 5) {healthScore -= 35;}
 
-    if (metrics.derivedMetrics?.maintenanceOverdue > 0) healthScore -= 15;
-    if (metrics.derivedMetrics?.maintenanceOverdue > 5) healthScore -= 25;
+    if (metrics.derivedMetrics?.maintenanceOverdue > 0) {healthScore -= 15;}
+    if (metrics.derivedMetrics?.maintenanceOverdue > 5) {healthScore -= 25;}
 
-    if (trendAnalysis.trendDirection === "degrading") healthScore -= 20;
+    if (trendAnalysis.trendDirection === "degrading") {healthScore -= 20;}
 
-    if (healthScore >= 80) return "excellent";
-    if (healthScore >= 60) return "good";
-    if (healthScore >= 40) return "fair";
+    if (healthScore >= 80) {return "excellent";}
+    if (healthScore >= 60) {return "good";}
+    if (healthScore >= 40) {return "fair";}
     return "poor";
   }
 

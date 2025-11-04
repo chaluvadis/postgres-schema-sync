@@ -122,10 +122,10 @@ export class NotificationManager {
         if (unreadCount > 0) {
             const stats = this.getStatistics();
             tooltip += '\n\n📊 Breakdown:';
-            if (stats.byType.error > 0) tooltip += `\n  ❌ Errors: ${stats.byType.error}`;
-            if (stats.byType.warning > 0) tooltip += `\n  ⚠️ Warnings: ${stats.byType.warning}`;
-            if (stats.byType.success > 0) tooltip += `\n  ✅ Success: ${stats.byType.success}`;
-            if (stats.byType.info > 0) tooltip += `\n  ℹ️ Info: ${stats.byType.info}`;
+            if (stats.byType.error > 0) {tooltip += `\n  ❌ Errors: ${stats.byType.error}`;}
+            if (stats.byType.warning > 0) {tooltip += `\n  ⚠️ Warnings: ${stats.byType.warning}`;}
+            if (stats.byType.success > 0) {tooltip += `\n  ✅ Success: ${stats.byType.success}`;}
+            if (stats.byType.info > 0) {tooltip += `\n  ℹ️ Info: ${stats.byType.info}`;}
 
             // Show top categories
             const topCategories = Object.entries(stats.byCategory)

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { PerformanceMonitorService, PerformanceAlert } from '@/services/PerformanceMonitorService';
 import { Logger } from '@/utils/Logger';
 
-export interface AlertRule {
+interface AlertRule {
     id: string;
     name: string;
     description: string;
@@ -16,7 +16,7 @@ export interface AlertRule {
     updatedAt: Date;
 }
 
-export interface AlertCondition {
+interface AlertCondition {
     metric: string;
     operator: '>' | '<' | '>=' | '<=' | '==' | '!=';
     threshold: number;
@@ -24,11 +24,12 @@ export interface AlertCondition {
     queryPattern?: string; // For query-specific alerts
 }
 
-export interface NotificationChannel {
+interface NotificationChannel {
     type: 'vscode' | 'email' | 'slack' | 'teams' | 'webhook';
     enabled: boolean;
     configuration: Record<string, any>;
 }
+
 
 export interface AlertNotification {
     id: string;
@@ -202,7 +203,7 @@ export class PerformanceAlertSystem {
         Logger.info('Alert monitoring stopped', 'stopAlertMonitoring');
     }
     private updateStatusBar(): void {
-        if (!this.statusBarItem) return;
+        if (!this.statusBarItem) {return;}
 
         const alerts = this.performanceMonitor.getAlerts(undefined, undefined, undefined, true);
         const criticalAlerts = alerts.filter(a => a.severity === 'Critical').length;

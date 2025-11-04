@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { NotificationManager } from '@/views/NotificationManager';
+import { ProgressTracker } from '@/core/ProgressTracker';
 export interface StatusBarItem {
     id: string;
     text: string;
@@ -54,12 +55,14 @@ export class EnhancedStatusBarProvider {
     private updateTimer?: NodeJS.Timeout | undefined;
     private notificationManager: NotificationManager;
     private connectionManager: ConnectionManager;
+    private progressTracker: ProgressTracker;
     private constructor(
         connectionManager: ConnectionManager,
         notificationManager: NotificationManager
     ) {
         this.connectionManager = connectionManager;
         this.notificationManager = notificationManager;
+        this.progressTracker = new ProgressTracker();
         this.config = this.loadConfig();
 
         this.createStatusBarItems();
@@ -284,8 +287,12 @@ export class EnhancedStatusBarProvider {
         const item = this.statusBarItems.get('operations');
         if (!item) { return; }
 
-        const activeOperations = Array.from(this.operationIndicators.values())
+        // Get operations from both local indicators and ProgressTracker
+        const localOperations = Array.from(this.operationIndicators.values())
             .filter(op => op.status === 'running' || op.status === 'pending');
+
+        const progressTrackerStats = this.progressTracker.getStats();
+        const activeOperations = localOperations; // Prioritize local operations for now
 
         if (activeOperations.length === 0) {
             item.text = '$(sync) No operations';
@@ -850,6 +857,9 @@ export class EnhancedStatusBarProvider {
                 indicator.cancellationToken.cancel();
             }
         });
+
+        // Dispose ProgressTracker
+        this.progressTracker.dispose();
 
         this.statusBarItems.forEach(item => item.dispose());
         this.statusBarItems.clear();

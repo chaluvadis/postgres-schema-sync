@@ -1,6 +1,7 @@
 import { ConnectionManager } from "@/managers/ConnectionManager";
 import { Logger } from "@/utils/Logger";
 import { PostgreSqlConnectionManager } from "@/core/PostgreSqlConnectionManager";
+import { SchemaOperations } from "@/managers/schema/SchemaOperations";
 import { getUUId } from "@/utils/helper";
 
 export interface QueryResult {
@@ -37,10 +38,12 @@ export interface IntelliSenseSuggestion {
 export class QueryExecutionService {
   private connectionManager: ConnectionManager;
   private dotNetService: PostgreSqlConnectionManager;
+  private schemaOperations: SchemaOperations;
 
   constructor(connectionManager: ConnectionManager) {
     this.connectionManager = connectionManager;
     this.dotNetService = PostgreSqlConnectionManager.getInstance();
+    this.schemaOperations = new SchemaOperations(connectionManager);
   }
 
   async executeQuery(
@@ -58,10 +61,8 @@ export class QueryExecutionService {
         options,
       });
 
-      // Use ConnectionService for consistent connection handling
-      const { ConnectionServiceFactory } = await import("@/utils/ConnectionServiceFactory");
-      const factory = ConnectionServiceFactory.getInstance();
-      const connectionService = factory.createConnectionService(this.connectionManager);
+      // Use ConnectionManager directly
+      const connectionService = this.connectionManager;
       const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
       if (!dotNetConnection) {
         throw new Error("Failed to create connection info");
@@ -162,10 +163,8 @@ export class QueryExecutionService {
         { label: "DISTINCT", kind: "keyword", detail: "Remove duplicates" },
       ];
 
-      // Use ConnectionService for consistent connection handling
-      const { ConnectionServiceFactory } = await import("@/utils/ConnectionServiceFactory");
-      const factory = ConnectionServiceFactory.getInstance();
-      const connectionService = factory.createConnectionService(this.connectionManager);
+      // Use ConnectionManager directly
+      const connectionService = this.connectionManager;
       const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
       if (!dotNetConnection) {
         return basicKeywords;
@@ -173,8 +172,7 @@ export class QueryExecutionService {
 
       // Try to get schema objects for more specific suggestions
       try {
-        const schemaBrowser = new (await import("@/core/PostgreSqlSchemaBrowser")).PostgreSqlSchemaBrowser();
-        const schemaObjects = await schemaBrowser.getDatabaseObjectsAsync(dotNetConnection);
+        const schemaObjects = await this.schemaOperations.getDatabaseObjects(connectionId);
 
         // Add table and view suggestions
         const objectSuggestions: IntelliSenseSuggestion[] = schemaObjects.map(

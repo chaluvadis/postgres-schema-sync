@@ -40,7 +40,7 @@ export class QueryCommandHandlers {
     async executeQuery(): Promise<void> {
         if (this.components.queryEditorView) {
             const selectedConnection = await this.selectConnection();
-            if (!selectedConnection) return;
+            if (!selectedConnection) {return;}
 
             await this.components.queryEditorView.showQueryEditor(selectedConnection.id);
         } else {
@@ -71,7 +71,7 @@ export class QueryCommandHandlers {
                 placeHolder: 'Select a database connection'
             });
 
-            if (!selected) return undefined;
+            if (!selected) {return undefined;}
             selectedConnection = selected.connection;
         }
 
