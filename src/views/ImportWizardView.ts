@@ -143,7 +143,7 @@ export class ImportWizardView {
     }
 
     private async showCurrentStep(): Promise<void> {
-        if (!this.panel || !this.wizardData) return;
+        if (!this.panel || !this.wizardData) {return;}
 
         const steps = [
             { id: 'file-analysis', title: 'File Analysis', description: 'Analyze and preview data' },
@@ -158,7 +158,7 @@ export class ImportWizardView {
     }
 
     private generateWizardHtml(steps: any[]): string {
-        if (!this.wizardData) return '';
+        if (!this.wizardData) {return '';}
 
         const currentStepData = steps[this.currentStep];
 
@@ -538,7 +538,7 @@ export class ImportWizardView {
     }
 
     private generateStepContent(stepId: string): string {
-        if (!this.wizardData) return '';
+        if (!this.wizardData) {return '';}
 
         switch (stepId) {
             case 'file-analysis':
@@ -849,14 +849,14 @@ export class ImportWizardView {
     }
 
     private getQualityBadge(score: number): string {
-        if (score >= 90) return `<span class="quality-score quality-excellent">${score.toFixed(0)}%</span>`;
-        if (score >= 70) return `<span class="quality-score quality-good">${score.toFixed(0)}%</span>`;
+        if (score >= 90) {return `<span class="quality-score quality-excellent">${score.toFixed(0)}%</span>`;}
+        if (score >= 70) {return `<span class="quality-score quality-good">${score.toFixed(0)}%</span>`;}
         return `<span class="quality-score quality-poor">${score.toFixed(0)}%</span>`;
     }
 
     private getQualityClass(score: number): string {
-        if (score >= 90) return 'quality-excellent';
-        if (score >= 70) return 'quality-good';
+        if (score >= 90) {return 'quality-excellent';}
+        if (score >= 70) {return 'quality-good';}
         return 'quality-poor';
     }
 
@@ -898,7 +898,7 @@ export class ImportWizardView {
     }
 
     private async finishWizard(): Promise<void> {
-        if (!this.wizardData) return;
+        if (!this.wizardData) {return;}
 
         try {
             // Get target configuration from form
@@ -923,7 +923,7 @@ export class ImportWizardView {
     }
 
     private updateColumnMapping(sourceColumn: string, targetColumn: string, dataType: string): void {
-        if (!this.wizardData) return;
+        if (!this.wizardData) {return;}
 
         const mapping = this.wizardData.columnMappings.find(m => m.sourceColumn === sourceColumn);
         if (mapping) {
@@ -933,7 +933,7 @@ export class ImportWizardView {
     }
 
     private updateTargetConfig(table: string, schema: string): void {
-        if (!this.wizardData) return;
+        if (!this.wizardData) {return;}
 
         this.wizardData.targetTable = table;
         this.wizardData.targetSchema = schema;

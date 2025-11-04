@@ -679,8 +679,8 @@ export class MetadataManagement {
         columnMetadata
           .map((col) => {
             let colDef = `  ${col.name} ${col.dataType}`;
-            if (!col.isNullable) colDef += " NOT NULL";
-            if (col.defaultValue) colDef += ` DEFAULT ${col.defaultValue}`;
+            if (!col.isNullable) {colDef += " NOT NULL";}
+            if (col.defaultValue) {colDef += ` DEFAULT ${col.defaultValue}`;}
             return colDef;
           })
           .join(",\n") +
@@ -970,9 +970,9 @@ export class MetadataManagement {
 
     // Determine complexity level
     let level: "simple" | "moderate" | "complex";
-    if (complexityScore <= 2) level = "simple";
-    else if (complexityScore <= 6) level = "moderate";
-    else level = "complex";
+    if (complexityScore <= 2) {level = "simple";}
+    else if (complexityScore <= 6) {level = "moderate";}
+    else {level = "complex";}
 
     return {
       level,
@@ -982,7 +982,7 @@ export class MetadataManagement {
     };
   }
   private extractCheckOption(definition: string): string | undefined {
-    if (!definition) return undefined;
+    if (!definition) {return undefined;}
 
     const checkOptionMatch = definition.match(
       /with\s+(local|cascaDED)\s+check\s+option/i
@@ -990,7 +990,7 @@ export class MetadataManagement {
     return checkOptionMatch ? checkOptionMatch[1].toLowerCase() : undefined;
   }
   private isViewUpdatable(definition: string): boolean {
-    if (!definition) return false;
+    if (!definition) {return false;}
 
     // Simple heuristic: views with simple SELECT from single table are often updatable
     const sql = definition.toLowerCase();
@@ -1002,7 +1002,7 @@ export class MetadataManagement {
   private extractDataSources(definition: string): string[] {
     const sources: string[] = [];
 
-    if (!definition) return sources;
+    if (!definition) {return sources;}
 
     // Simple regex to find table references in FROM clause
     const fromMatch = definition.match(/from\s+([^\s,;]+)/i);
@@ -1064,14 +1064,14 @@ export class MetadataManagement {
     );
 
     let pattern = "mixed";
-    if (hasNumeric && !hasText && !hasDate) pattern = "numeric";
-    else if (hasText && !hasNumeric && !hasDate) pattern = "textual";
-    else if (hasDate && columns.length <= 5) pattern = "temporal";
+    if (hasNumeric && !hasText && !hasDate) {pattern = "numeric";}
+    else if (hasText && !hasNumeric && !hasDate) {pattern = "textual";}
+    else if (hasDate && columns.length <= 5) {pattern = "temporal";}
 
     return { skewness, nullPercentage, pattern };
   }
   private formatBytes(bytes: number): string {
-    if (bytes === 0) return "0 B";
+    if (bytes === 0) {return "0 B";}
 
     const k = 1024;
     const sizes = ["B", "KB", "MB", "GB", "TB"];
@@ -1085,7 +1085,7 @@ export class MetadataManagement {
   ): "excellent" | "good" | "fair" | "poor" {
     const now = new Date();
 
-    if (!lastVacuum || !lastAnalyze) return "poor";
+    if (!lastVacuum || !lastAnalyze) {return "poor";}
 
     const vacuumAge = now.getTime() - lastVacuum.getTime();
     const analyzeAge = now.getTime() - lastAnalyze.getTime();
@@ -1093,9 +1093,9 @@ export class MetadataManagement {
     const vacuumDays = vacuumAge / (24 * 60 * 60 * 1000);
     const analyzeDays = analyzeAge / (24 * 60 * 60 * 1000);
 
-    if (vacuumDays <= 1 && analyzeDays <= 1) return "excellent";
-    if (vacuumDays <= 3 && analyzeDays <= 3) return "good";
-    if (vacuumDays <= 7 && analyzeDays <= 7) return "fair";
+    if (vacuumDays <= 1 && analyzeDays <= 1) {return "excellent";}
+    if (vacuumDays <= 3 && analyzeDays <= 3) {return "good";}
+    if (vacuumDays <= 7 && analyzeDays <= 7) {return "fair";}
 
     return "poor";
   }
@@ -1107,20 +1107,20 @@ export class MetadataManagement {
     let score = 100;
 
     // Penalize large tables without adequate indexing
-    if (rowCount > 100000 && indexCount < 2) score -= 30;
-    if (rowCount > 1000000 && indexCount < 3) score -= 20;
+    if (rowCount > 100000 && indexCount < 2) {score -= 30;}
+    if (rowCount > 1000000 && indexCount < 3) {score -= 20;}
 
     // Penalize excessive constraints
-    if (constraintCount > 20) score -= 15;
+    if (constraintCount > 20) {score -= 15;}
 
     // Bonus for well-indexed tables
     if (rowCount > 10000 && indexCount >= Math.ceil(rowCount / 100000))
-      score += 10;
+      {score += 10;}
 
-    if (score >= 90) return "A";
-    if (score >= 80) return "B";
-    if (score >= 70) return "C";
-    if (score >= 60) return "D";
+    if (score >= 90) {return "A";}
+    if (score >= 80) {return "B";}
+    if (score >= 70) {return "C";}
+    if (score >= 60) {return "D";}
 
     return "F";
   }
@@ -1132,9 +1132,9 @@ export class MetadataManagement {
     const hasForeignKeys = constraints.some((c) => c.type === "FOREIGN KEY");
     const hasUniqueConstraints = constraints.some((c) => c.type === "UNIQUE");
 
-    if (hasPrimaryKey && hasForeignKeys && rowCount > 100000) return "critical";
-    if (hasPrimaryKey && rowCount > 50000) return "high";
-    if (hasPrimaryKey || hasUniqueConstraints) return "medium";
+    if (hasPrimaryKey && hasForeignKeys && rowCount > 100000) {return "critical";}
+    if (hasPrimaryKey && rowCount > 50000) {return "high";}
+    if (hasPrimaryKey || hasUniqueConstraints) {return "medium";}
 
     return "low";
   }
@@ -1403,9 +1403,9 @@ export class MetadataManagement {
 
     // Determine complexity level
     let complexity: "simple" | "moderate" | "complex";
-    if (complexityScore <= 2) complexity = "simple";
-    else if (complexityScore <= 5) complexity = "moderate";
-    else complexity = "complex";
+    if (complexityScore <= 2) {complexity = "simple";}
+    else if (complexityScore <= 5) {complexity = "moderate";}
+    else {complexity = "complex";}
 
     // Determine volatility (simplified heuristic)
     let volatility: "volatile" | "stable" | "immutable" = "volatile";
@@ -1567,7 +1567,7 @@ export class MetadataManagement {
   ): string[] {
     const references: string[] = [];
 
-    if (!sql) return references;
+    if (!sql) {return references;}
 
     const lowerSQL = sql.toLowerCase();
     const lowerTableName = tableName.toLowerCase();
@@ -1720,7 +1720,7 @@ export class MetadataManagement {
     const dependencies: Array<{ name: string; schema: string; type: string; }> =
       [];
 
-    if (!sql) return dependencies;
+    if (!sql) {return dependencies;}
 
     // Extract table references from FROM clauses
     const fromMatches = sql.match(/from\s+([^\s,;]+)/gi);
@@ -2653,7 +2653,7 @@ export class MetadataManagement {
     definition: string,
     viewName: string
   ): boolean {
-    if (!definition || !viewName) return false;
+    if (!definition || !viewName) {return false;}
 
     const lowerDef = definition.toLowerCase();
     const lowerViewName = viewName.toLowerCase();
@@ -2682,7 +2682,7 @@ export class MetadataManagement {
     depth: number;
     count: number;
   } {
-    if (!definition) return { depth: 0, count: 0 };
+    if (!definition) {return { depth: 0, count: 0 };}
 
     let maxDepth = 0;
     let currentDepth = 0;
@@ -2715,7 +2715,7 @@ export class MetadataManagement {
     definition: string,
     functionName: string
   ): boolean {
-    if (!definition || !functionName) return false;
+    if (!definition || !functionName) {return false;}
 
     const lowerDef = definition.toLowerCase();
     const lowerFuncName = functionName.toLowerCase();
@@ -2876,9 +2876,9 @@ export class MetadataManagement {
   }
   private isCacheValid(entry: MetadataCacheEntry): boolean {
     // Check if cache entry is still valid
-    if (entry.isDirty) return false;
-    if (Date.now() > entry.expiresAt.getTime()) return false;
-    if (entry.errorCount > 5) return false; // Too many errors
+    if (entry.isDirty) {return false;}
+    if (Date.now() > entry.expiresAt.getTime()) {return false;}
+    if (entry.errorCount > 5) {return false;} // Too many errors
 
     return true;
   }
@@ -3325,7 +3325,7 @@ export class MetadataManagement {
         );
 
         for (const tableObj of tableObjects) {
-          if (tableObj.name === tableName) continue; // Skip self
+          if (tableObj.name === tableName) {continue;} // Skip self
 
           const constraints =
             await this.dotNetService.extractConstraintMetadata(
@@ -3402,7 +3402,7 @@ export class MetadataManagement {
       );
 
       for (const view of views) {
-        if (view.name === viewName) continue; // Skip self
+        if (view.name === viewName) {continue;} // Skip self
 
         if (
           view.dependencies &&
@@ -3516,7 +3516,7 @@ export class MetadataManagement {
       );
 
       for (const func of functions) {
-        if (func.name === functionName) continue; // Skip self
+        if (func.name === functionName) {continue;} // Skip self
 
         // Check if function definition references the other function
         if (

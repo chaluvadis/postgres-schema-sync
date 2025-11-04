@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { Logger } from "@/utils/Logger";
 import { PostgreSqlConnectionManager, ConnectionInfo } from "@/core/PostgreSqlConnectionManager";
 import { SecurityManager, DataClassification } from "@/services/SecurityManager";
+import { ValidationFramework } from "@/core/ValidationFramework";
 
 export interface DatabaseConnection {
   id: string;
@@ -48,6 +49,19 @@ export interface ConnectionHealth {
   isAutoReconnecting: boolean;
 }
 
+export interface ConnectionValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  connectionTime?: number;
+}
+
+export interface ConnectionServiceOptions {
+  retryAttempts?: number;
+  connectionTimeout?: number;
+  validateOnGet?: boolean;
+}
+
 export class ConnectionManager {
   private context: vscode.ExtensionContext;
   private connections: Map<string, DatabaseConnection> = new Map();
@@ -58,10 +72,18 @@ export class ConnectionManager {
   private healthCheckInterval?: NodeJS.Timeout;
   private secrets: vscode.SecretStorage | undefined;
   private dotNetService: PostgreSqlConnectionManager;
+  private validationFramework: ValidationFramework;
+  private connectionServiceOptions: Required<ConnectionServiceOptions>;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
     this.dotNetService = PostgreSqlConnectionManager.getInstance();
+    this.validationFramework = new ValidationFramework();
+    this.connectionServiceOptions = {
+      retryAttempts: 3,
+      connectionTimeout: 30000,
+      validateOnGet: true,
+    };
     this.loadConnections();
     this.secrets = context.secrets;
     this.startHealthMonitoring();
@@ -449,6 +471,265 @@ export class ConnectionManager {
     }
     return undefined;
   }
+
+  // ConnectionService functionality merged into ConnectionManager
+  async getConnectionInfo(connectionId: string): Promise<ConnectionInfo | null> {
+    try {
+      const connection = this.getConnection(connectionId);
+
+      if (!connection) {
+        Logger.warn("Connection not found", "ConnectionManager.getConnectionInfo", {
+          connectionId,
+        });
+        return null;
+      }
+
+      if (this.connectionServiceOptions.validateOnGet) {
+        const validation = await this.validateConnection(connectionId);
+        if (!validation.isValid) {
+          Logger.error(
+            "Connection validation failed",
+            "ConnectionManager.getConnectionInfo",
+            {
+              connectionId,
+              errors: validation.errors,
+            }
+          );
+          return null;
+        }
+      }
+
+      const password = await this.getConnectionPassword(connectionId);
+      return {
+        id: connection.id,
+        name: connection.name,
+        host: connection.host,
+        port: connection.port,
+        database: connection.database,
+        username: connection.username,
+        password: password || '',
+        createdDate:
+          connection.lastConnected?.toISOString() || new Date().toISOString(),
+      };
+    } catch (error) {
+      Logger.error(
+        "Failed to get connection info",
+        error as Error,
+        "ConnectionManager.getConnectionInfo",
+        { connectionId }
+      );
+      return null;
+    }
+  }
+
+  async toDotNetConnection(connectionId: string): Promise<ConnectionInfo | null> {
+    try {
+      const connection = await this.getConnectionInfo(connectionId);
+      if (!connection) {
+        return null;
+      }
+
+      const password = await this.getConnectionPassword(connectionId);
+      if (!password) {
+        return null;
+      }
+
+      return {
+        id: connection.id,
+        name: connection.name,
+        host: connection.host,
+        port: connection.port,
+        database: connection.database,
+        username: connection.username,
+        password: password,
+        createdDate: connection.createdDate,
+      };
+    } catch (error) {
+      Logger.error(
+        "Failed to convert to DotNet connection",
+        error as Error,
+        "ConnectionManager.toDotNetConnection",
+        { connectionId }
+      );
+      return null;
+    }
+  }
+
+  async validateConnection(connectionId: string): Promise<ConnectionValidationResult> {
+    const startTime = Date.now();
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    try {
+      // First run ValidationFramework validation for comprehensive checks
+      const frameworkValidationReport =
+        await this.performConnectionValidationFramework(connectionId);
+
+      // Extract errors and warnings from framework validation
+      frameworkValidationReport.results.forEach((result) => {
+        if (!result.passed) {
+          if (result.severity === "error") {
+            errors.push(`ValidationFramework: ${result.message}`);
+          } else {
+            warnings.push(`ValidationFramework: ${result.message}`);
+          }
+        }
+      });
+
+      // If framework validation fails, don't proceed with basic checks
+      if (!frameworkValidationReport.canProceed) {
+        return {
+          isValid: false,
+          errors,
+          warnings,
+          connectionTime: Date.now() - startTime,
+        };
+      }
+
+      // Continue with existing basic validation checks
+      const connection = this.getConnection(connectionId);
+      if (!connection) {
+        errors.push(`Connection ${connectionId} not found`);
+        return { isValid: false, errors, warnings };
+      }
+
+      // Check if password is available
+      const password = await this.getConnectionPassword(connectionId);
+      if (!password) {
+        errors.push("Connection password not available");
+        return { isValid: false, errors, warnings };
+      }
+
+      // Test actual connectivity via DotNet service
+      const dotNetConnection = await this.toDotNetConnection(connectionId);
+      if (!dotNetConnection) {
+        errors.push("Failed to create DotNet connection info");
+        return { isValid: false, errors, warnings };
+      }
+
+      try {
+        // Test connection with timeout
+        await Promise.race([
+          this.dotNetService.testConnection(dotNetConnection),
+          this.delay(this.connectionServiceOptions.connectionTimeout),
+        ]);
+
+        const connectionTime = Date.now() - startTime;
+        warnings.push(`Connection test completed in ${connectionTime}ms`);
+      } catch (testError) {
+        errors.push(`Connection test failed: ${(testError as Error).message}`);
+      }
+    } catch (error) {
+      errors.push(`Connection validation error: ${(error as Error).message}`);
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings,
+      connectionTime: Date.now() - startTime,
+    };
+  }
+
+  private async performConnectionValidationFramework(connectionId: string) {
+    Logger.info(
+      "Performing ValidationFramework connection validation",
+      "performConnectionValidationFramework",
+      {
+        connectionId,
+      }
+    );
+
+    try {
+      // Get connection information for validation context
+      const connection = this.getConnection(connectionId);
+      if (!connection) {
+        throw new Error(`Connection ${connectionId} not found`);
+      }
+
+      // Create validation context with connection information
+      const validationContext = {
+        connectionId,
+        connectionName: connection.name,
+        host: connection.host,
+        port: connection.port,
+        database: connection.database,
+        username: connection.username,
+        validationType: "connection",
+      };
+
+      // Create validation request for connection-specific rules
+      const validationRequest = {
+        connectionId,
+        rules: [
+          "connection_connectivity",
+          "connection_security",
+          "connection_performance",
+        ],
+        failOnWarnings: false,
+        stopOnFirstError: true,
+        context: validationContext,
+      };
+
+      // Execute validation using the ValidationFramework
+      const validationReport = await this.validationFramework.executeValidation(
+        validationRequest
+      );
+
+      Logger.info(
+        "ValidationFramework connection validation completed",
+        "performConnectionValidationFramework",
+        {
+          connectionId,
+          totalRules: validationReport.totalRules,
+          passedRules: validationReport.passedRules,
+          failedRules: validationReport.failedRules,
+          overallStatus: validationReport.overallStatus,
+          canProceed: validationReport.canProceed,
+        }
+      );
+
+      return validationReport;
+    } catch (error) {
+      Logger.error(
+        "ValidationFramework connection validation failed",
+        error as Error,
+        "performConnectionValidationFramework",
+        {
+          connectionId,
+        }
+      );
+
+      // Return a failed validation report
+      return {
+        requestId: connectionId,
+        validationTimestamp: new Date(),
+        totalRules: 0,
+        passedRules: 0,
+        failedRules: 1,
+        warningRules: 0,
+        results: [{
+          ruleId: "connection_validation_framework",
+          ruleName: "Connection Validation Framework Check",
+          passed: false,
+          severity: "error",
+          message: `Connection validation framework error: ${(error as Error).message}`,
+          executionTime: 0,
+          timestamp: new Date(),
+        }],
+        overallStatus: "failed",
+        canProceed: false,
+        recommendations: [
+          "Fix connection validation framework error before proceeding",
+        ],
+        executionTime: 0,
+      };
+    }
+  }
+
+  private delay(milliseconds: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  }
   private generateId(): string {
     return crypto.randomUUID();
   }
@@ -554,7 +835,7 @@ export class ConnectionManager {
   private async scheduleReconnection(connectionId: string): Promise<void> {
     try {
       const connection = this.connections.get(connectionId);
-      if (!connection) return;
+      if (!connection) {return;}
 
       // Clear existing reconnection timer
       const existingTimer = this.reconnectionTimers.get(connectionId);
@@ -588,7 +869,7 @@ export class ConnectionManager {
       Logger.info(`Attempting reconnection: ${connectionId}`);
 
       const connection = this.connections.get(connectionId);
-      if (!connection) return;
+      if (!connection) {return;}
 
       connection.status = "Connecting";
       this.connections.set(connectionId, connection);

@@ -2,17 +2,11 @@ import * as vscode from 'vscode';
 import { PostgreSqlExtension } from './PostgreSqlExtension';
 import { ExtensionInitializer, ExtensionComponents } from '@/utils/ExtensionInitializer';
 import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
+import { ErrorHandler, ErrorSeverity } from '@/utils/ErrorHandler';
 import { PostgreSqlConnectionManager } from './core/PostgreSqlConnectionManager';
 import { CommandManager } from '@/extension/CommandManager';
 import { EventHandlerManager } from '@/extension/EventHandlerManager';
 import { RealtimeMonitoringManager } from '@/extension/RealtimeMonitoringManager';
-export enum ErrorSeverity {
-    LOW = 'LOW',
-    MEDIUM = 'MEDIUM',
-    HIGH = 'HIGH',
-    CRITICAL = 'CRITICAL'
-}
 
 let extension: PostgreSqlExtension | undefined;
 let components: ExtensionComponents | undefined;

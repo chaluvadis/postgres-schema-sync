@@ -984,10 +984,10 @@ export class MigrationScriptGenerator {
      * Assess change risk level
      */
     private assessChangeRiskLevel(change: SchemaDifference): 'low' | 'medium' | 'high' | 'critical' {
-        if (change.type === 'Removed' && change.objectType === 'table') return 'critical';
-        if (change.type === 'Removed' && change.objectType === 'column') return 'high';
-        if (change.type === 'Modified' && change.objectType === 'table') return 'high';
-        if (change.type === 'Added') return 'medium';
+        if (change.type === 'Removed' && change.objectType === 'table') {return 'critical';}
+        if (change.type === 'Removed' && change.objectType === 'column') {return 'high';}
+        if (change.type === 'Modified' && change.objectType === 'table') {return 'high';}
+        if (change.type === 'Added') {return 'medium';}
         return 'low';
     }
 
@@ -1001,9 +1001,9 @@ export class MigrationScriptGenerator {
         const criticalSteps = migrationSteps.filter(step => step.riskLevel === 'critical').length;
         const highRiskSteps = migrationSteps.filter(step => step.riskLevel === 'high').length;
 
-        if (criticalSteps > 0) return 'critical';
-        if (highRiskSteps > 3) return 'high';
-        if (highRiskSteps > 0) return 'medium';
+        if (criticalSteps > 0) {return 'critical';}
+        if (highRiskSteps > 3) {return 'high';}
+        if (highRiskSteps > 0) {return 'medium';}
         return 'low';
     }
 

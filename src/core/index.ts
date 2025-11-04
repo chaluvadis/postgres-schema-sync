@@ -18,14 +18,6 @@ export {
   IndexStatistics,
 } from "./PostgreSqlConnectionManager";
 export {
-  ProgressTracker,
-  ProgressInfo,
-  ProgressCallback,
-  BatchProgressInfo,
-  ValidationProgressInfo,
-  MigrationProgressInfo,
-} from "./ProgressTracker";
-export {
   ValidationFramework,
   ValidationRule,
   ValidationResult,
@@ -41,28 +33,15 @@ export {
   MigrationLock,
   ValidationReport as MigrationValidationReport,
 } from "./MigrationOrchestrator";
-export {
-  PostgreSqlSchemaBrowser,
-  DatabaseObject,
-  DatabaseObjectDetails,
-  ColumnInfo,
-  ConstraintInfo,
-  IndexInfo,
-  TriggerInfo,
-  ObjectType,
-} from "./PostgreSqlSchemaBrowser";
 
 import { ConnectionManager } from "@/managers/ConnectionManager";
 import { ConnectionService } from "./ConnectionService";
-import { ProgressTracker } from "./ProgressTracker";
 import { ValidationFramework } from "./ValidationFramework";
 import { MigrationOrchestrator } from "./MigrationOrchestrator";
-import { PostgreSqlSchemaBrowser } from "./PostgreSqlSchemaBrowser";
 
 export class CoreServices {
   private static instance: CoreServices | null = null;
   private _connectionService: ConnectionService | null = null;
-  private _progressTracker: ProgressTracker | null = null;
   private _validationFramework: ValidationFramework | null = null;
   private _migrationOrchestrator: MigrationOrchestrator | null = null;
   private constructor(private connectionManager: ConnectionManager) { }
@@ -83,13 +62,6 @@ export class CoreServices {
     return this._connectionService;
   }
 
-  get progressTracker(): ProgressTracker {
-    if (!this._progressTracker) {
-      this._progressTracker = new ProgressTracker();
-    }
-    return this._progressTracker;
-  }
-
   get validationFramework(): ValidationFramework {
     if (!this._validationFramework) {
       this._validationFramework = new ValidationFramework();
@@ -99,27 +71,24 @@ export class CoreServices {
 
   get migrationOrchestrator(): MigrationOrchestrator {
     if (!this._migrationOrchestrator) {
-      const schemaBrowser = new PostgreSqlSchemaBrowser();
+      // ProgressTracker and PostgreSqlSchemaBrowser have been consolidated
+      // into other modules, so we pass null for now
       this._migrationOrchestrator = new MigrationOrchestrator(
         this.connectionService,
-        this.progressTracker,
+        null as any, // ProgressTracker consolidated
         this.validationFramework,
-        schemaBrowser
+        null as any // PostgreSqlSchemaBrowser consolidated
       );
     }
     return this._migrationOrchestrator;
   }
   getStats(): {
     connectionService: any;
-    progressTracker: any;
     validationFramework: any;
     migrationOrchestrator: any;
   } {
     return {
       connectionService: this._connectionService
-        ? { initialized: true }
-        : { initialized: false },
-      progressTracker: this._progressTracker
         ? { initialized: true }
         : { initialized: false },
       validationFramework: this._validationFramework
@@ -130,12 +99,10 @@ export class CoreServices {
   }
   dispose(): void {
     this._connectionService?.dispose();
-    this._progressTracker?.dispose();
     this._validationFramework?.dispose();
     this._migrationOrchestrator?.dispose();
 
     this._connectionService = null;
-    this._progressTracker = null;
     this._validationFramework = null;
     this._migrationOrchestrator = null;
 

@@ -358,7 +358,7 @@ export class PerformanceMonitorService {
         ];
     }
     private calculateTrend(values: { timestamp: Date; value: number; }[]): 'Improving' | 'Degrading' | 'Stable' {
-        if (values.length < 2) return 'Stable';
+        if (values.length < 2) {return 'Stable';}
 
         const firstHalf = values.slice(0, Math.floor(values.length / 2));
         const secondHalf = values.slice(Math.floor(values.length / 2));
@@ -368,12 +368,12 @@ export class PerformanceMonitorService {
 
         const change = ((secondAvg - firstAvg) / firstAvg) * 100;
 
-        if (change > 10) return 'Degrading';
-        if (change < -10) return 'Improving';
+        if (change > 10) {return 'Degrading';}
+        if (change < -10) {return 'Improving';}
         return 'Stable';
     }
     private calculateChangePercent(values: { timestamp: Date; value: number; }[]): number {
-        if (values.length < 2) return 0;
+        if (values.length < 2) {return 0;}
 
         const first = values[0].value;
         const last = values[values.length - 1].value;

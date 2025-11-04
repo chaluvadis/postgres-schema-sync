@@ -1,4 +1,4 @@
-import { Pool, Client, PoolClient } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { Logger } from '@/utils/Logger';
 
 export interface ConnectionInfo {
@@ -253,7 +253,7 @@ export class PostgreSqlConnectionManager {
     for (const connectionId of connectionIds) {
       try {
         const status = this.healthStatus.get(connectionId);
-        if (!status) continue;
+        if (!status) {continue;}
 
         const startTime = Date.now();
         const isHealthy = await this.checkConnectionHealth(connectionId);
@@ -280,7 +280,7 @@ export class PostgreSqlConnectionManager {
     try {
       // Get connection info from health status or find it
       const status = this.healthStatus.get(connectionId);
-      if (!status) return false;
+      if (!status) {return false;}
 
       // Create a minimal connection info for health check
       const connectionInfo = {

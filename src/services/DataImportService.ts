@@ -36,6 +36,43 @@ export interface ImportJob {
   mapping?: ColumnMapping[];
 }
 
+export interface ImportSchedule {
+  id: string;
+  name: string;
+  description?: string;
+  jobId: string;
+  scheduleType: "once" | "daily" | "weekly" | "monthly";
+  scheduleTime: string; // HH:MM format
+  enabled: boolean;
+  lastRun?: Date;
+  nextRun?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ImportTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  format: "csv" | "json" | "excel" | "sql" | "parquet";
+  options: ImportOptions;
+  columnMappings?: ColumnMapping[];
+  category?: string;
+  usageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DataTransformation {
+  id: string;
+  name: string;
+  type: "regex_replace" | "case_conversion" | "date_format" | "number_format" | "custom";
+  parameters: Record<string, any>;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface ImportOptions {
   delimiter?: string;
   hasHeaders?: boolean;
@@ -45,12 +82,10 @@ export interface ImportOptions {
   batchSize?: number;
   continueOnError?: boolean;
   validateData?: boolean;
-  transformData?: DataTransformation[];
   createTable?: boolean;
   truncateTable?: boolean;
   updateExisting?: boolean;
   conflictResolution?: "skip" | "update" | "error";
-  schedule?: ImportSchedule;
   advancedValidation?: AdvancedValidationOptions;
   dataQualityChecks?: DataQualityCheck[];
   previewMode?: boolean;
@@ -79,24 +114,7 @@ export interface DataQualityCheck {
   action: "error" | "warning" | "log";
 }
 
-export interface DataTransformation {
-  type:
-    | "column_rename"
-    | "data_type_conversion"
-    | "value_mapping"
-    | "conditional_logic"
-    | "formula";
-  sourceColumn: string;
-  targetColumn?: string;
-  configuration: Record<string, any>;
-}
 
-export interface ImportSchedule {
-  frequency: "once" | "daily" | "weekly" | "monthly";
-  time?: string;
-  enabled: boolean;
-  nextRun?: Date;
-}
 
 export interface ImportError {
   rowNumber: number;
@@ -182,28 +200,13 @@ export interface ValidationIssue {
   suggestion?: string;
 }
 
-export interface ImportTemplate {
-  id: string;
-  name: string;
-  description: string;
-  sourceFormat: "csv" | "json" | "excel" | "sql" | "parquet";
-  targetTable: string;
-  targetSchema: string;
-  options: ImportOptions;
-  columnMapping: ColumnMapping[];
-  createdAt: Date;
-  updatedAt: Date;
-  usageCount: number;
-  category: string;
-  tags: string[];
-}
 
 export class DataImportService {
   private context: vscode.ExtensionContext;
   private connectionManager: ConnectionManager;
   private dotNetService: PostgreSqlConnectionManager;
   private importJobs: Map<string, ImportJob> = new Map();
-  private importTemplates: Map<string, ImportTemplate> = new Map();
+  private importTemplates: Map<string, any> = new Map();
   private activeImports: Set<string> = new Set();
   private importHistory: ImportJob[] = [];
   private sqlParser: Parser;
@@ -224,7 +227,7 @@ export class DataImportService {
         "postgresql.imports.templates",
         "[]"
       );
-      const templates = JSON.parse(templatesData) as ImportTemplate[];
+      const templates = JSON.parse(templatesData) as any[];
 
       this.importTemplates.clear();
       templates.forEach((template) => {
@@ -928,13 +931,13 @@ export class DataImportService {
   }
   private detectValueFormat(value: string): string {
     // Simple format detection
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return "date-yyyy-mm-dd";
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return "date-mm/dd/yyyy";
-    if (/^\d{2}-\d{2}-\d{4}$/.test(value)) return "date-mm-dd-yyyy";
-    if (/^\d+\.\d+$/.test(value)) return "decimal";
-    if (/^\d+$/.test(value)) return "integer";
-    if (/^[A-Z\s]+$/.test(value)) return "uppercase";
-    if (/^[a-z\s]+$/.test(value)) return "lowercase";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {return "date-yyyy-mm-dd";}
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {return "date-mm/dd/yyyy";}
+    if (/^\d{2}-\d{2}-\d{4}$/.test(value)) {return "date-mm-dd-yyyy";}
+    if (/^\d+\.\d+$/.test(value)) {return "decimal";}
+    if (/^\d+$/.test(value)) {return "integer";}
+    if (/^[A-Z\s]+$/.test(value)) {return "uppercase";}
+    if (/^[a-z\s]+$/.test(value)) {return "lowercase";}
     return "mixed";
   }
   async executeImportJob(
@@ -1219,7 +1222,7 @@ export class DataImportService {
     const lines = content.split("\n").filter((line) => line.trim());
     const delimiter = options.delimiter || ",";
 
-    if (lines.length === 0) return [];
+    if (lines.length === 0) {return [];}
 
     let startRow = 0;
     if (options.hasHeaders !== false) {
@@ -1422,7 +1425,7 @@ export class DataImportService {
     });
   }
   private applyTransformation(value: any, transformation: string): any {
-    if (value === null || value === undefined) return value;
+    if (value === null || value === undefined) {return value;}
 
     switch (transformation) {
       case "uppercase":
@@ -1441,7 +1444,7 @@ export class DataImportService {
     columnMapping: ColumnMapping[],
     data: any[]
   ): string {
-    if (data.length === 0) return "";
+    if (data.length === 0) {return "";}
 
     const columns = columnMapping.map((m) => m.targetColumn);
     const columnList = columns.join(", ");
@@ -1466,7 +1469,7 @@ export class DataImportService {
   }
   private showImportDetails(jobId: string): void {
     const job = this.importJobs.get(jobId);
-    if (!job) return;
+    if (!job) {return;}
 
     const panel = vscode.window.createWebviewPanel(
       "importDetails",
@@ -1550,7 +1553,7 @@ export class DataImportService {
   }
   private showImportErrors(jobId: string): void {
     const job = this.importJobs.get(jobId);
-    if (!job || job.errors.length === 0) return;
+    if (!job || job.errors.length === 0) {return;}
 
     const panel = vscode.window.createWebviewPanel(
       "importErrors",
@@ -1594,12 +1597,12 @@ export class DataImportService {
   }
   async createImportTemplate(
     templateData: Omit<
-      ImportTemplate,
+      any,
       "id" | "createdAt" | "updatedAt" | "usageCount"
     >
-  ): Promise<ImportTemplate> {
+  ): Promise<any> {
     try {
-      const template: ImportTemplate = {
+      const template: any = {
         ...templateData,
         id: this.generateId(),
         createdAt: new Date(),
@@ -1621,7 +1624,7 @@ export class DataImportService {
       throw error;
     }
   }
-  getImportTemplates(category?: string): ImportTemplate[] {
+  getImportTemplates(category?: string): any[] {
     let templates = Array.from(this.importTemplates.values());
 
     if (category) {

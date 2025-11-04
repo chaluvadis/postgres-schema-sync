@@ -136,7 +136,7 @@ export class QueryEditorView {
     }
 
     private setupMessageHandler(): void {
-        if (!this.webviewPanel) return;
+        if (!this.webviewPanel) {return;}
 
         this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
             try {
@@ -358,7 +358,7 @@ export class QueryEditorView {
 
     private async formatQuery(tabId: string): Promise<void> {
         const tab = this.tabs.get(tabId);
-        if (!tab) return;
+        if (!tab) {return;}
 
         try {
             // Basic SQL formatting (can be enhanced with a proper SQL formatter)
@@ -386,7 +386,7 @@ export class QueryEditorView {
 
     private async getIntelliSense(tabId: string, position: { line: number; column: number }): Promise<void> {
         const tab = this.tabs.get(tabId);
-        if (!tab || !tab.connectionId) return;
+        if (!tab || !tab.connectionId) {return;}
 
         try {
             // Get the current query up to cursor position for better context
@@ -437,7 +437,7 @@ export class QueryEditorView {
             for (const tab of this.tabs.values()) {
                 if (tab.executionResults) {
                     targetResult = tab.executionResults.find(r => r.id === resultId);
-                    if (targetResult) break;
+                    if (targetResult) {break;}
                 }
             }
 
@@ -467,7 +467,7 @@ export class QueryEditorView {
     }
 
     private async updateWebviewContent(): Promise<void> {
-        if (!this.webviewPanel) return;
+        if (!this.webviewPanel) {return;}
 
         const tabs = Array.from(this.tabs.values());
         const activeTab = this.activeTabId ? this.tabs.get(this.activeTabId) : undefined;
@@ -1263,7 +1263,7 @@ export class QueryEditorView {
     }
 
     private loadQueryHistory(): void {
-        if (!this.context) return;
+        if (!this.context) {return;}
 
         try {
             const history = this.context.globalState.get<string[]>('postgresql.queryHistory', []);
@@ -1274,7 +1274,7 @@ export class QueryEditorView {
     }
 
     private saveQueryHistory(): void {
-        if (!this.context) return;
+        if (!this.context) {return;}
 
         try {
             this.context.globalState.update('postgresql.queryHistory', this.queryHistory);
@@ -1284,7 +1284,7 @@ export class QueryEditorView {
     }
 
     private loadFavorites(): void {
-        if (!this.context) return;
+        if (!this.context) {return;}
 
         try {
             const favorites = this.context.globalState.get<string[]>('postgresql.queryFavorites', []);
@@ -1295,7 +1295,7 @@ export class QueryEditorView {
     }
 
     private saveFavorites(): void {
-        if (!this.context) return;
+        if (!this.context) {return;}
 
         try {
             this.context.globalState.update('postgresql.queryFavorites', this.favorites);

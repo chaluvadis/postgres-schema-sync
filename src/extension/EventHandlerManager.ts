@@ -82,7 +82,7 @@ export class EventHandlerManager {
     // Handle active text editor changes
     this.context.subscriptions.push(
       vscode.window.onDidChangeActiveTextEditor((editor) => {
-        if (!editor) return;
+        if (!editor) {return;}
 
         const document = editor.document;
         const isSQLFile =
@@ -358,7 +358,7 @@ export class EventHandlerManager {
       this.initializePersistentStatusBar();
     }
 
-    if (!realtimeState.statusBarItem) return;
+    if (!realtimeState.statusBarItem) {return;}
 
     const fileName = document.fileName.split(/[/\\]/).pop() || "Unknown";
     const connectionInfo = this.getCurrentConnectionInfo();
@@ -1085,7 +1085,7 @@ export class EventHandlerManager {
    * Start connection monitoring
    */
   private startConnectionMonitoring(): void {
-    if (!this.components?.connectionManager) return;
+    if (!this.components?.connectionManager) {return;}
 
     const connections = this.components.connectionManager.getConnections();
 
@@ -1712,9 +1712,9 @@ export class EventHandlerManager {
   private getElementKey(element: any): string {
     // Extract a unique key from the tree element for tracking
     if (element && typeof element === "object") {
-      if (element.id) return element.id;
-      if (element.name) return element.name;
-      if (element.label) return element.label;
+      if (element.id) {return element.id;}
+      if (element.name) {return element.name;}
+      if (element.label) {return element.label;}
     }
     return "unknown";
   }

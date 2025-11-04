@@ -4,7 +4,6 @@ import { QueryExecutionService } from '@/services/QueryExecutionService';
 import { ValidationFramework } from '../../core/ValidationFramework';
 import { MigrationScriptGenerator } from './MigrationScriptGenerator';
 import { MigrationExecutor } from './MigrationExecutor';
-import { MigrationValidator } from './MigrationValidator';
 import {
     EnhancedMigrationScript,
     MigrationExecutionResult,
@@ -16,7 +15,6 @@ import {
     RollbackScript,
     RollbackStep,
     ValidationStep,
-    ExecutionLogEntry,
     MigrationDependency
 } from './MigrationTypes';
 
@@ -29,7 +27,6 @@ export class MigrationManagement {
     private validationFramework: ValidationFramework;
     private scriptGenerator: MigrationScriptGenerator;
     private executor: MigrationExecutor;
-    private validator: MigrationValidator;
 
     /**
      * Creates a new MigrationManagement instance
@@ -41,16 +38,15 @@ export class MigrationManagement {
      */
     constructor(
         queryService: QueryExecutionService,
-        validationFramework: ValidationFramework,
         scriptGenerator: MigrationScriptGenerator,
         executor: MigrationExecutor,
-        validator: MigrationValidator
+        validationFramework: ValidationFramework
     ) {
         this.queryService = queryService;
         this.validationFramework = validationFramework;
         this.scriptGenerator = scriptGenerator;
         this.executor = executor;
-        this.validator = validator;
+        this.validationFramework = validationFramework;
     }
     /**
      * Generates an enhanced migration script with comprehensive analysis and rollback capabilities
@@ -187,8 +183,8 @@ export class MigrationManagement {
                 connectionId
             });
 
-            // Delegate to validator module
-            return await this.validator.validateMigrationScript(script, connectionId);
+            // Use ValidationFramework directly
+            return await this.performFrameworkValidation(script, connectionId);
 
         } catch (error) {
             Logger.error('Migration script validation failed', error as Error, 'validateMigrationScript');
@@ -284,6 +280,7 @@ export class MigrationManagement {
             tablesResult.rows.forEach((table: any) => {
                 objects.push({
                     type: 'table',
+                    category: 'table',
                     schema: table[0], // schema_name
                     name: table[1],   // table_name
                     owner: table[2],  // owner
@@ -312,7 +309,7 @@ export class MigrationManagement {
             indexesResult.rows.forEach((index: any) => {
                 objects.push({
                     type: 'index',
-                    schema: index[0], // schema_name
+                    category: 'index', schema: index[0], // schema_name
                     name: index[2],   // index_name
                     table: index[1],  // table_name
                     definition: index[3] // index_definition
@@ -325,7 +322,7 @@ export class MigrationManagement {
                 if (constraint[3] === 'FOREIGN KEY') { // constraint_type
                     relationships.push({
                         type: 'foreign_key',
-                        table_schema: constraint[0],
+                        category: 'foreign_key', table_schema: constraint[0],
                         table_name: constraint[1],
                         constraint_name: constraint[2],
                         column_name: constraint[4],
@@ -1116,7 +1113,7 @@ export class MigrationManagement {
             if (!sourceCol) {
                 changes.push({
                     type: 'ADD',
-                    column: targetCol,
+                    category: 'ADD', column: targetCol,
                     warning: null
                 });
             }
@@ -1128,7 +1125,7 @@ export class MigrationManagement {
             if (!targetCol) {
                 changes.push({
                     type: 'DROP',
-                    column: sourceCol,
+                    category: 'DROP', column: sourceCol,
                     warning: `WARNING: Dropping column ${sourceCol.columnName} may cause data loss`
                 });
             }
@@ -1142,7 +1139,7 @@ export class MigrationManagement {
                 if (differences.length > 0) {
                     changes.push({
                         type: 'MODIFY',
-                        sourceColumn: sourceCol,
+                        category: 'MODIFY', sourceColumn: sourceCol,
                         targetColumn: targetCol,
                         differences,
                         warning: differences.some(d => d.includes('data type')) ?
@@ -1241,7 +1238,7 @@ export class MigrationManagement {
             if (!sourceCon) {
                 changes.push({
                     type: 'ADD',
-                    constraint: targetCon
+                    category: 'ADD', constraint: targetCon
                 });
             }
         }
@@ -1252,7 +1249,7 @@ export class MigrationManagement {
             if (!targetCon) {
                 changes.push({
                     type: 'DROP',
-                    constraint: sourceCon
+                    category: 'DROP', constraint: sourceCon
                 });
             }
         }
@@ -1309,7 +1306,7 @@ export class MigrationManagement {
             if (!sourceIdx) {
                 changes.push({
                     type: 'ADD',
-                    index: targetIdx
+                    category: 'ADD', index: targetIdx
                 });
             }
         }
@@ -1320,7 +1317,7 @@ export class MigrationManagement {
             if (!targetIdx) {
                 changes.push({
                     type: 'DROP',
-                    index: sourceIdx
+                    category: 'DROP', index: sourceIdx
                 });
             }
         }
@@ -1587,10 +1584,10 @@ export class MigrationManagement {
      * Assess change risk level
      */
     private assessChangeRiskLevel(change: SchemaDifference): 'low' | 'medium' | 'high' | 'critical' {
-        if (change.type === 'Removed' && change.objectType === 'table') return 'critical';
-        if (change.type === 'Removed' && change.objectType === 'column') return 'high';
-        if (change.type === 'Modified' && change.objectType === 'table') return 'high';
-        if (change.type === 'Added') return 'medium';
+        if (change.type === 'Removed' && change.objectType === 'table') { return 'critical'; }
+        if (change.type === 'Removed' && change.objectType === 'column') { return 'high'; }
+        if (change.type === 'Modified' && change.objectType === 'table') { return 'high'; }
+        if (change.type === 'Added') { return 'medium'; }
         return 'low';
     }
 
@@ -1603,28 +1600,34 @@ export class MigrationManagement {
         switch (change.type) {
             case 'Added':
                 conditions.push({
+                    id: `pre_${change.objectType}_${change.objectName}`,
                     type: 'data_condition',
                     description: `Target object ${change.objectName} should not exist`,
                     sqlQuery: `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${change.schema}' AND table_name = '${change.objectName}'`,
-                    expectedResult: 0
+                    expectedResult: 0,
+                    severity: 'critical'
                 });
                 break;
 
             case 'Removed':
                 conditions.push({
+                    id: `pre_${change.objectType}_${change.objectName}_exists`,
                     type: 'data_condition',
                     description: `Source object ${change.objectName} should exist`,
                     sqlQuery: `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${change.schema}' AND table_name = '${change.objectName}'`,
-                    expectedResult: 1
+                    expectedResult: 1,
+                    severity: 'critical'
                 });
                 break;
 
             case 'Modified':
                 conditions.push({
+                    id: `pre_${change.objectType}_${change.objectName}_modify`,
                     type: 'data_condition',
                     description: `Object ${change.objectName} should exist for modification`,
                     sqlQuery: `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${change.schema}' AND table_name = '${change.objectName}'`,
-                    expectedResult: 1
+                    expectedResult: 1,
+                    severity: 'critical'
                 });
                 break;
         }
@@ -1641,28 +1644,34 @@ export class MigrationManagement {
         switch (change.type) {
             case 'Added':
                 conditions.push({
+                    id: `post_${change.objectType}_${change.objectName}_created`,
                     type: 'data_integrity',
                     description: `Object ${change.objectName} should exist after creation`,
                     sqlQuery: `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${change.schema}' AND table_name = '${change.objectName}'`,
-                    expectedResult: 1
+                    expectedResult: 1,
+                    severity: 'critical'
                 });
                 break;
 
             case 'Removed':
                 conditions.push({
+                    id: `post_${change.objectType}_${change.objectName}_removed`,
                     type: 'data_integrity',
                     description: `Object ${change.objectName} should not exist after removal`,
                     sqlQuery: `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${change.schema}' AND table_name = '${change.objectName}'`,
-                    expectedResult: 0
+                    expectedResult: 0,
+                    severity: 'critical'
                 });
                 break;
 
             case 'Modified':
                 conditions.push({
+                    id: `post_${change.objectType}_${change.objectName}_modify_integrity`,
                     type: 'data_integrity',
                     description: `Modified object ${change.objectName} should maintain data integrity`,
                     sqlQuery: `SELECT COUNT(*) FROM ${change.schema}.${change.objectName}`,
-                    expectedResult: '>= 0' // Row count should not be negative
+                    expectedResult: '>= 0', // Row count should not be negative
+                    severity: 'critical'
                 });
                 break;
         }
@@ -2899,6 +2908,7 @@ export class MigrationManagement {
                     name: `Syntax Validation: ${step.name}`,
                     description: `Validate SQL syntax for ${step.objectName} (${step.operation} operation)`,
                     type: 'syntax',
+                    category: 'syntax',
                     sqlQuery: step.sqlScript,
                     severity: 'error',
                     automated: true
@@ -2911,7 +2921,7 @@ export class MigrationManagement {
                         name: `Schema Validation: ${step.name}`,
                         description: `Verify ${step.objectName} exists in schema after migration`,
                         type: 'schema',
-                        sqlQuery: step.verificationQuery,
+                        category: 'schema', sqlQuery: step.verificationQuery,
                         expectedResult: 1,
                         severity: 'error',
                         automated: true
@@ -2954,9 +2964,9 @@ export class MigrationManagement {
                         name: `Data Consistency: ${step.name}`,
                         description: `Verify data consistency after ${step.objectName} modification`,
                         type: 'data',
-                        sqlQuery: this.generateDataConsistencyQuery(step),
+                        category: 'data', sqlQuery: this.generateDataConsistencyQuery(step),
                         expectedResult: '>= 0',
-                        severity: 'warning',
+                        severity: 'info',
                         automated: true
                     });
                 }
@@ -2968,9 +2978,9 @@ export class MigrationManagement {
                         name: `Dependency Validation: ${step.name}`,
                         description: `Verify dependencies for ${step.objectName} are satisfied`,
                         type: 'schema',
-                        sqlQuery: this.generateDependencyValidationQuery(step),
+                        category: 'schema', sqlQuery: this.generateDependencyValidationQuery(step),
                         expectedResult: '>= 0',
-                        severity: 'warning',
+                        severity: 'info',
                         automated: true
                     });
                 }
@@ -3027,9 +3037,9 @@ export class MigrationManagement {
                 name: `Data Integrity: ${step.name}`,
                 description: `Check data integrity for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: dataIntegrityQuery,
+                category: 'data', sqlQuery: dataIntegrityQuery,
                 expectedResult: rowCount >= 0 ? 'Data integrity validated' : 'Data integrity check failed',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3044,7 +3054,7 @@ export class MigrationManagement {
                     name: `Row Count: ${step.name}`,
                     description: `Verify row count is reasonable for ${step.objectName}`,
                     type: 'data',
-                    sqlQuery: rowCountQuery,
+                    category: 'data', sqlQuery: rowCountQuery,
                     expectedResult: actualRowCount >= 0 ? `${actualRowCount} rows found` : 'Row count check failed',
                     severity: 'info',
                     automated: true
@@ -3057,7 +3067,7 @@ export class MigrationManagement {
                         name: `Row Count Change Detection: ${step.name}`,
                         description: `Monitor for unexpected row count changes in ${step.objectName}`,
                         type: 'data',
-                        sqlQuery: `
+                        category: 'data', sqlQuery: `
                            WITH current_count AS (
                                SELECT COUNT(*) as cnt FROM ${step.schema}.${step.objectName}
                            ),
@@ -3073,7 +3083,7 @@ export class MigrationManagement {
                            FROM current_count, previous_estimate
                        `,
                         expectedResult: 'Row count within expected range',
-                        severity: 'warning',
+                        severity: 'info',
                         automated: true
                     });
                 }
@@ -3098,9 +3108,9 @@ export class MigrationManagement {
                 name: `Constraint Validation: ${step.name}`,
                 description: `Verify table constraints are valid for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: constraintQuery,
+                category: 'schema', sqlQuery: constraintQuery,
                 expectedResult: parseInt(constraintData[0]) >= 0 ? `${constraintData[0]} constraints found` : 'Constraint validation failed',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3123,7 +3133,7 @@ export class MigrationManagement {
                 name: `Foreign Key Validation: ${step.name}`,
                 description: `Verify foreign key relationships for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: fkQuery,
+                category: 'data', sqlQuery: fkQuery,
                 expectedResult: parseInt(fkData[0]) >= 0 ? `${fkData[0]} foreign keys found` : 'Foreign key validation failed',
                 severity: 'info',
                 automated: true
@@ -3150,9 +3160,9 @@ export class MigrationManagement {
                 name: `Orphaned Records Check: ${step.name}`,
                 description: `Check for orphaned records in ${step.objectName}`,
                 type: 'data',
-                sqlQuery: orphanedQuery,
+                category: 'data', sqlQuery: orphanedQuery,
                 expectedResult: orphanedCount === 0 ? 'No orphaned records found' : `${orphanedCount} orphaned records detected`,
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3175,7 +3185,7 @@ export class MigrationManagement {
                 name: `Table Bloat Analysis: ${step.name}`,
                 description: `Analyze table size and potential bloat for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: sizeQuery,
+                category: 'performance', sqlQuery: sizeQuery,
                 expectedResult: sizeData ? 'Table size analysis completed' : 'Table size analysis failed',
                 severity: 'info',
                 automated: true
@@ -3204,9 +3214,9 @@ export class MigrationManagement {
                 name: `Dead Tuples Analysis: ${step.name}`,
                 description: `Check for dead tuples in ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: deadTupleQuery,
+                category: 'performance', sqlQuery: deadTupleQuery,
                 expectedResult: cleanupStatus,
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3229,7 +3239,7 @@ export class MigrationManagement {
                 name: `Column Statistics: ${step.name}`,
                 description: `Validate column statistics for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: columnStatsQuery,
+                category: 'data', sqlQuery: columnStatsQuery,
                 expectedResult: columnStatsData ? `${columnStatsData[0]} columns analyzed` : 'Column statistics failed',
                 severity: 'info',
                 automated: true
@@ -3253,7 +3263,7 @@ export class MigrationManagement {
                 name: `Primary Key Validation: ${step.name}`,
                 description: `Verify primary key integrity for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: pkQuery,
+                category: 'data', sqlQuery: pkQuery,
                 expectedResult: pkData ? `${pkData[0]} primary keys found` : 'Primary key validation failed',
                 severity: 'error',
                 automated: true
@@ -3276,9 +3286,9 @@ export class MigrationManagement {
                 name: `Check Constraint Validation: ${step.name}`,
                 description: `Validate check constraints for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: checkConstraintQuery,
+                category: 'data', sqlQuery: checkConstraintQuery,
                 expectedResult: checkConstraintData ? `${checkConstraintData[0]} check constraints found` : 'Check constraint validation failed',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3298,7 +3308,7 @@ export class MigrationManagement {
                 name: `Table Permissions: ${step.name}`,
                 description: `Verify table permissions for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: permissionQuery,
+                category: 'security', sqlQuery: permissionQuery,
                 expectedResult: permissionData ? `${permissionData[0]} permissions configured` : 'Permission validation failed',
                 severity: 'info',
                 automated: true
@@ -3326,9 +3336,9 @@ export class MigrationManagement {
                     name: `Fallback Data Integrity: ${step.name}`,
                     description: `Basic data integrity check for ${step.objectName}`,
                     type: 'data',
-                    sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`,
+                    category: 'data', sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`,
                     expectedResult: '>= 0',
-                    severity: 'warning',
+                    severity: 'info',
                     automated: true
                 }
             ];
@@ -3374,7 +3384,7 @@ export class MigrationManagement {
                 name: `Index Usage Statistics: ${step.name}`,
                 description: `Verify index ${step.objectName} is being used effectively`,
                 type: 'performance',
-                sqlQuery: indexUsageQuery,
+                category: 'performance', sqlQuery: indexUsageQuery,
                 expectedResult: usageStatus,
                 severity: 'info',
                 automated: true
@@ -3405,7 +3415,7 @@ export class MigrationManagement {
                 name: `Index Size Analysis: ${step.name}`,
                 description: `Check index size and potential bloat for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: indexSizeQuery,
+                category: 'performance', sqlQuery: indexSizeQuery,
                 expectedResult: sizeStatus,
                 severity: 'info',
                 automated: true
@@ -3436,9 +3446,9 @@ export class MigrationManagement {
                 name: `Index Fragmentation: ${step.name}`,
                 description: `Analyze index fragmentation for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: fragmentationQuery,
+                category: 'performance', sqlQuery: fragmentationQuery,
                 expectedResult: fragmentationStatus,
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3467,7 +3477,7 @@ export class MigrationManagement {
                 name: `Index Selectivity: ${step.name}`,
                 description: `Analyze index selectivity for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: selectivityQuery,
+                category: 'performance', sqlQuery: selectivityQuery,
                 expectedResult: selectivityStatus,
                 severity: 'info',
                 automated: true
@@ -3498,9 +3508,9 @@ export class MigrationManagement {
                 name: `Index Column Analysis: ${step.name}`,
                 description: `Analyze indexed columns for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: columnAnalysisQuery,
+                category: 'schema', sqlQuery: columnAnalysisQuery,
                 expectedResult: widthStatus,
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3531,7 +3541,7 @@ export class MigrationManagement {
                 name: `Index Uniqueness: ${step.name}`,
                 description: `Check index uniqueness constraints for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: uniquenessQuery,
+                category: 'data', sqlQuery: uniquenessQuery,
                 expectedResult: uniquenessStatus,
                 severity: 'info',
                 automated: true
@@ -3562,7 +3572,7 @@ export class MigrationManagement {
                 name: `Index Maintenance: ${step.name}`,
                 description: `Check maintenance requirements for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: maintenanceQuery,
+                category: 'performance', sqlQuery: maintenanceQuery,
                 expectedResult: maintenanceStatus,
                 severity: 'info',
                 automated: true
@@ -3593,9 +3603,9 @@ export class MigrationManagement {
                 name: `Index Performance Impact: ${step.name}`,
                 description: `Assess performance impact of ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: performanceQuery,
+                category: 'performance', sqlQuery: performanceQuery,
                 expectedResult: performanceImpact,
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3616,7 +3626,7 @@ export class MigrationManagement {
                 name: `Index Dependencies: ${step.name}`,
                 description: `Check dependencies for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: dependencyQuery,
+                category: 'schema', sqlQuery: dependencyQuery,
                 expectedResult: dependencyData ? `${dependencyData[0]} dependencies found` : 'Dependency check failed',
                 severity: 'info',
                 automated: true
@@ -3644,7 +3654,7 @@ export class MigrationManagement {
                 name: `Index Age Analysis: ${step.name}`,
                 description: `Analyze index age and creation patterns for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: ageQuery,
+                category: 'performance', sqlQuery: ageQuery,
                 expectedResult: ageStatus,
                 severity: 'info',
                 automated: true
@@ -3672,7 +3682,7 @@ export class MigrationManagement {
                     name: `Fallback Index Usage: ${step.name}`,
                     description: `Basic index usage check for ${step.objectName}`,
                     type: 'performance',
-                    sqlQuery: `SELECT * FROM pg_stat_user_indexes WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'`,
+                    category: 'performance', sqlQuery: `SELECT * FROM pg_stat_user_indexes WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'`,
                     expectedResult: '>= 0',
                     severity: 'info',
                     automated: true
@@ -3682,7 +3692,7 @@ export class MigrationManagement {
                     name: `Fallback Index Size: ${step.name}`,
                     description: `Basic index size check for ${step.objectName}`,
                     type: 'performance',
-                    sqlQuery: `
+                    category: 'performance', sqlQuery: `
                        SELECT pg_size_pretty(pg_total_relation_size(indexname::regclass)) as size
                        FROM (SELECT indexname FROM pg_indexes WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}') i
                    `,
@@ -3727,6 +3737,7 @@ export class MigrationManagement {
                 name: `View Syntax & Execution: ${step.name}`,
                 description: `Verify view ${step.objectName} has valid syntax and can be executed`,
                 type: 'syntax',
+                category: 'syntax',
                 sqlQuery: viewSyntaxQuery,
                 expectedResult: executionStatus,
                 severity: 'error',
@@ -3763,9 +3774,9 @@ export class MigrationManagement {
                 name: `View Dependency Chain: ${step.name}`,
                 description: `Verify view dependency chain is intact for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: viewDependencyQuery,
+                category: 'schema', sqlQuery: viewDependencyQuery,
                 expectedResult: dependencyStatus,
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3791,9 +3802,9 @@ export class MigrationManagement {
                 name: `View Column Mapping: ${step.name}`,
                 description: `Validate column mapping and consistency for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: viewColumnQuery,
+                category: 'schema', sqlQuery: viewColumnQuery,
                 expectedResult: columnStatus,
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3819,9 +3830,9 @@ export class MigrationManagement {
                 name: `View Security Context: ${step.name}`,
                 description: `Validate security context for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: viewSecurityQuery,
+                category: 'security', sqlQuery: viewSecurityQuery,
                 expectedResult: securityStatus,
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3851,7 +3862,7 @@ export class MigrationManagement {
                 name: `View Definition Complexity: ${step.name}`,
                 description: `Analyze complexity of view definition for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: complexityQuery,
+                category: 'performance', sqlQuery: complexityQuery,
                 expectedResult: complexityStatus,
                 severity: 'info',
                 automated: true
@@ -3877,9 +3888,9 @@ export class MigrationManagement {
                 name: `View Data Consistency: ${step.name}`,
                 description: `Check data consistency for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: viewConsistencyQuery,
+                category: 'data', sqlQuery: viewConsistencyQuery,
                 expectedResult: consistencyStatus,
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -3905,7 +3916,7 @@ export class MigrationManagement {
                 name: `View Performance Impact: ${step.name}`,
                 description: `Assess performance impact of ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: viewPerformanceQuery,
+                category: 'performance', sqlQuery: viewPerformanceQuery,
                 expectedResult: performanceImpact,
                 severity: 'info',
                 automated: true
@@ -3944,7 +3955,7 @@ export class MigrationManagement {
                 name: `View Dependency Objects: ${step.name}`,
                 description: `Validate all dependency objects exist for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: viewObjectQuery,
+                category: 'schema', sqlQuery: viewObjectQuery,
                 expectedResult: objectStatus,
                 severity: 'error',
                 automated: true
@@ -3972,7 +3983,7 @@ export class MigrationManagement {
                 name: `View Tracking: ${step.name}`,
                 description: `Track view creation and modification for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: viewTrackingQuery,
+                category: 'schema', sqlQuery: viewTrackingQuery,
                 expectedResult: ownershipStatus,
                 severity: 'info',
                 automated: true
@@ -3984,7 +3995,7 @@ export class MigrationManagement {
                 name: `View Access Patterns: ${step.name}`,
                 description: `Validate access patterns for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as total_grants,
                        COUNT(CASE WHEN grantor IS NOT NULL THEN 1 END) as proper_grants,
@@ -3997,7 +4008,7 @@ export class MigrationManagement {
                    WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'
                `,
                 expectedResult: 'View access permissions properly configured',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4023,6 +4034,7 @@ export class MigrationManagement {
                     name: `Fallback View Syntax: ${step.name}`,
                     description: `Basic view syntax check for ${step.objectName}`,
                     type: 'syntax',
+                    category: 'syntax',
                     sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName}`,
                     expectedResult: '>= 0',
                     severity: 'error',
@@ -4033,12 +4045,12 @@ export class MigrationManagement {
                     name: `Fallback View Dependencies: ${step.name}`,
                     description: `Basic view dependency check for ${step.objectName}`,
                     type: 'schema',
-                    sqlQuery: `
+                    category: 'schema', sqlQuery: `
                        SELECT COUNT(*) FROM pg_views v
                        WHERE v.schemaname = '${step.schema}' AND v.viewname = '${step.objectName}'
                    `,
                     expectedResult: '>= 0',
-                    severity: 'warning',
+                    severity: 'info',
                     automated: true
                 }
             ];
@@ -4065,6 +4077,7 @@ export class MigrationManagement {
                 name: `Function Syntax & Definition: ${step.name}`,
                 description: `Verify function ${step.objectName} has valid syntax and definition`,
                 type: 'syntax',
+                category: 'syntax',
                 sqlQuery: `
                    SELECT
                        p.proname,
@@ -4089,7 +4102,7 @@ export class MigrationManagement {
                 name: `Function Execution Capability: ${step.name}`,
                 description: `Test function ${step.objectName} execution capability`,
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        proname,
                        prokind,
@@ -4117,7 +4130,7 @@ export class MigrationManagement {
                 name: `Function Parameter Validation: ${step.name}`,
                 description: `Validate function parameters for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        proname,
                        pg_get_function_identity_arguments(p.oid) as parameters,
@@ -4131,7 +4144,7 @@ export class MigrationManagement {
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
                 expectedResult: 'Parameter count is reasonable',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4141,7 +4154,7 @@ export class MigrationManagement {
                 name: `Function Security Permissions: ${step.name}`,
                 description: `Validate security permissions for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as permission_count,
                        COUNT(CASE WHEN prosecdef THEN 1 END) as security_definer_functions,
@@ -4155,7 +4168,7 @@ export class MigrationManagement {
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
                 expectedResult: 'Function security permissions configured',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4165,7 +4178,7 @@ export class MigrationManagement {
                 name: `Function Volatility Analysis: ${step.name}`,
                 description: `Analyze volatility characteristics of ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        proname,
                        CASE p.provolatile
@@ -4195,7 +4208,7 @@ export class MigrationManagement {
                 name: `Function Dependency Analysis: ${step.name}`,
                 description: `Analyze dependencies for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        COUNT(*) as dependency_count,
                        COUNT(CASE WHEN deptype = 'n' THEN 1 END) as normal_dependencies,
@@ -4210,7 +4223,7 @@ export class MigrationManagement {
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
                 expectedResult: 'Function dependencies validated',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4220,7 +4233,7 @@ export class MigrationManagement {
                 name: `Function Execution Plan: ${step.name}`,
                 description: `Analyze execution plan characteristics for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        proname,
                        prolang as language_oid,
@@ -4250,7 +4263,7 @@ export class MigrationManagement {
                 name: `Function Return Type: ${step.name}`,
                 description: `Validate return type for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        proname,
                        pg_get_function_result(p.oid) as return_type,
@@ -4273,7 +4286,7 @@ export class MigrationManagement {
                 name: `Function Language Validation: ${step.name}`,
                 description: `Validate function language for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        p.proname,
                        l.lanname as language_name,
@@ -4288,7 +4301,7 @@ export class MigrationManagement {
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
                 expectedResult: 'Trusted language - sql',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4298,7 +4311,7 @@ export class MigrationManagement {
                 name: `Function Access Privileges: ${step.name}`,
                 description: `Validate access privileges for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as privilege_count,
                        COUNT(CASE WHEN proacl IS NOT NULL THEN 1 END) as functions_with_acl,
@@ -4311,7 +4324,7 @@ export class MigrationManagement {
                    WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                `,
                 expectedResult: 'Function privileges configured',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4337,6 +4350,7 @@ export class MigrationManagement {
                     name: `Fallback Function Syntax: ${step.name}`,
                     description: `Basic function syntax check for ${step.objectName}`,
                     type: 'syntax',
+                    category: 'syntax',
                     sqlQuery: `SELECT proname FROM pg_proc WHERE proname = '${step.objectName}' AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = '${step.schema}')`,
                     expectedResult: 1,
                     severity: 'error',
@@ -4347,7 +4361,7 @@ export class MigrationManagement {
                     name: `Fallback Function Execution: ${step.name}`,
                     description: `Basic function execution check for ${step.objectName}`,
                     type: 'data',
-                    sqlQuery: `SELECT COUNT(*) FROM pg_proc WHERE proname = '${step.objectName}' AND prokind = 'f'`,
+                    category: 'data', sqlQuery: `SELECT COUNT(*) FROM pg_proc WHERE proname = '${step.objectName}' AND prokind = 'f'`,
                     expectedResult: '>= 0',
                     severity: 'info',
                     automated: true
@@ -4376,7 +4390,7 @@ export class MigrationManagement {
                 name: `Column Integrity: ${step.name}`,
                 description: `Verify column modifications maintain data integrity`,
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        COUNT(*) as column_count,
                        COUNT(CASE WHEN data_type IS NOT NULL THEN 1 END) as typed_columns,
@@ -4389,7 +4403,7 @@ export class MigrationManagement {
                    WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}' AND column_name = '${step.objectName}'
                `,
                 expectedResult: 'Column integrity validated',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4399,7 +4413,7 @@ export class MigrationManagement {
                 name: `Column Data Analysis: ${step.name}`,
                 description: `Verify column data is valid after modification`,
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        COUNT(*) as total_rows,
                        COUNT(CASE WHEN ${step.objectName} IS NOT NULL THEN 1 END) as non_null_rows,
@@ -4424,7 +4438,7 @@ export class MigrationManagement {
                 name: `Column Type Consistency: ${step.name}`,
                 description: `Validate data type consistency for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        data_type,
                        COUNT(*) as rows_with_type,
@@ -4440,7 +4454,7 @@ export class MigrationManagement {
                    GROUP BY data_type
                `,
                 expectedResult: '>= 0',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4450,7 +4464,7 @@ export class MigrationManagement {
                 name: `Column Constraint Validation: ${step.name}`,
                 description: `Validate column constraints for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        c.column_name,
                        c.data_type,
@@ -4471,7 +4485,7 @@ export class MigrationManagement {
                    GROUP BY c.column_name, c.data_type, c.is_nullable, c.column_default
                `,
                 expectedResult: 'Column constraints validated',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4481,7 +4495,7 @@ export class MigrationManagement {
                 name: `Column Statistical Analysis: ${step.name}`,
                 description: `Perform statistical analysis on ${step.objectName}`,
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        COUNT(*) as total_values,
                        COUNT(DISTINCT ${step.objectName}) as distinct_values,
@@ -4506,7 +4520,7 @@ export class MigrationManagement {
                 name: `Column Null Pattern Analysis: ${step.name}`,
                 description: `Analyze null patterns in ${step.objectName}`,
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        COUNT(*) as total_rows,
                        COUNT(CASE WHEN ${step.objectName} IS NULL THEN 1 END) as null_count,
@@ -4522,7 +4536,7 @@ export class MigrationManagement {
                    FROM ${step.schema}.${step.objectName}
                `,
                 expectedResult: 'No null values - good data quality',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4532,7 +4546,7 @@ export class MigrationManagement {
                 name: `Column Data Distribution: ${step.name}`,
                 description: `Analyze data distribution in ${step.objectName}`,
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        COUNT(*) as total_count,
                        MIN(${step.objectName}) as min_value,
@@ -4556,7 +4570,7 @@ export class MigrationManagement {
                 name: `Column Default Value Validation: ${step.name}`,
                 description: `Validate default values for ${step.objectName}`,
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        column_name,
                        data_type,
@@ -4571,7 +4585,7 @@ export class MigrationManagement {
                    WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}' AND column_name = '${step.objectName}'
                `,
                 expectedResult: 'Default value configured',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4581,7 +4595,7 @@ export class MigrationManagement {
                 name: `Column Length Validation: ${step.name}`,
                 description: `Validate column length constraints for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        character_maximum_length,
                        COUNT(*) as total_rows,
@@ -4597,7 +4611,7 @@ export class MigrationManagement {
                    GROUP BY character_maximum_length
                `,
                 expectedResult: 'All values within length limit',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4607,7 +4621,7 @@ export class MigrationManagement {
                 name: `Column Precision & Scale: ${step.name}`,
                 description: `Validate precision and scale for ${step.objectName}`,
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        numeric_precision,
                        numeric_scale,
@@ -4624,7 +4638,7 @@ export class MigrationManagement {
                    GROUP BY numeric_precision, numeric_scale
                `,
                 expectedResult: 'Precision validation passed',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4650,9 +4664,9 @@ export class MigrationManagement {
                     name: `Fallback Column Integrity: ${step.name}`,
                     description: `Basic column integrity check for ${step.objectName}`,
                     type: 'data',
-                    sqlQuery: `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}' AND column_name = '${step.objectName}'`,
+                    category: 'data', sqlQuery: `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}' AND column_name = '${step.objectName}'`,
                     expectedResult: 1,
-                    severity: 'warning',
+                    severity: 'info',
                     automated: true
                 },
                 {
@@ -4660,7 +4674,7 @@ export class MigrationManagement {
                     name: `Fallback Column Data: ${step.name}`,
                     description: `Basic column data check for ${step.objectName}`,
                     type: 'data',
-                    sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName} WHERE ${step.objectName} IS NOT NULL`,
+                    category: 'data', sqlQuery: `SELECT COUNT(*) FROM ${step.schema}.${step.objectName} WHERE ${step.objectName} IS NOT NULL`,
                     expectedResult: '>= 0',
                     severity: 'info',
                     automated: true
@@ -4690,7 +4704,7 @@ export class MigrationManagement {
                 name: `Query Execution Time: ${step.name}`,
                 description: `Monitor query execution time impact of ${step.objectName} changes`,
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        current_setting('log_min_duration_statement') as min_duration,
                        current_setting('log_statement') as statement_logging,
@@ -4700,7 +4714,7 @@ export class MigrationManagement {
                        END as duration_status
                `,
                 expectedResult: 'Query duration threshold is reasonable',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4711,7 +4725,7 @@ export class MigrationManagement {
                     name: `Table Size Monitoring: ${step.name}`,
                     description: `Monitor table size changes for ${step.objectName}`,
                     type: 'performance',
-                    sqlQuery: `
+                    category: 'performance', sqlQuery: `
                        SELECT
                            schemaname,
                            tablename,
@@ -4739,7 +4753,7 @@ export class MigrationManagement {
                     name: `Index Performance Impact: ${step.name}`,
                     description: `Assess performance impact of index ${step.objectName}`,
                     type: 'performance',
-                    sqlQuery: `
+                    category: 'performance', sqlQuery: `
                        SELECT
                            schemaname,
                            tablename,
@@ -4756,7 +4770,7 @@ export class MigrationManagement {
                        WHERE schemaname = '${step.schema}' AND indexname = '${step.objectName}'
                    `,
                     expectedResult: 'Index performance is acceptable',
-                    severity: 'warning',
+                    severity: 'info',
                     automated: true
                 });
             }
@@ -4767,7 +4781,7 @@ export class MigrationManagement {
                 name: `Resource Usage Tracking: ${step.name}`,
                 description: `Track resource usage impact of ${step.objectName} changes`,
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        numbackends as active_connections,
                        CASE
@@ -4779,7 +4793,7 @@ export class MigrationManagement {
                    WHERE datname = current_database()
                `,
                 expectedResult: 'Connection count is reasonable',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4789,7 +4803,7 @@ export class MigrationManagement {
                 name: `Performance Regression Detection: ${step.name}`,
                 description: `Detect performance regressions for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        schemaname,
                        tablename,
@@ -4806,7 +4820,7 @@ export class MigrationManagement {
                    WHERE schemaname = '${step.schema}' AND tablename = '${step.objectName}'
                `,
                 expectedResult: 'Activity levels are normal',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4817,7 +4831,7 @@ export class MigrationManagement {
                     name: `Query Plan Analysis: ${step.name}`,
                     description: `Analyze query execution plan for ${step.objectName}`,
                     type: 'performance',
-                    sqlQuery: `
+                    category: 'performance', sqlQuery: `
                        SELECT
                            schemaname,
                            ${step.objectType === 'function' ? 'proname' : 'viewname'} as object_name,
@@ -4841,7 +4855,7 @@ export class MigrationManagement {
                 name: `Lock Monitoring: ${step.name}`,
                 description: `Monitor locks that may affect ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        COUNT(*) as active_locks,
                        COUNT(CASE WHEN mode = 'ExclusiveLock' THEN 1 END) as exclusive_locks,
@@ -4855,7 +4869,7 @@ export class MigrationManagement {
                    WHERE locktype = 'relation'
                `,
                 expectedResult: 'Lock status is normal',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4865,7 +4879,7 @@ export class MigrationManagement {
                 name: `Cache Effectiveness: ${step.name}`,
                 description: `Monitor cache effectiveness for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        sum(heap_blks_read) as heap_reads,
                        sum(heap_blks_hit) as heap_hits,
@@ -4898,7 +4912,7 @@ export class MigrationManagement {
                 name: `I/O Performance: ${step.name}`,
                 description: `Monitor I/O performance for ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        schemaname,
                        tablename,
@@ -4912,7 +4926,7 @@ export class MigrationManagement {
                    WHERE schemaname = '${step.schema}' AND tablename = '${step.objectName}'
                `,
                 expectedResult: 'I/O activity is normal',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -4922,7 +4936,7 @@ export class MigrationManagement {
                 name: `Memory Usage Tracking: ${step.name}`,
                 description: `Track memory usage impact of ${step.objectName}`,
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        current_setting('work_mem') as work_mem,
                        current_setting('maintenance_work_mem') as maintenance_work_mem,
@@ -4959,8 +4973,8 @@ export class MigrationManagement {
                     name: `Fallback Query Performance: ${step.name}`,
                     description: `Basic query performance check for ${step.objectName}`,
                     type: 'performance',
-                    sqlQuery: this.generatePerformanceValidationQuery(step),
-                    severity: 'warning',
+                    category: 'performance', sqlQuery: this.generatePerformanceValidationQuery(step),
+                    severity: 'info',
                     automated: true
                 },
                 {
@@ -4968,7 +4982,7 @@ export class MigrationManagement {
                     name: `Fallback Resource Usage: ${step.name}`,
                     description: `Basic resource usage check for ${step.objectName}`,
                     type: 'performance',
-                    sqlQuery: `
+                    category: 'performance', sqlQuery: `
                        SELECT
                            numbackends as active_connections,
                            CASE
@@ -4979,7 +4993,7 @@ export class MigrationManagement {
                        WHERE datname = current_database()
                    `,
                     expectedResult: 'Connection count is reasonable',
-                    severity: 'warning',
+                    severity: 'info',
                     automated: true
                 }
             ];
@@ -5007,7 +5021,7 @@ export class MigrationManagement {
                 name: `Security Permissions Analysis: ${step.name}`,
                 description: `Comprehensive security permission analysis for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as total_grants,
                        COUNT(CASE WHEN privilege_type = 'SELECT' THEN 1 END) as select_grants,
@@ -5024,7 +5038,7 @@ export class MigrationManagement {
                    WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'
                `,
                 expectedResult: 'Security permissions are reasonable',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5034,7 +5048,7 @@ export class MigrationManagement {
                 name: `Privilege Escalation Detection: ${step.name}`,
                 description: `Detect potential privilege escalation for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as critical_privileges,
                        COUNT(CASE WHEN privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE') THEN 1 END) as dml_privileges,
@@ -5059,7 +5073,7 @@ export class MigrationManagement {
                 name: `SQL Injection Vulnerability: ${step.name}`,
                 description: `Assess SQL injection vulnerabilities for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as function_count,
                        COUNT(CASE WHEN prolang = (SELECT oid FROM pg_language WHERE lanname = 'sql') THEN 1 END) as sql_functions,
@@ -5074,7 +5088,7 @@ export class MigrationManagement {
                    AND (p.proname = '${step.objectName}' OR '${step.objectType}' = 'function')
                `,
                 expectedResult: 'No security definer functions found',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5084,7 +5098,7 @@ export class MigrationManagement {
                 name: `Access Pattern Analysis: ${step.name}`,
                 description: `Analyze access patterns for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as total_access_patterns,
                        COUNT(CASE WHEN privilege_type = 'SELECT' AND grantee != 'PUBLIC' THEN 1 END) as restricted_select,
@@ -5107,7 +5121,7 @@ export class MigrationManagement {
                 name: `RBAC Validation: ${step.name}`,
                 description: `Validate role-based access control for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(DISTINCT grantee) as unique_roles,
                        COUNT(*) as total_grants,
@@ -5121,7 +5135,7 @@ export class MigrationManagement {
                    WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'
                `,
                 expectedResult: 'RBAC configuration is appropriate',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5131,7 +5145,7 @@ export class MigrationManagement {
                 name: `Object Ownership Validation: ${step.name}`,
                 description: `Validate ownership security for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        ${step.objectType === 'table' ? 'tableowner' : step.objectType === 'view' ? 'viewowner' : step.objectType === 'function' ? '(SELECT usename FROM pg_user WHERE usesysid = p.proowner)' : 'owner'} as owner,
                        CASE
@@ -5143,7 +5157,7 @@ export class MigrationManagement {
                    AND ${step.objectType === 'function' ? 'p.proname' : (step.objectType === 'table' ? 'tablename' : 'viewname')} = '${step.objectName}'
                `,
                 expectedResult: 'Ownership is appropriate',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5153,7 +5167,7 @@ export class MigrationManagement {
                 name: `Grant Cascade Analysis: ${step.name}`,
                 description: `Analyze grant cascade effects for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as direct_grants,
                        COUNT(CASE WHEN grantor != grantee THEN 1 END) as delegated_grants,
@@ -5175,7 +5189,7 @@ export class MigrationManagement {
                 name: `Sensitive Data Exposure: ${step.name}`,
                 description: `Check for potential sensitive data exposure in ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as column_count,
                        COUNT(CASE WHEN column_name LIKE '%password%' THEN 1 END) as password_columns,
@@ -5192,7 +5206,7 @@ export class MigrationManagement {
                    WHERE table_schema = '${step.schema}' AND table_name = '${step.objectName}'
                `,
                 expectedResult: 'No obvious sensitive data columns found',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5203,7 +5217,7 @@ export class MigrationManagement {
                     name: `Function Security Definer: ${step.name}`,
                     description: `Analyze security definer status for function ${step.objectName}`,
                     type: 'security',
-                    sqlQuery: `
+                    category: 'security', sqlQuery: `
                        SELECT
                            proname,
                            prosecdef as is_security_definer,
@@ -5216,7 +5230,7 @@ export class MigrationManagement {
                        WHERE n.nspname = '${step.schema}' AND p.proname = '${step.objectName}'
                    `,
                     expectedResult: 'Function is INVOKER security context',
-                    severity: 'warning',
+                    severity: 'info',
                     automated: true
                 });
             }
@@ -5227,7 +5241,7 @@ export class MigrationManagement {
                 name: `Audit Trail Validation: ${step.name}`,
                 description: `Validate audit trail configuration for ${step.objectName}`,
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as audit_configurations,
                        CASE
@@ -5267,9 +5281,9 @@ export class MigrationManagement {
                     name: `Fallback Security Permissions: ${step.name}`,
                     description: `Basic security permission check for ${step.objectName}`,
                     type: 'security',
-                    sqlQuery: `SELECT COUNT(*) FROM information_schema.role_table_grants WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'`,
+                    category: 'security', sqlQuery: `SELECT COUNT(*) FROM information_schema.role_table_grants WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'`,
                     expectedResult: '>= 0',
-                    severity: 'warning',
+                    severity: 'info',
                     automated: true
                 },
                 {
@@ -5277,7 +5291,7 @@ export class MigrationManagement {
                     name: `Fallback Security Privileges: ${step.name}`,
                     description: `Basic privilege check for ${step.objectName}`,
                     type: 'security',
-                    sqlQuery: `
+                    category: 'security', sqlQuery: `
                        SELECT COUNT(*) FROM information_schema.role_table_grants
                        WHERE table_name = '${step.objectName}' AND table_schema = '${step.schema}'
                        AND privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
@@ -5308,7 +5322,7 @@ export class MigrationManagement {
                 name: 'Global Schema Consistency',
                 description: 'Verify overall schema consistency after all migrations',
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        COUNT(*) as total_tables,
                        COUNT(CASE WHEN table_type = 'BASE TABLE' THEN 1 END) as base_tables,
@@ -5334,7 +5348,7 @@ export class MigrationManagement {
                 name: 'Database Connectivity & Health',
                 description: 'Verify database remains accessible and healthy after migrations',
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        1 as connectivity_test,
                        current_database() as database_name,
@@ -5356,7 +5370,7 @@ export class MigrationManagement {
                 name: 'Cross-Schema Dependencies',
                 description: 'Validate cross-schema dependencies and references',
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        COUNT(*) as cross_schema_refs,
                        COUNT(DISTINCT tc.table_schema) as schemas_referenced,
@@ -5373,7 +5387,7 @@ export class MigrationManagement {
                    AND ccu.table_schema NOT IN ('information_schema', 'pg_catalog')
                `,
                 expectedResult: 'Cross-schema dependencies found and validated',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5383,7 +5397,7 @@ export class MigrationManagement {
                 name: 'Transaction Consistency',
                 description: 'Validate transaction consistency across all migrations',
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        COUNT(*) as active_transactions,
                        COUNT(CASE WHEN state = 'active' THEN 1 END) as truly_active,
@@ -5398,7 +5412,7 @@ export class MigrationManagement {
                    WHERE datname = current_database()
                `,
                 expectedResult: 'Transaction state is normal',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5408,7 +5422,7 @@ export class MigrationManagement {
                 name: 'System Resource Monitoring',
                 description: 'Monitor system resource usage after migrations',
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        current_setting('shared_buffers') as shared_buffers,
                        current_setting('effective_cache_size') as effective_cache_size,
@@ -5431,7 +5445,7 @@ export class MigrationManagement {
                 name: 'Database Object Count',
                 description: 'Validate total database object count after migrations',
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog')) as table_count,
                        (SELECT COUNT(*) FROM information_schema.views WHERE table_schema NOT IN ('information_schema', 'pg_catalog')) as view_count,
@@ -5454,7 +5468,7 @@ export class MigrationManagement {
                 name: 'Schema Privilege Consistency',
                 description: 'Validate privilege consistency across schemas',
                 type: 'security',
-                sqlQuery: `
+                category: 'security', sqlQuery: `
                    SELECT
                        COUNT(*) as total_privileges,
                        COUNT(DISTINCT grantee) as unique_grantees,
@@ -5468,7 +5482,7 @@ export class MigrationManagement {
                    WHERE schema_name NOT IN ('information_schema', 'pg_catalog')
                `,
                 expectedResult: 'Schema privileges are properly configured',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5478,7 +5492,7 @@ export class MigrationManagement {
                 name: 'Database Configuration',
                 description: 'Validate database configuration after migrations',
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        current_setting('log_destination') as log_destination,
                        current_setting('logging_collector') as logging_collector,
@@ -5504,7 +5518,7 @@ export class MigrationManagement {
                 name: 'Replication Status',
                 description: 'Validate replication status after migrations',
                 type: 'data',
-                sqlQuery: `
+                category: 'data', sqlQuery: `
                    SELECT
                        COUNT(*) as replication_slots,
                        COUNT(CASE WHEN active THEN 1 END) as active_slots,
@@ -5525,7 +5539,7 @@ export class MigrationManagement {
                 name: 'Backup & Recovery Validation',
                 description: 'Validate backup and recovery configuration',
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        COUNT(*) as backup_configs,
                        current_setting('archive_mode') as archive_mode,
@@ -5536,7 +5550,7 @@ export class MigrationManagement {
                        END as backup_status
                `,
                 expectedResult: 'Archive mode properly configured',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5546,7 +5560,7 @@ export class MigrationManagement {
                 name: 'Connection Pool Health',
                 description: 'Validate connection pool health after migrations',
                 type: 'performance',
-                sqlQuery: `
+                category: 'performance', sqlQuery: `
                    SELECT
                        COUNT(*) as total_connections,
                        COUNT(CASE WHEN state = 'active' THEN 1 END) as active_connections,
@@ -5562,7 +5576,7 @@ export class MigrationManagement {
                    WHERE datname = current_database()
                `,
                 expectedResult: 'Connection pool health is good',
-                severity: 'warning',
+                severity: 'info',
                 automated: true
             });
 
@@ -5572,7 +5586,7 @@ export class MigrationManagement {
                 name: 'Schema Change Impact Assessment',
                 description: 'Assess overall impact of schema changes',
                 type: 'schema',
-                sqlQuery: `
+                category: 'schema', sqlQuery: `
                    SELECT
                        ${migrationSteps.length} as migration_steps,
                        ${migrationSteps.filter(s => s.objectType === 'table').length} as affected_tables,
@@ -5610,7 +5624,7 @@ export class MigrationManagement {
                     name: 'Fallback Global Schema Consistency',
                     description: 'Basic schema consistency check',
                     type: 'schema',
-                    sqlQuery: `
+                    category: 'schema', sqlQuery: `
                        SELECT COUNT(*) FROM information_schema.tables t
                        WHERE t.table_schema NOT IN ('information_schema', 'pg_catalog')
                    `,
@@ -5623,7 +5637,7 @@ export class MigrationManagement {
                     name: 'Fallback Database Connectivity',
                     description: 'Basic connectivity check',
                     type: 'data',
-                    sqlQuery: 'SELECT 1 as connectivity_test',
+                    category: 'data', sqlQuery: 'SELECT 1 as connectivity_test',
                     expectedResult: 1,
                     severity: 'error',
                     automated: true
@@ -5696,11 +5710,10 @@ export class MigrationManagement {
                 const isDependent = await this.areStepsDependent(currentStep, previousStep, sourceConnectionId, targetConnectionId);
                 if (isDependent) {
                     dependencies.push({
+                        fromStep: previousStep.id,
+                        toStep: currentStep.id,
                         type: 'object',
-                        sourceStep: previousStep.id,
-                        targetStep: currentStep.id,
-                        description: `${currentStep.objectName} depends on ${previousStep.objectName}`,
-                        critical: currentStep.riskLevel === 'critical' || previousStep.riskLevel === 'critical'
+                        description: `${currentStep.objectName} depends on ${previousStep.objectName}`
                     });
                 }
             }
@@ -7127,9 +7140,9 @@ export class MigrationManagement {
         const criticalSteps = migrationSteps.filter(step => step.riskLevel === 'critical').length;
         const highRiskSteps = migrationSteps.filter(step => step.riskLevel === 'high').length;
 
-        if (criticalSteps > 0) return 'critical';
-        if (highRiskSteps > 3) return 'high';
-        if (highRiskSteps > 0) return 'medium';
+        if (criticalSteps > 0) { return 'critical'; }
+        if (highRiskSteps > 3) { return 'high'; }
+        if (highRiskSteps > 0) { return 'medium'; }
         return 'low';
     }
     /**
@@ -7151,7 +7164,7 @@ export class MigrationManagement {
             });
 
             // Execute pre-conditions check
-            if (step.preConditions && step.preConditions.length > 0) {
+            if (step.preConditions?.length) {
                 await this.executePreConditions(step, connectionId);
             }
 
@@ -7188,7 +7201,7 @@ export class MigrationManagement {
             }
 
             // Execute post-conditions check
-            if (step.postConditions && step.postConditions.length > 0) {
+            if (step.postConditions?.length) {
                 await this.executePostConditions(step, connectionId);
             }
 
@@ -7216,7 +7229,7 @@ export class MigrationManagement {
      * @private
      */
     private async executePreConditions(step: MigrationStep, connectionId: string): Promise<void> {
-        for (const condition of step.preConditions) {
+        for (const condition of step.preConditions || []) {
             try {
                 if (condition.sqlQuery) {
                     const result = await this.queryService.executeQuery(connectionId, condition.sqlQuery);
@@ -7253,7 +7266,7 @@ export class MigrationManagement {
      * @private
      */
     private async executePostConditions(step: MigrationStep, connectionId: string): Promise<void> {
-        for (const condition of step.postConditions) {
+        for (const condition of step.postConditions || []) {
             try {
                 if (condition.sqlQuery) {
                     const result = await this.queryService.executeQuery(connectionId, condition.sqlQuery);

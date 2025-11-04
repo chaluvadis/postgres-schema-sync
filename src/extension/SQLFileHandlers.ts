@@ -84,7 +84,7 @@ export class SQLFileHandlers {
         }
 
         const targetConnection = await this.selectConnection();
-        if (!targetConnection) return;
+        if (!targetConnection) {return;}
 
         try {
             // Import and use SQL execution logic

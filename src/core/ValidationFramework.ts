@@ -1,5 +1,6 @@
 import { getUUId } from "@/utils/helper";
 import { Logger } from "@/utils/Logger";
+
 export interface ValidationRule {
   id: string;
   name: string;
@@ -16,6 +17,7 @@ export interface ValidationRule {
   createdAt: Date;
   lastModified: Date;
 }
+
 export interface ValidationRuleDefinition {
   type: "sql_query" | "pattern_match" | "threshold_check" | "custom_logic";
   expression: string;
@@ -24,6 +26,7 @@ export interface ValidationRuleDefinition {
   timeout?: number;
   retryAttempts?: number;
 }
+
 export interface ValidationResult {
   ruleId: string;
   ruleName: string;
@@ -35,6 +38,7 @@ export interface ValidationResult {
   timestamp: Date;
   retryCount?: number;
 }
+
 export interface ValidationRequest {
   connectionId: string;
   rules?: string[]; // Specific rule IDs to run, if empty runs all enabled rules
@@ -42,6 +46,7 @@ export interface ValidationRequest {
   stopOnFirstError?: boolean;
   context?: Record<string, any>; // Additional context for validation
 }
+
 export interface ValidationReport {
   requestId: string;
   validationTimestamp: Date;
@@ -138,12 +143,12 @@ export class ValidationFramework {
 
           switch (result.severity) {
             case "error":
-              if (!result.passed) failedRules++;
-              else passedRules++;
+              if (!result.passed) {failedRules++;}
+              else {passedRules++;}
               break;
             case "warning":
               warningRules++;
-              if (result.passed) passedRules++;
+              if (result.passed) {passedRules++;}
               break;
             case "info":
               passedRules++;

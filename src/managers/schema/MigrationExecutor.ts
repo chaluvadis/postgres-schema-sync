@@ -195,7 +195,7 @@ export class MigrationExecutor {
             });
 
             // Execute pre-conditions check
-            if (step.preConditions && step.preConditions.length > 0) {
+            if (step.preConditions?.length) {
                 await this.executePreConditions(step, connectionId);
             }
 
@@ -261,7 +261,7 @@ export class MigrationExecutor {
      * @private
      */
     private async executePreConditions(step: MigrationStep, connectionId: string): Promise<void> {
-        for (const condition of step.preConditions) {
+        for (const condition of step.preConditions!) {
             try {
                 if (condition.sqlQuery) {
                     const result = await this.queryService.executeQuery(connectionId, condition.sqlQuery);
@@ -299,7 +299,7 @@ export class MigrationExecutor {
      * @private
      */
     private async executePostConditions(step: MigrationStep, connectionId: string): Promise<void> {
-        for (const condition of step.postConditions) {
+        for (const condition of step.postConditions!) {
             try {
                 if (condition.sqlQuery) {
                     const result = await this.queryService.executeQuery(connectionId, condition.sqlQuery);
