@@ -31,13 +31,13 @@ export interface SchemaComparisonResult {
 }
 
 export interface SchemaDifference {
-  type: "Added" | "Removed" | "Modified";
-  objectType: string;
-  objectName: string;
-  schema: string;
-  sourceDefinition?: string | undefined;
-  targetDefinition?: string | undefined;
-  differenceDetails: string[];
+   type: "Added" | "Removed" | "Modified";
+   objectType: string;
+   objectName: string;
+   schema: string;
+   sourceDefinition?: string;
+   targetDefinition?: string;
+   differenceDetails: string[];
 }
 
 export interface ColumnComparisonDetail {

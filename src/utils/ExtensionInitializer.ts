@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { ConnectionManager } from "../managers/ConnectionManager";
 import { ModularSchemaManager } from "../managers/schema";
 import { PostgreSqlTreeProvider } from "@/providers/PostgreSqlTreeProvider";
-import { ActivityBarProvider } from "@/providers/ActivityBarProvider";
 import { EnhancedStatusBarProvider } from "@/providers/EnhancedStatusBarProvider";
 import { ConnectionManagementView } from "@/views/ConnectionManagementView";
 import { SchemaBrowserView } from "@/views/SchemaBrowserView";
@@ -19,7 +18,6 @@ import { QueryEditorView } from "@/views/QueryEditorView";
 import { PerformanceMonitorService } from "@/services/PerformanceMonitorService";
 import { PerformanceAlertSystem } from "@/services/PerformanceAlertSystem";
 import { DataImportService } from "@/services/DataImportService";
-import { RecoveryService } from "@/services/RecoveryService";
 import { QueryAnalyticsView } from "@/views/QueryAnalyticsView";
 import { ImportWizardView } from "@/views/ImportWizardView";
 import { Logger } from "@/utils/Logger";
@@ -31,7 +29,6 @@ export interface ExtensionComponents {
   schemaManager: ModularSchemaManager;
   treeProvider: PostgreSqlTreeProvider;
   treeView?: vscode.TreeView<any>;
-  activityBarProvider?: ActivityBarProvider;
   enhancedStatusBarProvider?: EnhancedStatusBarProvider;
   dashboardView?: DashboardView;
   connectionView?: ConnectionManagementView;
@@ -46,7 +43,6 @@ export interface ExtensionComponents {
   performanceMonitorService?: PerformanceMonitorService;
   performanceAlertSystem?: PerformanceAlertSystem;
   dataImportService?: DataImportService;
-  recoveryService?: RecoveryService;
   importWizardView?: ImportWizardView;
   queryAnalyticsView?: QueryAnalyticsView;
   advancedMigrationPreviewView?: any;
@@ -127,9 +123,6 @@ export class ExtensionInitializer {
       Logger.info("Initializing optional UI components");
 
       // Initialize optional components
-      const activityBarProvider = new ActivityBarProvider(
-        coreComponents.connectionManager
-      );
       const notificationManager = NotificationManager.getInstance();
       const enhancedStatusBarProvider = EnhancedStatusBarProvider.getInstance(
         coreComponents.connectionManager,
@@ -168,10 +161,6 @@ export class ExtensionInitializer {
         context,
         coreComponents.connectionManager
       );
-      const recoveryService = new RecoveryService(
-        context,
-        coreComponents.connectionManager
-      );
       const queryAnalyticsView = new QueryAnalyticsView(
         context,
         performanceMonitorService
@@ -188,7 +177,6 @@ export class ExtensionInitializer {
       // Add optional components to the core components
       const components: ExtensionComponents = {
         ...coreComponents,
-        activityBarProvider,
         enhancedStatusBarProvider,
         dashboardView,
         connectionView,
@@ -203,7 +191,6 @@ export class ExtensionInitializer {
         performanceMonitorService,
         performanceAlertSystem,
         dataImportService,
-        recoveryService,
         importWizardView,
         queryAnalyticsView,
         reportingService,

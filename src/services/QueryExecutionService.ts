@@ -59,10 +59,9 @@ export class QueryExecutionService {
       });
 
       // Use ConnectionService for consistent connection handling
-      const connectionService = new (await import("@/core/ConnectionService")).ConnectionService(
-        this.connectionManager,
-        null as any // ValidationFramework not needed here
-      );
+      const { ConnectionServiceFactory } = await import("@/utils/ConnectionServiceFactory");
+      const factory = ConnectionServiceFactory.getInstance();
+      const connectionService = factory.createConnectionService(this.connectionManager);
       const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
       if (!dotNetConnection) {
         throw new Error("Failed to create connection info");
@@ -164,10 +163,9 @@ export class QueryExecutionService {
       ];
 
       // Use ConnectionService for consistent connection handling
-      const connectionService = new (await import("@/core/ConnectionService")).ConnectionService(
-        this.connectionManager,
-        null as any // ValidationFramework not needed here
-      );
+      const { ConnectionServiceFactory } = await import("@/utils/ConnectionServiceFactory");
+      const factory = ConnectionServiceFactory.getInstance();
+      const connectionService = factory.createConnectionService(this.connectionManager);
       const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
       if (!dotNetConnection) {
         return basicKeywords;

@@ -2,17 +2,15 @@ import * as vscode from "vscode";
 import { Logger } from "@/utils/Logger";
 import { ConnectionInfo } from "@/core/PostgreSqlConnectionManager";
 
-// Define local interface since DotNetMigrationScript was removed
-export interface DotNetMigrationScript {
-  id: string;
-  sqlScript: string;
-  rollbackScript?: string;
-  description?: string;
-  createdAt: string;
-}
 export interface MigrationPreviewData {
   id: string;
-  migrationScript: DotNetMigrationScript;
+  migrationScript: {
+    id: string;
+    sqlScript: string;
+    rollbackScript?: string;
+    description?: string;
+    createdAt: string;
+  };
   targetConnection: ConnectionInfo;
   previewOptions: MigrationPreviewOptions;
   riskAssessment: RiskAssessment;
@@ -62,7 +60,13 @@ export class MigrationPreviewView {
   constructor() {}
 
   async showPreview(
-    migrationScript?: DotNetMigrationScript,
+    migrationScript?: {
+      id: string;
+      sqlScript: string;
+      rollbackScript?: string;
+      description?: string;
+      createdAt: string;
+    },
     targetConnection?: ConnectionInfo
   ): Promise<void> {
     try {
@@ -127,7 +131,13 @@ export class MigrationPreviewView {
   }
 
   async generatePreview(
-    migrationScript: DotNetMigrationScript,
+    migrationScript: {
+      id: string;
+      sqlScript: string;
+      rollbackScript?: string;
+      description?: string;
+      createdAt: string;
+    },
     targetConnection: ConnectionInfo,
     options: MigrationPreviewOptions
   ): Promise<void> {
@@ -197,7 +207,13 @@ export class MigrationPreviewView {
   }
 
   private async generatePreviewData(
-    migrationScript: DotNetMigrationScript,
+    migrationScript: {
+      id: string;
+      sqlScript: string;
+      rollbackScript?: string;
+      description?: string;
+      createdAt: string;
+    },
     targetConnection: ConnectionInfo,
     options?: MigrationPreviewOptions
   ): Promise<MigrationPreviewData> {
@@ -322,7 +338,13 @@ export class MigrationPreviewView {
   }
 
   private assessMigrationRisk(
-    migrationScript: DotNetMigrationScript,
+    migrationScript: {
+      id: string;
+      sqlScript: string;
+      rollbackScript?: string;
+      description?: string;
+      createdAt: string;
+    },
     executionPlan: ExecutionStep[]
   ): RiskAssessment {
     const riskFactors: RiskFactor[] = [];
@@ -419,7 +441,13 @@ export class MigrationPreviewView {
   }
 
   private assessRollbackComplexity(
-    migrationScript: DotNetMigrationScript
+    migrationScript: {
+      id: string;
+      sqlScript: string;
+      rollbackScript?: string;
+      description?: string;
+      createdAt: string;
+    }
   ): "simple" | "moderate" | "complex" {
     if (
       !migrationScript.rollbackScript ||
@@ -1140,7 +1168,13 @@ export class MigrationPreviewView {
   }
 
   private async rollbackMigration(
-    migrationScript: DotNetMigrationScript
+    migrationScript: {
+      id: string;
+      sqlScript: string;
+      rollbackScript?: string;
+      description?: string;
+      createdAt: string;
+    }
   ): Promise<void> {
     try {
       // Show confirmation dialog for rollback
