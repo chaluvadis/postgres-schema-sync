@@ -830,7 +830,7 @@ export class MigrationOrchestrator {
             // Use MigrationExecutor for proper script execution
             const migrationExecutor = new (await import("@/managers/schema/MigrationExecutor")).MigrationExecutor(
                 new (await import("@/services/QueryExecutionService")).QueryExecutionService(
-                    new (await import("@/managers/ConnectionManager")).ConnectionManager(null as any, null as any)
+                    new (await import("@/managers/ConnectionManager")).ConnectionManager(null as any)
                 )
             );
 
@@ -915,9 +915,9 @@ export class MigrationOrchestrator {
             // Convert execution result to expected format
             return {
                 operationsProcessed: executionResult.completedSteps,
-                errors: executionResult.executionLog.filter(log => log.level === 'error').map(log => log.message),
-                warnings: executionResult.executionLog.filter(log => log.level === 'warning').map(log => log.message),
-                executionLog: executionResult.executionLog.map(log => `[${log.level.toUpperCase()}] ${log.message}`)
+                errors: executionResult.executionLog.filter((log: { level: string; message: string }) => log.level === 'error').map((log: { level: string; message: string }) => log.message),
+                warnings: executionResult.executionLog.filter((log: { level: string; message: string }) => log.level === 'warning').map((log: { level: string; message: string }) => log.message),
+                executionLog: executionResult.executionLog.map((log: { level: string; message: string }) => `[${log.level.toUpperCase()}] ${log.message}`)
             };
 
         } catch (error) {
@@ -1358,8 +1358,8 @@ export class MigrationOrchestrator {
                 message: violations.length > 0
                     ? `Business rule violations: ${violations.join(', ')}`
                     : warnings.length > 0
-                      ? `Business rule warnings: ${warnings.join(', ')}`
-                      : 'All business rules validated successfully',
+                        ? `Business rule warnings: ${warnings.join(', ')}`
+                        : 'All business rules validated successfully',
                 details: { violations, warnings },
                 executionTime: Date.now() - startTime,
                 timestamp: new Date()
@@ -1474,8 +1474,8 @@ export class MigrationOrchestrator {
             passed: warnings.length === 0,
             severity: warnings.length > 0 ? 'warning' : 'info',
             message: warnings.length > 0
-              ? `Environment safety warnings: ${warnings.join(', ')}`
-              : `Environment ${environment} safety check passed`,
+                ? `Environment safety warnings: ${warnings.join(', ')}`
+                : `Environment ${environment} safety check passed`,
             details: { environment, warnings },
             executionTime: Date.now() - startTime,
             timestamp: new Date()

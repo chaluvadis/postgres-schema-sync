@@ -1,6 +1,6 @@
-import { ConnectionService } from '../core/ConnectionService';
-import { ConnectionManager } from '../managers/ConnectionManager';
-import { ValidationFramework } from '../core/ValidationFramework';
+import { ConnectionService } from '@/core/ConnectionService';
+import { ConnectionManager } from '@/managers/ConnectionManager';
+import { ValidationFramework } from '@/core/ValidationFramework';
 
 export class ConnectionServiceFactory {
   private static instance: ConnectionServiceFactory;
