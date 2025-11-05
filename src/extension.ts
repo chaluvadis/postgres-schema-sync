@@ -10,6 +10,10 @@ import { PostgreSqlExtension } from "./PostgreSqlExtension";
 
 let extension: PostgreSqlExtension | undefined;
 let components: ExtensionComponents | undefined;
+
+// Initialize Logger output channel before any logging
+Logger.initializeOutputChannel();
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const activationContext = ErrorHandler.createEnhancedContext("ExtensionActivation", {
 		vscodeVersion: vscode.version,
