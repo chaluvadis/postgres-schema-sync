@@ -117,7 +117,7 @@ function registerCriticalCommands(context: vscode.ExtensionContext, components: 
         try {
             if (components.connectionManager) {
                 // Use connection management view for adding connections
-                const { ConnectionManagementView } = await import('./views/ConnectionManagementView');
+                const { ConnectionManagementView } = await import('./views/legacy/ConnectionManagementView');
                 const connectionView = new ConnectionManagementView(components.connectionManager);
                 await connectionView.showConnectionDialog();
             } else {

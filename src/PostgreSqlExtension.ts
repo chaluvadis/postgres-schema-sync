@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { PostgreSqlTreeProvider } from '@/providers/PostgreSqlTreeProvider';
 import { ConnectionManager } from '@/managers/ConnectionManager';
-import { ConnectionManagementView } from '@/views/ConnectionManagementView';
+import { ConnectionManagementView } from '@/views/legacy/ConnectionManagementView';
 import { Logger } from '@/utils/Logger';
 import { ErrorHandler, ErrorSeverity } from '@/utils/ErrorHandler';
 

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= htmlWebpackPlugin.options.title || 'PostgreSQL Schema Sync' %></title>
+    <style>
+        :root {
+            --vscode-background: var(--vscode-editor-background);
+            --vscode-foreground: var(--vscode-editor-foreground);
+            --vscode-border: var(--vscode-panel-border);
+            --vscode-accent: var(--vscode-button-background);
+            --vscode-accent-foreground: var(--vscode-button-foreground);
+            --vscode-success: var(--vscode-gitDecoration-addedResourceForeground);
+            --vscode-error: var(--vscode-gitDecoration-deletedResourceForeground);
+            --vscode-warning: var(--vscode-gitDecoration-modifiedResourceForeground);
+            --vscode-info: var(--vscode-gitDecoration-renamedResourceForeground);
+            --vscode-focus-border: var(--vscode-focusBorder);
+            --vscode-input-background: var(--vscode-input-background);
+            --vscode-input-foreground: var(--vscode-input-foreground);
+            --vscode-list-hover: var(--vscode-list-hoverBackground);
+            --vscode-list-active: var(--vscode-list-activeSelectionBackground);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: var(--vscode-font-family);
+            font-size: var(--vscode-font-size);
+            background: var(--vscode-background);
+            color: var(--vscode-foreground);
+            overflow: hidden;
+        }
+
+        #root {
+            height: 100vh;
+            width: 100vw;
+            overflow: auto;
+        }
+
+        /* Global component styles */
+        .vscode-button {
+            background: var(--vscode-accent);
+            color: var(--vscode-accent-foreground);
+            border: 1px solid var(--vscode-accent);
+            border-radius: 3px;
+            padding: 4px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .vscode-button:hover {
+            background: var(--vscode-list-hover);
+            border-color: var(--vscode-list-hover);
+        }
+
+        .vscode-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .vscode-input {
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-border);
+            border-radius: 2px;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .vscode-input:focus {
+            outline: 1px solid var(--vscode-focus-border);
+            outline-offset: 1px;
+        }
+
+        .vscode-card {
+            background: var(--vscode-background);
+            border: 1px solid var(--vscode-border);
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        }
+
+        .vscode-status-success {
+            color: var(--vscode-success);
+        }
+
+        .vscode-status-error {
+            color: var(--vscode-error);
+        }
+
+        .vscode-status-warning {
+            color: var(--vscode-warning);
+        }
+
+        .vscode-status-info {
+            color: var(--vscode-info);
+        }
+
+        /* Spinner animation */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--vscode-background);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--vscode-border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--vscode-list-hover);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+</body>
+</html>
