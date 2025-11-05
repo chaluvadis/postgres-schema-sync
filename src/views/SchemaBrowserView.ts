@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ModularSchemaManager } from '@/managers/schema';
-import { DatabaseObject } from '@/core/PostgreSqlSchemaBrowser';
+// DatabaseObject is now defined in SchemaOperations
+import { DatabaseObject } from '@/managers/schema/SchemaOperations';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { Logger } from '@/utils/Logger';
 
