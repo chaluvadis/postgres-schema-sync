@@ -704,7 +704,7 @@
     "build:views": "webpack --mode=production",
     "build:dev": "webpack --mode=development --watch",
     "build": "pnpm run format && pnpm run compile && pnpm run build:views",
-    "package": "pnpm run build && vsce package --no-dependencies",
+    "package": "rm -rf *.vsix && pnpm run build && vsce package --no-dependencies",
     "dev": "concurrently \"pnpm run build:dev\" \"pnpm run compile -- --watch\"",
     "watch": "tsc -watch -p ./",
     "lint": "biome check src",
