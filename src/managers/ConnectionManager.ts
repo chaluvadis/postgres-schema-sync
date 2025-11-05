@@ -50,16 +50,16 @@ export interface ConnectionHealth {
 }
 
 export interface ConnectionValidationResult {
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-  connectionTime?: number;
+   isValid: boolean;
+   errors: string[];
+   warnings: string[];
+   connectionTime?: number;
 }
 
 export interface ConnectionServiceOptions {
-  retryAttempts?: number;
-  connectionTimeout?: number;
-  validateOnGet?: boolean;
+   retryAttempts?: number;
+   connectionTimeout?: number;
+   validateOnGet?: boolean;
 }
 
 export class ConnectionManager {
@@ -631,7 +631,9 @@ export class ConnectionManager {
     };
   }
 
+  // Use ConnectionService for validation instead of duplicating logic
   private async performConnectionValidationFramework(connectionId: string) {
+    // This method is duplicated in ConnectionService - should be removed
     Logger.info(
       "Performing ValidationFramework connection validation",
       "performConnectionValidationFramework",
@@ -727,9 +729,11 @@ export class ConnectionManager {
     }
   }
 
+  // Duplicate method - exists in ConnectionService
   private delay(milliseconds: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
   }
+  // Duplicate method - exists in MigrationManagement
   private generateId(): string {
     return crypto.randomUUID();
   }

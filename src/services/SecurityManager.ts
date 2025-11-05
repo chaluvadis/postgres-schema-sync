@@ -201,16 +201,6 @@ interface EncryptionKey {
   usage: string[];
 }
 
-interface EncryptionKey {
-  id: string;
-  name: string;
-  algorithm: "AES-256-GCM" | "ChaCha20-Poly1305";
-  keySize: number;
-  created: Date;
-  expires?: Date;
-  usage: string[];
-}
-
 export interface ComplianceReport {
   id: string;
   framework: ComplianceFramework;
@@ -576,9 +566,8 @@ export class SecurityManager {
     };
   }
 
-  /**
-   * Validates SSL/TLS certificate for a database connection
-   */
+  // UNUSED METHOD - Certificate validation is not used anywhere in the codebase
+  // This method is dead code and should be removed
   async validateCertificate(
     hostname: string,
     port: number,
@@ -657,6 +646,7 @@ export class SecurityManager {
     }
   }
 
+  // UNUSED PRIVATE METHOD - Part of dead certificate validation
   private async getCertificateInfo(
     hostname: string,
     port: number
@@ -703,6 +693,7 @@ export class SecurityManager {
     });
   }
 
+  // UNUSED PRIVATE METHOD - Part of dead certificate validation
   private validateCertificateInfo(
     cert: CertificateInfo,
     hostname: string,
@@ -809,6 +800,7 @@ export class SecurityManager {
     };
   }
 
+  // UNUSED PRIVATE METHOD - Part of dead certificate validation
   private extractKeySize(pubkey: any): number {
     // Extract key size from public key
     if (pubkey && pubkey.keySize) {
@@ -825,6 +817,7 @@ export class SecurityManager {
     return 2048; // Default assumption
   }
 
+  // UNUSED PRIVATE METHOD - Part of dead certificate validation
   private isSelfSigned(cert: any): boolean {
     // Check if certificate is self-signed
     if (!cert || !cert.subject || !cert.issuer) {
@@ -930,6 +923,7 @@ export class SecurityManager {
     }
   }
 
+  // UNUSED PRIVATE METHOD - Certificate pinning is not used anywhere
   private async loadPinnedCertificates(): Promise<void> {
     try {
       this.pinnedCertificates.clear();
@@ -1011,6 +1005,7 @@ export class SecurityManager {
     }
   }
 
+  // UNUSED PRIVATE METHOD - Certificate pinning is not used anywhere
   private async savePinnedCertificates(): Promise<void> {
     try {
       if (!this.secrets) {
@@ -1607,6 +1602,7 @@ export class SecurityManager {
   /**
    * Generates compliance report for specified framework
    */
+  // UNUSED METHOD - Compliance reporting is not used anywhere in the codebase
   async generateComplianceReport(
     framework: ComplianceFramework,
     startDate: Date,
@@ -1706,6 +1702,7 @@ export class SecurityManager {
   /**
    * Validates network connection against security rules
    */
+  // UNUSED METHOD - Network security validation is not used anywhere in the codebase
   async validateNetworkConnection(
     hostname: string,
     port: number,
@@ -1802,6 +1799,7 @@ export class SecurityManager {
   /**
    * Performs vulnerability scan on target host
    */
+  // UNUSED METHOD - Vulnerability scanning is not used anywhere in the codebase
   async performVulnerabilityScan(
     target: string,
     scanType: "port" | "ssl" | "configuration" | "full" = "full",
@@ -1894,6 +1892,7 @@ export class SecurityManager {
   /**
    * Blocks a connection by hostname or IP
    */
+  // UNUSED METHOD - Connection blocking is not used anywhere in the codebase
   blockConnection(identifier: string, reason: string, duration?: number): void {
     this.blockedConnections.add(identifier);
 
@@ -1929,6 +1928,7 @@ export class SecurityManager {
   /**
    * Unblocks a previously blocked connection
    */
+  // UNUSED METHOD - Connection blocking is not used anywhere in the codebase
   unblockConnection(identifier: string): void {
     const wasBlocked = this.blockedConnections.has(identifier);
     this.blockedConnections.delete(identifier);
@@ -2176,6 +2176,7 @@ export class SecurityManager {
   /**
    * Pins a certificate for a specific hostname with validation
    */
+  // UNUSED METHOD - Certificate pinning is not used anywhere in the codebase
   async pinCertificate(
     hostname: string,
     certificate: CertificateInfo,
@@ -2258,6 +2259,7 @@ export class SecurityManager {
   /**
    * Removes a pinned certificate for a hostname
    */
+  // UNUSED METHOD - Certificate pinning is not used anywhere in the codebase
   async unpinCertificate(hostname: string): Promise<boolean> {
     try {
       const wasPinned = this.pinnedCertificates.has(hostname);
@@ -2375,6 +2377,7 @@ export class SecurityManager {
   /**
    * Gets all pinned certificates with their metadata
    */
+  // UNUSED METHOD - Certificate pinning is not used anywhere in the codebase
   getPinnedCertificates(): Array<{
     hostname: string;
     certificate: CertificateInfo;
@@ -2400,6 +2403,7 @@ export class SecurityManager {
   /**
    * Validates a certificate against pinned certificate for hostname
    */
+  // UNUSED METHOD - Certificate pinning is not used anywhere in the codebase
   validateAgainstPinned(
     hostname: string,
     certificate: CertificateInfo
@@ -2445,6 +2449,7 @@ export class SecurityManager {
   /**
    * Demonstrates regulatory compliance capabilities
    */
+  // UNUSED DEMONSTRATION METHOD - Not used in production code
   async demonstrateComplianceFeatures(): Promise<void> {
     Logger.info("=== Regulatory Compliance Demonstration ===");
 
@@ -2498,6 +2503,7 @@ export class SecurityManager {
   /**
    * Demonstrates data protection capabilities
    */
+  // UNUSED DEMONSTRATION METHOD - Not used in production code
   async demonstrateDataProtection(): Promise<void> {
     Logger.info("=== Data Protection Demonstration ===");
 
@@ -2599,6 +2605,7 @@ export class SecurityManager {
   /**
    * Test method to validate security implementations
    */
+  // UNUSED TEST METHOD - Not used in production code
   runSecurityTests(): {
     sqlInjection: boolean;
     passwordStrength: boolean;
@@ -3215,6 +3222,7 @@ export class SecurityManager {
   /**
    * Assesses SOX compliance requirements
    */
+  // UNUSED PRIVATE METHOD - Part of dead compliance reporting
   private async assessSOXCompliance(): Promise<ComplianceFinding[]> {
     const findings: ComplianceFinding[] = [];
 
@@ -3282,6 +3290,7 @@ export class SecurityManager {
   /**
    * Initializes default network security rules
    */
+  // UNUSED PRIVATE METHOD - Part of dead network security validation
   private initializeDefaultNetworkRules(): void {
     this.networkSecurityRules = [
       {
@@ -3333,6 +3342,7 @@ export class SecurityManager {
   /**
    * Checks if hostname is external (not private/internal)
    */
+  // UNUSED PRIVATE METHOD - Part of dead network security validation
   private isExternalHost(hostname: string): boolean {
     // Check for localhost
     if (
@@ -3365,6 +3375,7 @@ export class SecurityManager {
   /**
    * Evaluates if a network rule matches the connection
    */
+  // UNUSED PRIVATE METHOD - Part of dead network security validation
   private evaluateNetworkRule(
     rule: NetworkSecurityRule,
     hostname: string,
@@ -3397,6 +3408,7 @@ export class SecurityManager {
   /**
    * Checks if hostname matches rule pattern (supports wildcards)
    */
+  // UNUSED PRIVATE METHOD - Part of dead network security validation
   private hostnameMatches(actual: string, pattern: string): boolean {
     if (pattern === actual) {
       return true;
@@ -3415,6 +3427,7 @@ export class SecurityManager {
   /**
    * Checks if IP address matches rule pattern (supports CIDR notation)
    */
+  // UNUSED PRIVATE METHOD - Part of dead network security validation
   private ipMatches(actual: string, pattern: string): boolean {
     if (pattern === actual) {
       return true;
@@ -3433,6 +3446,7 @@ export class SecurityManager {
   /**
    * Executes the actual vulnerability scanning logic
    */
+  // UNUSED PRIVATE METHOD - Part of dead vulnerability scanning
   private async executeVulnerabilityScan(
     scan: VulnerabilityScan
   ): Promise<void> {
@@ -3465,6 +3479,7 @@ export class SecurityManager {
   /**
    * Scans for open ports and services
    */
+  // UNUSED PRIVATE METHOD - Part of dead vulnerability scanning
   private async scanPorts(target: string): Promise<VulnerabilityFinding[]> {
     const findings: VulnerabilityFinding[] = [];
 
@@ -3499,6 +3514,7 @@ export class SecurityManager {
   /**
    * Scans SSL/TLS configuration
    */
+  // UNUSED PRIVATE METHOD - Part of dead vulnerability scanning
   private async scanSSLConfiguration(
     target: string
   ): Promise<VulnerabilityFinding[]> {
@@ -3546,6 +3562,7 @@ export class SecurityManager {
   /**
    * Scans database configuration for security issues
    */
+  // UNUSED PRIVATE METHOD - Part of dead vulnerability scanning
   private async scanConfiguration(
     target: string
   ): Promise<VulnerabilityFinding[]> {
@@ -3595,6 +3612,7 @@ export class SecurityManager {
   /**
    * Calculates vulnerability summary statistics
    */
+  // UNUSED PRIVATE METHOD - Part of dead vulnerability scanning
   private calculateVulnerabilitySummary(
     findings: VulnerabilityFinding[]
   ): VulnerabilityScan["summary"] {
@@ -3612,6 +3630,7 @@ export class SecurityManager {
   /**
    * Example usage patterns for regulatory compliance
    */
+  // UNUSED STATIC METHOD - Not used in production code
   static getComplianceUsageExamples(): string {
     return `
 === REGULATORY COMPLIANCE USAGE EXAMPLES ===
@@ -3775,6 +3794,7 @@ export class SecurityManager {
   /**
    * Configuration examples for different compliance scenarios
    */
+  // UNUSED STATIC METHOD - Not used in production code
   static getComplianceConfigurationExamples(): string {
     return `
 === COMPLIANCE CONFIGURATION EXAMPLES ===
@@ -3881,6 +3901,7 @@ ENTERPRISE MULTI-FRAMEWORK:
   /**
    * Demonstrates realtime context classification capabilities
    */
+  // UNUSED DEMONSTRATION METHOD - Not used in production code
   async demonstrateRealtimeClassification(): Promise<void> {
     Logger.info("=== Realtime Context Classification Demonstration ===");
 
@@ -4078,6 +4099,7 @@ ENTERPRISE MULTI-FRAMEWORK:
   /**
    * Tests certificate persistence functionality
    */
+  // UNUSED TEST METHOD - Not used in production code
   async testCertificatePersistence(): Promise<{
     load: boolean;
     save: boolean;

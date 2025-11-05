@@ -1,5 +1,6 @@
 import { SchemaOperations } from "./SchemaOperations";
-import { DatabaseObject, ObjectType } from "@/core/PostgreSqlSchemaBrowser";
+// DatabaseObject and ObjectType are now defined in SchemaOperations
+import { DatabaseObject, ObjectType } from "./SchemaOperations";
 import { Logger } from "@/utils/Logger";
 import {
   PostgreSqlConnectionManager,

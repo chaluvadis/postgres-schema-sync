@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import { Logger } from '@/utils/Logger';
 import { ConnectionManager } from '@/managers/ConnectionManager';
 import { NotificationManager } from '@/views/NotificationManager';
-import { ProgressTracker } from '@/core/ProgressTracker';
+// ProgressTracker functionality has been consolidated into other modules
+// Remove this import as it's no longer needed
 export interface StatusBarItem {
     id: string;
     text: string;
@@ -55,14 +56,14 @@ export class EnhancedStatusBarProvider {
     private updateTimer?: NodeJS.Timeout | undefined;
     private notificationManager: NotificationManager;
     private connectionManager: ConnectionManager;
-    private progressTracker: ProgressTracker;
+    // ProgressTracker functionality has been consolidated - removed
     private constructor(
         connectionManager: ConnectionManager,
         notificationManager: NotificationManager
     ) {
         this.connectionManager = connectionManager;
         this.notificationManager = notificationManager;
-        this.progressTracker = new ProgressTracker();
+        // ProgressTracker functionality has been consolidated - removed
         this.config = this.loadConfig();
 
         this.createStatusBarItems();
@@ -287,12 +288,11 @@ export class EnhancedStatusBarProvider {
         const item = this.statusBarItems.get('operations');
         if (!item) { return; }
 
-        // Get operations from both local indicators and ProgressTracker
+        // Get operations from local indicators (ProgressTracker consolidated)
         const localOperations = Array.from(this.operationIndicators.values())
             .filter(op => op.status === 'running' || op.status === 'pending');
 
-        const progressTrackerStats = this.progressTracker.getStats();
-        const activeOperations = localOperations; // Prioritize local operations for now
+        const activeOperations = localOperations;
 
         if (activeOperations.length === 0) {
             item.text = '$(sync) No operations';
@@ -858,8 +858,7 @@ export class EnhancedStatusBarProvider {
             }
         });
 
-        // Dispose ProgressTracker
-        this.progressTracker.dispose();
+        // ProgressTracker functionality has been consolidated - no disposal needed
 
         this.statusBarItems.forEach(item => item.dispose());
         this.statusBarItems.clear();

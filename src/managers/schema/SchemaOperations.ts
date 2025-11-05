@@ -5,9 +5,39 @@ import {
   ConnectionInfo,
 } from "@/core/PostgreSqlConnectionManager";
 import { ExtensionInitializer } from "@/utils/ExtensionInitializer";
-import { DatabaseObject, ObjectType } from "@/core/PostgreSqlSchemaBrowser";
+// DatabaseObject and ObjectType are now defined locally in this file
 
 // Consolidated schema browser functionality from PostgreSqlSchemaBrowser
+
+export interface DatabaseObject {
+  id: string;
+  name: string;
+  type: ObjectType;
+  schema: string;
+  database: string;
+  owner: string;
+  sizeInBytes?: number;
+  definition: string;
+  properties: Record<string, any>;
+  createdAt: Date;
+  modifiedAt?: Date;
+  dependencies: string[];
+}
+
+export enum ObjectType {
+  Table = "table",
+  View = "view",
+  Function = "function",
+  Procedure = "procedure",
+  Sequence = "sequence",
+  Type = "type",
+  Domain = "domain",
+  Index = "index",
+  Trigger = "trigger",
+  Constraint = "constraint",
+  Column = "column",
+  Schema = "schema"
+}
 
 export interface SchemaCache {
   connectionId: string;
@@ -101,12 +131,8 @@ export class SchemaOperations {
         throw new Error("Failed to create connection info");
       }
 
-      // Get objects via native service - use PostgreSqlSchemaBrowser
-      const schemaBrowser = new (await import("@/core/PostgreSqlSchemaBrowser")).PostgreSqlSchemaBrowser();
-      const dotNetObjects = await schemaBrowser.getDatabaseObjectsAsync(
-        dotNetConnection,
-        schemaFilter || undefined
-      );
+      // Get objects via native service - use consolidated schema operations
+      const dotNetObjects = await this.getDatabaseObjectsFromConnection(connectionId, schemaFilter);
 
       // Step 3: Process
       statusBarProvider.updateOperationStep(operationId, 1, "completed");
@@ -125,7 +151,7 @@ export class SchemaOperations {
       }
 
       // Convert from .NET format to local format preserving ALL details
-      const objects: DatabaseObject[] = dotNetObjects.map((dotNetObj) => ({
+      const objects: DatabaseObject[] = dotNetObjects.map((dotNetObj: any) => ({
         id: dotNetObj.id,
         name: dotNetObj.name,
         type: this.mapDotNetTypeToLocal(dotNetObj.type) as ObjectType,
@@ -187,10 +213,9 @@ export class SchemaOperations {
         throw new Error("Failed to create connection info");
       }
 
-      // Get object details via native service - use PostgreSqlSchemaBrowser
-      const schemaBrowser = new (await import("@/core/PostgreSqlSchemaBrowser")).PostgreSqlSchemaBrowser();
-      const allObjects = await schemaBrowser.getDatabaseObjectsAsync(dotNetConnection);
-      const object = allObjects.find(obj => obj.schema === schema && obj.name === objectName && obj.type === objectType);
+      // Get object details via native service - use consolidated schema operations
+      const allObjects = await this.getDatabaseObjectsFromConnection(connectionId);
+      const object = allObjects.find((obj: DatabaseObject) => obj.schema === schema && obj.name === objectName && obj.type === objectType);
       const details = object ? {
         name: object.name,
         type: object.type,
