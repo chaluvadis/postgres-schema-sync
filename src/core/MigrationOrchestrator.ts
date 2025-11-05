@@ -691,11 +691,12 @@ export class MigrationOrchestrator {
             // Generate migration script first
             const migrationScript = await this.generateMigration(request);
 
-            // Use MigrationExecutor for proper script execution
-            const migrationExecutor = new (await import("@/managers/schema/MigrationExecutor")).MigrationExecutor(
+            // Use MigrationManagement for proper script execution
+            const migrationManager = new (await import("@/managers/schema/MigrationManagement")).MigrationManagement(
                 new (await import("@/services/QueryExecutionService")).QueryExecutionService(
                     new (await import("@/managers/ConnectionManager")).ConnectionManager(null as any)
-                )
+                ),
+                new (await import("@/core/ValidationFramework")).ValidationFramework()
             );
 
             // Create enhanced migration script with proper structure
@@ -770,7 +771,7 @@ export class MigrationOrchestrator {
                 riskLevel: migrationScript.riskLevel.toLowerCase() as 'low' | 'medium' | 'high' | 'critical'
             };
 
-            const executionResult = await migrationExecutor.executeMigrationScript(
+            const executionResult = await migrationManager.executeMigrationScript(
                 enhancedScript,
                 request.targetConnectionId,
                 { dryRun: false, stopOnError: !request.options?.executeInTransaction }
@@ -779,9 +780,9 @@ export class MigrationOrchestrator {
             // Convert execution result to expected format
             return {
                 operationsProcessed: executionResult.completedSteps,
-                errors: executionResult.executionLog.filter((log: { level: string; message: string; }) => log.level === 'error').map((log: { level: string; message: string; }) => log.message),
-                warnings: executionResult.executionLog.filter((log: { level: string; message: string; }) => log.level === 'warning').map((log: { level: string; message: string; }) => log.message),
-                executionLog: executionResult.executionLog.map((log: { level: string; message: string; }) => `[${log.level.toUpperCase()}] ${log.message}`)
+                errors: executionResult.executionLog.filter((log) => log.level === 'error').map((log) => log.message || ''),
+                warnings: executionResult.executionLog.filter((log) => log.level === 'warn').map((log) => log.message || ''),
+                executionLog: executionResult.executionLog.map((log) => `[${(log.level || 'info').toUpperCase()}] ${log.message || ''}`)
             };
 
         } catch (error) {
@@ -848,7 +849,7 @@ export class MigrationOrchestrator {
                 `;
 
                 const orphanResult = await client.query(orphanCheck);
-                const issues = orphanResult.rows.filter(row => parseInt(row.count) > 0);
+                const issues = orphanResult.rows.filter((row: any) => parseInt(row.count) > 0);
 
                 if (issues.length > 0) {
                     Logger.warn('Schema integrity issues detected', 'MigrationOrchestrator.verifyMigration', {
