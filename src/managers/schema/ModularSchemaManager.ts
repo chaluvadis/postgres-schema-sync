@@ -13,9 +13,6 @@ import { MetadataManagement } from "./MetadataManagement";
 import { DependencyAnalysis } from "./DependencyAnalysis";
 import { ImpactAnalysis } from "./ImpactAnalysis";
 import { MigrationManagement } from "./MigrationManagement";
-import { MigrationScriptGenerator } from "./MigrationScriptGenerator";
-import { MigrationExecutor } from "./MigrationExecutor";
-import { MigrationValidator } from "./MigrationValidator";
 import { PerformanceAnalysis } from "./PerformanceAnalysis";
 
 // Re-export key interfaces for backward compatibility (selective exports to avoid conflicts)
@@ -138,17 +135,10 @@ export class ModularSchemaManager {
       this.schemaComparison,
       this.dependencyAnalysis
     );
-    // Initialize migration modules
-    const scriptGenerator = new MigrationScriptGenerator(this.queryService, this.validationFramework);
-    const executor = new MigrationExecutor(this.queryService);
-    const validator = new MigrationValidator(this.queryService, this.validationFramework);
-
+    // Initialize migration management
     this.migrationManagement = new MigrationManagement(
       this.queryService,
-      this.validationFramework,
-      scriptGenerator,
-      executor,
-      validator
+      this.validationFramework
     );
     this.conflictResolutionService = new ConflictResolutionService();
     this.performanceAnalysis = new PerformanceAnalysis(this.queryService);

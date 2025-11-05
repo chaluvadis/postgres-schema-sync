@@ -52,7 +52,7 @@ export class AdditionalCommandHandlers {
         try {
             if (this.components.connectionManager) {
                 // Use connection management view for managing connections
-                const { ConnectionManagementView } = await import('../views/ConnectionManagementView');
+                const { ConnectionManagementView } = await import('../views/legacy/ConnectionManagementView');
                 const connectionView = new ConnectionManagementView(this.components.connectionManager);
                 await connectionView.showConnectionDialog();
                 Logger.info('Connection management opened successfully', 'AdditionalCommandHandlers');

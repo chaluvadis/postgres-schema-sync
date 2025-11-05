@@ -2,20 +2,21 @@
 // This file contains all interfaces and types used across migration modules
 
 export interface EnhancedMigrationScript {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  sourceSchema: SchemaSnapshot;
-  targetSchema: SchemaSnapshot;
-  migrationSteps: MigrationStep[];
-  rollbackScript: RollbackScript;
-  validationSteps: ValidationStep[];
-  dependencies: MigrationDependency[];
-  metadata: MigrationMetadata;
-  generatedAt: Date;
-  estimatedExecutionTime: number;
-  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+   id: string;
+   name: string;
+   description: string;
+   version: string;
+   sourceSchema: SchemaSnapshot;
+   targetSchema: SchemaSnapshot;
+   migrationSteps: MigrationStep[];
+   rollbackScript: RollbackScript;
+   validationSteps: ValidationStep[];
+   dependencies: MigrationDependency[];
+   metadata: MigrationMetadata;
+   generatedAt: Date;
+   estimatedExecutionTime: number;
+   riskLevel: 'low' | 'medium' | 'high' | 'critical';
+   sqlScript?: string; // Added for compatibility
 }
 
 export interface SchemaSnapshot {
@@ -84,13 +85,26 @@ export interface MigrationDependency {
 }
 
 export interface MigrationMetadata {
-  author: string;
-  tags: string[];
-  businessJustification: string;
-  changeType: string;
-  environment: string;
-  testingRequired: boolean;
-  documentationUpdated: boolean;
+   author?: string;
+   tags?: string[];
+   businessJustification?: string;
+   changeType?: string;
+   environment?: string;
+   testingRequired?: boolean;
+   documentationUpdated?: boolean;
+   completedAt?: string;
+   status?: 'running' | 'completed' | 'failed' | 'cancelled';
+   verified?: boolean;
+   startedAt?: string;
+   currentPhase?: string;
+   progressPercentage?: number;
+   lastUpdated?: string;
+   lastChecked?: string;
+   isRealTime?: boolean;
+   cancelledAt?: string;
+   lastVerified?: string;
+   executionTimeMs?: number;
+   transactionId?: number;
 }
 
 export interface PreCondition {
@@ -114,25 +128,31 @@ export interface PostCondition {
 }
 
 export interface MigrationExecutionResult {
-  scriptId: string;
-  executionId: string;
-  startTime: Date;
-  endTime?: Date;
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
-  completedSteps: number;
-  failedSteps: number;
-  executionLog: ExecutionLogEntry[];
-  performanceMetrics: MigrationPerformanceMetrics;
-  validationResults: ValidationResult[];
-  currentStep?: number;
+   scriptId: string;
+   executionId: string;
+   startTime: Date;
+   endTime?: Date;
+   status: 'running' | 'completed' | 'failed' | 'cancelled';
+   completedSteps: number;
+   failedSteps: number;
+   executionLog: ExecutionLogEntry[];
+   performanceMetrics: MigrationPerformanceMetrics;
+   validationResults: ValidationResult[];
+   currentStep?: number;
+   success?: boolean; // Added for compatibility
+   executionTime?: number; // Added for compatibility
+   operationsProcessed?: number; // Added for compatibility
+   errors?: string[]; // Added for compatibility
+   warnings?: string[]; // Added for compatibility
+   rollbackAvailable?: boolean; // Added for compatibility
 }
 
 export interface ExecutionLogEntry {
-  timestamp: Date;
-  stepId?: string;
-  level: 'info' | 'warn' | 'error' | 'debug';
-  message: string;
-  duration?: number;
+   timestamp?: Date;
+   stepId?: string;
+   level?: 'info' | 'warn' | 'error' | 'debug';
+   message?: string;
+   duration?: number;
 }
 
 export interface MigrationPerformanceMetrics {
@@ -143,11 +163,18 @@ export interface MigrationPerformanceMetrics {
 }
 
 export interface ValidationResult {
-  stepId: string;
-  validationId: string;
-  passed: boolean;
-  actualResult?: any;
-  expectedResult?: any;
-  executionTime: number;
-  errorMessage?: string;
+   stepId?: string;
+   validationId?: string;
+   passed: boolean;
+   actualResult?: any;
+   expectedResult?: any;
+   executionTime?: number;
+   errorMessage?: string;
+   ruleId?: string;
+   ruleName?: string;
+   severity?: 'error' | 'warning' | 'info';
+   message?: string;
+   details?: any;
+   timestamp?: Date;
+   retryCount?: number;
 }
