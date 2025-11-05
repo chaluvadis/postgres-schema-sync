@@ -238,10 +238,14 @@ export class PostgreSqlConnectionManager {
 	}
 
 	private startHealthMonitoring(): void {
-		// Check health every 30 seconds
+		// Check health every 2 minutes instead of 30 seconds
 		this.healthCheckInterval = setInterval(async () => {
-			await this.performHealthChecks();
-		}, 30000);
+			try {
+				await this.performHealthChecks();
+			} catch (error) {
+				Logger.error("Error in health monitoring", error as Error);
+			}
+		}, 120000); // 2 minutes
 
 		// Initial health check
 		this.performHealthChecks();
@@ -250,30 +254,44 @@ export class PostgreSqlConnectionManager {
 	private async performHealthChecks(): Promise<void> {
 		const connectionIds = Array.from(this.healthStatus.keys());
 
-		for (const connectionId of connectionIds) {
-			try {
-				const status = this.healthStatus.get(connectionId);
-				if (!status) {
-					continue;
+		// Process health checks in batches to avoid overwhelming the system
+		const batchSize = 3;
+		for (let i = 0; i < connectionIds.length; i += batchSize) {
+			const batch = connectionIds.slice(i, i + batchSize);
+
+			const batchPromises = batch.map(async (connectionId) => {
+				try {
+					const status = this.healthStatus.get(connectionId);
+					if (!status) {
+						return;
+					}
+
+					const startTime = Date.now();
+					const isHealthy = await this.checkConnectionHealth(connectionId);
+					const responseTime = Date.now() - startTime;
+
+					this.healthStatus.set(connectionId, {
+						...status,
+						isHealthy,
+						lastChecked: new Date(),
+						responseTime,
+						errorMessage: isHealthy ? undefined : "Connection health check failed",
+						poolStats: this.getPoolStats()[status.connectionId],
+					});
+				} catch (error) {
+					Logger.warn("Health check failed for connection", "performHealthChecks", {
+						connectionId,
+						error: (error as Error).message,
+					});
 				}
+			});
 
-				const startTime = Date.now();
-				const isHealthy = await this.checkConnectionHealth(connectionId);
-				const responseTime = Date.now() - startTime;
+			// Wait for the current batch to complete before starting the next
+			await Promise.all(batchPromises);
 
-				this.healthStatus.set(connectionId, {
-					...status,
-					isHealthy,
-					lastChecked: new Date(),
-					responseTime,
-					errorMessage: isHealthy ? undefined : "Connection health check failed",
-					poolStats: this.getPoolStats()[status.connectionId],
-				});
-			} catch (error) {
-				Logger.warn("Health check failed for connection", "performHealthChecks", {
-					connectionId,
-					error: (error as Error).message,
-				});
+			// Small delay between batches to prevent overwhelming
+			if (i + batchSize < connectionIds.length) {
+				await new Promise((resolve) => setTimeout(resolve, 100));
 			}
 		}
 	}
@@ -298,9 +316,17 @@ export class PostgreSqlConnectionManager {
 				createdDate: new Date().toISOString(),
 			};
 
-			const handle = await this.createConnection(connectionInfo);
-			handle.release();
-			return true;
+			// Add timeout to health check
+			const timeoutPromise = new Promise<never>((_, reject) =>
+				setTimeout(() => reject(new Error("Health check timed out")), 5000),
+			);
+
+			const healthCheckPromise = this.createConnection(connectionInfo).then((handle) => {
+				handle.release();
+				return true;
+			});
+
+			return await Promise.race([healthCheckPromise, timeoutPromise]);
 		} catch (error) {
 			return false;
 		}

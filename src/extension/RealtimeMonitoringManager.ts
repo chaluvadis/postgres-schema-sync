@@ -179,10 +179,14 @@ export class RealtimeMonitoringManager {
 				clearInterval(realtimeState.connectionMonitors.get(connection.id)!);
 			}
 
-			// Monitor connection status every 60 seconds
+			// Monitor connection status every 5 minutes (300 seconds) instead of 60 seconds
 			const monitor = setInterval(async () => {
-				await this.checkConnectionStatus(connection.id);
-			}, 60000);
+				try {
+					await this.checkConnectionStatus(connection.id);
+				} catch (error) {
+					Logger.error("Error in connection monitoring", error as Error);
+				}
+			}, 300000); // 5 minutes
 
 			realtimeState.connectionMonitors.set(connection.id, monitor);
 		});
@@ -195,8 +199,13 @@ export class RealtimeMonitoringManager {
 	}
 	private async checkConnectionStatus(connectionId: string): Promise<void> {
 		try {
-			// Test connection status
-			const isConnected = await this.testConnectionQuietly(connectionId);
+			// Test connection status with timeout
+			const timeoutPromise = new Promise<never>((_, reject) =>
+				setTimeout(() => reject(new Error("Connection check timed out")), 10000),
+			);
+
+			const checkPromise = this.testConnectionQuietly(connectionId);
+			const isConnected = await Promise.race([checkPromise, timeoutPromise]);
 
 			if (!isConnected) {
 				Logger.warn("Connection lost", "checkConnectionStatus", {
@@ -209,16 +218,22 @@ export class RealtimeMonitoringManager {
 					realtimeState.statusBarItem.tooltip += "\nConnection status: Disconnected";
 				}
 
-				// Show notification
-				vscode.window
-					.showWarningMessage("Database connection lost. Attempting to reconnect...", "Retry Now", "View Details")
-					.then((selection) => {
-						if (selection === "Retry Now") {
-							vscode.commands.executeCommand("postgresql.testConnection");
-						} else if (selection === "View Details") {
-							Logger.showOutputChannel();
-						}
-					});
+				// Show notification (only if not already shown recently)
+				const lastNotification = (realtimeState as any).lastConnectionNotification || 0;
+				const now = Date.now();
+				if (now - lastNotification > 300000) {
+					// 5 minutes
+					(realtimeState as any).lastConnectionNotification = now;
+					vscode.window
+						.showWarningMessage("Database connection lost. Attempting to reconnect...", "Retry Now", "View Details")
+						.then((selection) => {
+							if (selection === "Retry Now") {
+								vscode.commands.executeCommand("postgresql.testConnection");
+							} else if (selection === "View Details") {
+								Logger.showOutputChannel();
+							}
+						});
+				}
 			} else {
 				Logger.debug("Connection healthy", "checkConnectionStatus", {
 					connectionId,
@@ -263,10 +278,10 @@ export class RealtimeMonitoringManager {
 				password: password, // Note: In production, this should be encrypted
 			};
 
-			// Test connection with a short timeout (5 seconds for quiet testing)
+			// Test connection with a short timeout (3 seconds for quiet testing)
 			const testPromise = this.testConnectionWithDotNet(dotNetConnection);
 			const timeoutPromise = new Promise<boolean>((_, reject) =>
-				setTimeout(() => reject(new Error("Connection test timed out")), 5000),
+				setTimeout(() => reject(new Error("Connection test timed out")), 3000),
 			);
 
 			const result = await Promise.race([testPromise, timeoutPromise]);
@@ -305,21 +320,46 @@ export class RealtimeMonitoringManager {
 		}
 	}
 	setupWorkspaceSQLWatchers(): void {
-		// Watch for SQL files in the entire workspace
+		// Watch for SQL files in the entire workspace with throttling
 		const sqlPattern = "**/*.{sql,psql}";
 		const watcher = vscode.workspace.createFileSystemWatcher(sqlPattern);
 
-		watcher.onDidCreate((uri) => {
-			Logger.info("New SQL file detected", "setupWorkspaceSQLWatchers", {
-				filePath: uri.fsPath,
-			});
+		// Throttle file creation events to prevent excessive processing
+		let createThrottleTimer: NodeJS.Timeout | null = null;
+		const pendingCreates = new Set<string>();
 
-			// Setup watcher for the new file
-			vscode.workspace.openTextDocument(uri).then((document) => {
-				if (document) {
-					this.setupSQLFileWatcher(document);
-				}
-			});
+		watcher.onDidCreate((uri) => {
+			pendingCreates.add(uri.fsPath);
+
+			if (createThrottleTimer) {
+				clearTimeout(createThrottleTimer);
+			}
+
+			createThrottleTimer = setTimeout(() => {
+				const filesToProcess = Array.from(pendingCreates);
+				pendingCreates.clear();
+
+				filesToProcess.forEach((filePath) => {
+					Logger.info("New SQL file detected", "setupWorkspaceSQLWatchers", {
+						filePath,
+					});
+
+					// Setup watcher for the new file
+					vscode.workspace.openTextDocument(vscode.Uri.file(filePath)).then(
+						(document) => {
+							if (document) {
+								this.setupSQLFileWatcher(document);
+							}
+						},
+						(error: any) => {
+							Logger.warn("Failed to open SQL file for watching", "setupWorkspaceSQLWatchers", {
+								filePath,
+								error: error.message,
+							});
+						},
+					);
+				});
+			}, 1000); // 1 second throttle
 		});
 
 		watcher.onDidDelete((uri) => {
@@ -336,88 +376,159 @@ export class RealtimeMonitoringManager {
 		(realtimeState as any).workspaceWatcher = watcher;
 	}
 	startGlobalRealtimeMonitoring(): void {
-		// Monitor VS Code state changes
+		// Monitor VS Code state changes with throttling
+		let windowFocusThrottleTimer: NodeJS.Timeout | null = null;
 		vscode.window.onDidChangeWindowState((state) => {
 			if (state.focused && realtimeState.activeSQLFile) {
-				// Refresh when window gains focus
-				Logger.debug("Window focused, refreshing real-time state", "startGlobalRealtimeMonitoring");
+				// Throttle window focus events to prevent excessive processing
+				if (windowFocusThrottleTimer) {
+					clearTimeout(windowFocusThrottleTimer);
+				}
 
-				// Refresh status bar
-				vscode.workspace.openTextDocument(realtimeState.activeSQLFile).then(
-					(document) => {
-						if (document) {
-							this.updatePersistentStatusBar(document);
-						}
-					},
-					(error: any) => {
-						Logger.error("Error refreshing on window focus", error);
-					},
-				);
+				windowFocusThrottleTimer = setTimeout(() => {
+					Logger.debug("Window focused, refreshing real-time state", "startGlobalRealtimeMonitoring");
+
+					// Refresh status bar
+					if (realtimeState.activeSQLFile) {
+						vscode.workspace.openTextDocument(realtimeState.activeSQLFile).then(
+							(document) => {
+								if (document) {
+									this.updatePersistentStatusBar(document);
+								}
+							},
+							(error: any) => {
+								Logger.error("Error refreshing on window focus", error);
+							},
+						);
+					}
+				}, 2000); // 2 second throttle
 			}
 		});
 
-		// Monitor text document changes for real-time updates
+		// Monitor text document changes for real-time updates with throttling
+		let textChangeThrottleTimer: NodeJS.Timeout | null = null;
 		vscode.workspace.onDidChangeTextDocument((event) => {
 			const document = event.document;
 			const isSQLFile = document.languageId === "sql" || document.languageId === "postgresql";
 
 			if (isSQLFile && realtimeState.activeSQLFile === document.fileName) {
-				// Update status bar with character count changes
-				this.updatePersistentStatusBar(document);
-
-				// Trigger real-time validation if needed
-				if (this.components?.queryEditorView) {
-					// Could trigger real-time syntax checking
+				// Throttle text change events
+				if (textChangeThrottleTimer) {
+					clearTimeout(textChangeThrottleTimer);
 				}
+
+				textChangeThrottleTimer = setTimeout(() => {
+					// Update status bar with character count changes
+					this.updatePersistentStatusBar(document);
+
+					// Trigger real-time validation if needed
+					if (this.components?.queryEditorView) {
+						// Could trigger real-time syntax checking
+					}
+				}, 500); // 500ms throttle
 			}
 		});
 	}
 	restartRealtimeMonitoring(): void {
 		Logger.info("Restarting real-time monitoring", "restartRealtimeMonitoring");
 
-		// Stop existing monitoring
-		this.cleanupRealtimeMonitoring();
+		try {
+			// Stop existing monitoring
+			this.cleanupRealtimeMonitoring();
 
-		// Restart monitoring
-		this.startConnectionMonitoring();
-		this.setupWorkspaceSQLWatchers();
-		this.startGlobalRealtimeMonitoring();
+			// Restart monitoring with error handling
+			this.startConnectionMonitoring();
+			this.setupWorkspaceSQLWatchers();
+			this.startGlobalRealtimeMonitoring();
+
+			Logger.info("Real-time monitoring restarted successfully", "restartRealtimeMonitoring");
+		} catch (error) {
+			Logger.error("Error restarting real-time monitoring", error as Error, "restartRealtimeMonitoring");
+			// Attempt cleanup on failure
+			try {
+				this.cleanupRealtimeMonitoring();
+			} catch (cleanupError) {
+				Logger.error("Error during cleanup after restart failure", cleanupError as Error, "restartRealtimeMonitoring");
+			}
+		}
 	}
 	restartFileWatchers(): void {
 		Logger.info("Restarting file watchers", "restartFileWatchers");
 
-		// Clear existing watchers
-		realtimeState.fileWatchers.forEach((watcher) => watcher.dispose());
-		realtimeState.fileWatchers.clear();
+		try {
+			// Clear existing watchers with error handling
+			realtimeState.fileWatchers.forEach((watcher) => {
+				try {
+					watcher.dispose();
+				} catch (error) {
+					Logger.warn("Error disposing file watcher during restart", "restartFileWatchers", {
+						error: (error as Error).message,
+					});
+				}
+			});
+			realtimeState.fileWatchers.clear();
 
-		// Setup new watchers for current workspace
-		this.setupWorkspaceSQLWatchers();
+			// Setup new watchers for current workspace
+			this.setupWorkspaceSQLWatchers();
+
+			Logger.info("File watchers restarted successfully", "restartFileWatchers");
+		} catch (error) {
+			Logger.error("Error restarting file watchers", error as Error, "restartFileWatchers");
+		}
 	}
 	cleanupRealtimeMonitoring(): void {
 		Logger.info("Cleaning up real-time monitoring", "cleanupRealtimeMonitoring");
 
-		// Dispose file watchers
-		realtimeState.fileWatchers.forEach((watcher) => watcher.dispose());
-		realtimeState.fileWatchers.clear();
+		try {
+			// Dispose file watchers
+			realtimeState.fileWatchers.forEach((watcher) => {
+				try {
+					watcher.dispose();
+				} catch (error) {
+					Logger.warn("Error disposing file watcher", "cleanupRealtimeMonitoring", {
+						error: (error as Error).message,
+					});
+				}
+			});
+			realtimeState.fileWatchers.clear();
 
-		// Clear connection monitors
-		this.stopConnectionMonitoring();
+			// Clear connection monitors
+			this.stopConnectionMonitoring();
 
-		// Clear schema monitors
-		realtimeState.schemaMonitors.forEach((monitor) => clearInterval(monitor));
-		realtimeState.schemaMonitors.clear();
+			// Clear schema monitors
+			realtimeState.schemaMonitors.forEach((monitor) => {
+				try {
+					clearInterval(monitor);
+				} catch (error) {
+					Logger.warn("Error clearing schema monitor", "cleanupRealtimeMonitoring", {
+						error: (error as Error).message,
+					});
+				}
+			});
+			realtimeState.schemaMonitors.clear();
 
-		// Clear status bar
-		this.clearPersistentStatusBar();
+			// Clear status bar
+			this.clearPersistentStatusBar();
 
-		// Dispose workspace watcher
-		if ((realtimeState as any).workspaceWatcher) {
-			(realtimeState as any).workspaceWatcher.dispose();
+			// Dispose workspace watcher
+			if ((realtimeState as any).workspaceWatcher) {
+				try {
+					(realtimeState as any).workspaceWatcher.dispose();
+				} catch (error) {
+					Logger.warn("Error disposing workspace watcher", "cleanupRealtimeMonitoring", {
+						error: (error as Error).message,
+					});
+				}
+			}
+
+			// Reset state
+			realtimeState.activeSQLFile = null;
+			realtimeState.lastSchemaCheck.clear();
+
+			Logger.info("Real-time monitoring cleanup completed", "cleanupRealtimeMonitoring");
+		} catch (error) {
+			Logger.error("Error during real-time monitoring cleanup", error as Error, "cleanupRealtimeMonitoring");
 		}
-
-		// Reset state
-		realtimeState.activeSQLFile = null;
-		realtimeState.lastSchemaCheck.clear();
 	}
 	detectConnectionForSQLFile(document: vscode.TextDocument): void {
 		try {
@@ -464,10 +575,10 @@ export class RealtimeMonitoringManager {
 		}
 	}
 	initializePerformanceMonitoring(): void {
-		// Reset metrics every hour
+		// Reset metrics every 4 hours instead of every hour
 		setInterval(() => {
 			this.resetPerformanceMetrics();
-		}, 3600000);
+		}, 14400000); // 4 hours
 
 		Logger.info("Performance monitoring initialized", "initializePerformanceMonitoring");
 	}

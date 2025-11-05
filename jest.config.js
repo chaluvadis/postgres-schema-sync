@@ -7,7 +7,7 @@ export default {
       useESM: true,
     },
   },
-  roots: ['<rootDir>/src', '<rootDir>/test'],
+  roots: ['<rootDir>/src'],
   testMatch: [
     '**/test/**/*.test.ts',
     '**/?(*.)+(spec|test).ts'
@@ -33,7 +33,7 @@ export default {
       statements: 80
     }
   },
-  setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
+  // setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
