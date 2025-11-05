@@ -9,6 +9,16 @@ interface RealtimeState {
 	schemaMonitors: Map<string, NodeJS.Timeout>;
 	activeSQLFile: string | null;
 	lastSchemaCheck: Map<string, number>;
+	circuitBreaker: {
+		isOpen: boolean;
+		lastFailureTime: number;
+		failureCount: number;
+	};
+	resourceLimits: {
+		maxFileWatchers: number;
+		maxConnectionMonitors: number;
+		maxSchemaMonitors: number;
+	};
 }
 interface PerformanceMetrics {
 	fileOperations: number;
@@ -25,6 +35,16 @@ let realtimeState: RealtimeState = {
 	schemaMonitors: new Map(),
 	activeSQLFile: null,
 	lastSchemaCheck: new Map(),
+	circuitBreaker: {
+		isOpen: false,
+		lastFailureTime: 0,
+		failureCount: 0,
+	},
+	resourceLimits: {
+		maxFileWatchers: 50,
+		maxConnectionMonitors: 20,
+		maxSchemaMonitors: 10,
+	},
 };
 
 let performanceMetrics: PerformanceMetrics = {
@@ -41,6 +61,12 @@ export class RealtimeMonitoringManager {
 		this.components = components;
 	}
 
+	// Master switch to disable all monitoring by default
+	isMonitoringEnabled(): boolean {
+		const config = vscode.workspace.getConfiguration("postgresql-schema-sync");
+		return config.get<boolean>("realtimeMonitoringEnabled", false); // Disabled by default
+	}
+
 	initializePersistentStatusBar(): void {
 		if (!realtimeState.statusBarItem) {
 			realtimeState.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -48,6 +74,12 @@ export class RealtimeMonitoringManager {
 		}
 	}
 	updatePersistentStatusBar(document: vscode.TextDocument): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			this.clearPersistentStatusBar();
+			return;
+		}
+
 		if (!realtimeState.statusBarItem) {
 			this.initializePersistentStatusBar();
 		}
@@ -90,6 +122,12 @@ export class RealtimeMonitoringManager {
 		return "None";
 	}
 	setupSQLFileWatcher(document: vscode.TextDocument): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			Logger.debug("Real-time monitoring disabled by master switch, skipping file watcher setup", "setupSQLFileWatcher");
+			return;
+		}
+
 		const filePath = document.fileName;
 
 		// Remove existing watcher if any
@@ -148,6 +186,11 @@ export class RealtimeMonitoringManager {
 		realtimeState.fileWatchers.set(filePath, watcher);
 	}
 	refreshIntelliSenseForFile(document: vscode.TextDocument): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			return;
+		}
+
 		try {
 			const content = document.getText();
 			const connectionId = vscode.workspace.getConfiguration().get<string>("postgresql-schema-sync.detectedConnection");
@@ -167,6 +210,21 @@ export class RealtimeMonitoringManager {
 		}
 	}
 	startConnectionMonitoring(): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			Logger.info("Real-time monitoring disabled by master switch", "startConnectionMonitoring");
+			return;
+		}
+
+		// Check if connection monitoring is disabled via configuration
+		const config = vscode.workspace.getConfiguration("postgresql-schema-sync");
+		const connectionMonitoringEnabled = config.get<boolean>("connectionMonitoringEnabled", true);
+
+		if (!connectionMonitoringEnabled) {
+			Logger.info("Connection monitoring disabled via configuration", "startConnectionMonitoring");
+			return;
+		}
+
 		if (!this.components?.connectionManager) {
 			return;
 		}
@@ -179,14 +237,48 @@ export class RealtimeMonitoringManager {
 				clearInterval(realtimeState.connectionMonitors.get(connection.id)!);
 			}
 
-			// Monitor connection status every 5 minutes (300 seconds) instead of 60 seconds
+			// Check if circuit breaker is open
+			if (realtimeState.circuitBreaker.isOpen) {
+				const now = Date.now();
+				const timeSinceLastFailure = now - realtimeState.circuitBreaker.lastFailureTime;
+				// Reset circuit breaker after 10 minutes
+				if (timeSinceLastFailure > 600000) {
+					realtimeState.circuitBreaker.isOpen = false;
+					realtimeState.circuitBreaker.failureCount = 0;
+					Logger.info("Circuit breaker reset for connection monitoring", "startConnectionMonitoring");
+				} else {
+					Logger.debug("Circuit breaker open, skipping connection monitoring", "startConnectionMonitoring");
+					return;
+				}
+			}
+
+			// Check resource limits
+			if (realtimeState.connectionMonitors.size >= realtimeState.resourceLimits.maxConnectionMonitors) {
+				Logger.warn("Maximum connection monitors reached, skipping new monitor", "startConnectionMonitoring", {
+					current: realtimeState.connectionMonitors.size,
+					max: realtimeState.resourceLimits.maxConnectionMonitors,
+				});
+				return;
+			}
+
+			// Monitor connection status every 10 minutes (600 seconds) instead of 5 minutes
 			const monitor = setInterval(async () => {
 				try {
 					await this.checkConnectionStatus(connection.id);
 				} catch (error) {
 					Logger.error("Error in connection monitoring", error as Error);
+					// Increment circuit breaker failure count
+					realtimeState.circuitBreaker.failureCount++;
+					realtimeState.circuitBreaker.lastFailureTime = Date.now();
+					if (realtimeState.circuitBreaker.failureCount >= 3) {
+						realtimeState.circuitBreaker.isOpen = true;
+						Logger.warn(
+							"Circuit breaker opened due to repeated connection monitoring failures",
+							"startConnectionMonitoring",
+						);
+					}
 				}
-			}, 300000); // 5 minutes
+			}, 600000); // 10 minutes
 
 			realtimeState.connectionMonitors.set(connection.id, monitor);
 		});
@@ -200,8 +292,8 @@ export class RealtimeMonitoringManager {
 	private async checkConnectionStatus(connectionId: string): Promise<void> {
 		try {
 			// Test connection status with timeout
-			const timeoutPromise = new Promise<never>((_, reject) =>
-				setTimeout(() => reject(new Error("Connection check timed out")), 10000),
+			const timeoutPromise = new Promise<never>(
+				(_, reject) => setTimeout(() => reject(new Error("Connection check timed out")), 15000), // Increased timeout to 15 seconds
 			);
 
 			const checkPromise = this.testConnectionQuietly(connectionId);
@@ -221,8 +313,8 @@ export class RealtimeMonitoringManager {
 				// Show notification (only if not already shown recently)
 				const lastNotification = (realtimeState as any).lastConnectionNotification || 0;
 				const now = Date.now();
-				if (now - lastNotification > 300000) {
-					// 5 minutes
+				if (now - lastNotification > 600000) {
+					// 10 minutes (increased from 5 minutes)
 					(realtimeState as any).lastConnectionNotification = now;
 					vscode.window
 						.showWarningMessage("Database connection lost. Attempting to reconnect...", "Retry Now", "View Details")
@@ -278,10 +370,10 @@ export class RealtimeMonitoringManager {
 				password: password, // Note: In production, this should be encrypted
 			};
 
-			// Test connection with a short timeout (3 seconds for quiet testing)
+			// Test connection with a short timeout (5 seconds for quiet testing)
 			const testPromise = this.testConnectionWithDotNet(dotNetConnection);
-			const timeoutPromise = new Promise<boolean>((_, reject) =>
-				setTimeout(() => reject(new Error("Connection test timed out")), 3000),
+			const timeoutPromise = new Promise<boolean>(
+				(_, reject) => setTimeout(() => reject(new Error("Connection test timed out")), 5000), // Increased timeout to 5 seconds
 			);
 
 			const result = await Promise.race([testPromise, timeoutPromise]);
@@ -320,6 +412,21 @@ export class RealtimeMonitoringManager {
 		}
 	}
 	setupWorkspaceSQLWatchers(): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			Logger.info("Real-time monitoring disabled by master switch", "setupWorkspaceSQLWatchers");
+			return;
+		}
+
+		// Check if file watching is disabled via configuration
+		const config = vscode.workspace.getConfiguration("postgresql-schema-sync");
+		const fileWatchingEnabled = config.get<boolean>("fileWatchingEnabled", true);
+
+		if (!fileWatchingEnabled) {
+			Logger.info("File watching disabled via configuration", "setupWorkspaceSQLWatchers");
+			return;
+		}
+
 		// Watch for SQL files in the entire workspace with throttling
 		const sqlPattern = "**/*.{sql,psql}";
 		const watcher = vscode.workspace.createFileSystemWatcher(sqlPattern);
@@ -329,6 +436,16 @@ export class RealtimeMonitoringManager {
 		const pendingCreates = new Set<string>();
 
 		watcher.onDidCreate((uri) => {
+			// Check resource limits before adding new watchers
+			if (realtimeState.fileWatchers.size >= realtimeState.resourceLimits.maxFileWatchers) {
+				Logger.warn("Maximum file watchers reached, skipping new SQL file watcher", "setupWorkspaceSQLWatchers", {
+					current: realtimeState.fileWatchers.size,
+					max: realtimeState.resourceLimits.maxFileWatchers,
+					filePath: uri.fsPath,
+				});
+				return;
+			}
+
 			pendingCreates.add(uri.fsPath);
 
 			if (createThrottleTimer) {
@@ -359,7 +476,7 @@ export class RealtimeMonitoringManager {
 						},
 					);
 				});
-			}, 1000); // 1 second throttle
+			}, 2000); // 2 second throttle (increased from 1 second)
 		});
 
 		watcher.onDidDelete((uri) => {
@@ -376,6 +493,21 @@ export class RealtimeMonitoringManager {
 		(realtimeState as any).workspaceWatcher = watcher;
 	}
 	startGlobalRealtimeMonitoring(): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			Logger.info("Real-time monitoring disabled by master switch", "startGlobalRealtimeMonitoring");
+			return;
+		}
+
+		// Check if global monitoring is disabled via configuration
+		const config = vscode.workspace.getConfiguration("postgresql-schema-sync");
+		const globalMonitoringEnabled = config.get<boolean>("globalMonitoringEnabled", true);
+
+		if (!globalMonitoringEnabled) {
+			Logger.info("Global monitoring disabled via configuration", "startGlobalRealtimeMonitoring");
+			return;
+		}
+
 		// Monitor VS Code state changes with throttling
 		let windowFocusThrottleTimer: NodeJS.Timeout | null = null;
 		vscode.window.onDidChangeWindowState((state) => {
@@ -401,7 +533,7 @@ export class RealtimeMonitoringManager {
 							},
 						);
 					}
-				}, 2000); // 2 second throttle
+				}, 5000); // 5 second throttle (increased from 2 seconds)
 			}
 		});
 
@@ -425,11 +557,17 @@ export class RealtimeMonitoringManager {
 					if (this.components?.queryEditorView) {
 						// Could trigger real-time syntax checking
 					}
-				}, 500); // 500ms throttle
+				}, 1000); // 1 second throttle (increased from 500ms)
 			}
 		});
 	}
 	restartRealtimeMonitoring(): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			Logger.info("Real-time monitoring disabled by master switch, skipping restart", "restartRealtimeMonitoring");
+			return;
+		}
+
 		Logger.info("Restarting real-time monitoring", "restartRealtimeMonitoring");
 
 		try {
@@ -531,6 +669,11 @@ export class RealtimeMonitoringManager {
 		}
 	}
 	detectConnectionForSQLFile(document: vscode.TextDocument): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			return;
+		}
+
 		try {
 			const fileName = document.fileName;
 			const content = document.getText();
@@ -575,6 +718,21 @@ export class RealtimeMonitoringManager {
 		}
 	}
 	initializePerformanceMonitoring(): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			Logger.info("Real-time monitoring disabled by master switch", "initializePerformanceMonitoring");
+			return;
+		}
+
+		// Check if performance monitoring is disabled via configuration
+		const config = vscode.workspace.getConfiguration("postgresql-schema-sync");
+		const performanceMonitoringEnabled = config.get<boolean>("performanceMonitoringEnabled", true);
+
+		if (!performanceMonitoringEnabled) {
+			Logger.info("Performance monitoring disabled via configuration", "initializePerformanceMonitoring");
+			return;
+		}
+
 		// Reset metrics every 4 hours instead of every hour
 		setInterval(() => {
 			this.resetPerformanceMetrics();
@@ -657,6 +815,14 @@ export class RealtimeMonitoringManager {
 		return { ...performanceMetrics };
 	}
 	updateTreeViewTitle(treeView: vscode.TreeView<any>): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			// Update title without real-time info when monitoring is disabled
+			const connectionCount = this.components?.connectionManager?.getConnections().length || 0;
+			treeView.title = `PostgreSQL Explorer (${connectionCount} connections)`;
+			return;
+		}
+
 		try {
 			const connectionCount = this.components?.connectionManager?.getConnections().length || 0;
 			const activeConnections = this.getActiveConnectionCount();
@@ -679,6 +845,11 @@ export class RealtimeMonitoringManager {
 		return this.components?.connectionManager?.getConnections().length || 0;
 	}
 	trackTreeViewExpansion(element: any, expanded: boolean): void {
+		// Check master monitoring switch first
+		if (!this.isMonitoringEnabled()) {
+			return;
+		}
+
 		try {
 			// Track expanded/collapsed state for real-time updates
 			const elementKey = this.getElementKey(element);
