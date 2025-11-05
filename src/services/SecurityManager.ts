@@ -309,7 +309,7 @@ export class SecurityManager {
 	}
 
 	private loadSecurityConfiguration(): SecurityConfiguration {
-		const vscodeConfig = vscode.workspace.getConfiguration("postgresql.securityManager");
+		const vscodeConfig = vscode.workspace.getConfiguration("postgresql-schema-sync.securityManager");
 
 		return {
 			enabled: vscodeConfig.get("enabled", true),

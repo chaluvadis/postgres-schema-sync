@@ -167,7 +167,9 @@ export class SQLFileHandlers {
 		}
 
 		let selectedConnection = connections[0];
-		const detectedConnectionId = vscode.workspace.getConfiguration().get<string>("postgresql.detectedConnection");
+		const detectedConnectionId = vscode.workspace
+			.getConfiguration()
+			.get<string>("postgresql-schema-sync.detectedConnection");
 
 		if (detectedConnectionId) {
 			const detectedConnection = connections.find((c) => c.id === detectedConnectionId);

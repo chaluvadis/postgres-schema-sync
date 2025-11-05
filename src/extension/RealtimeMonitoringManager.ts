@@ -77,7 +77,9 @@ export class RealtimeMonitoringManager {
 		}
 	}
 	getCurrentConnectionInfo(): string {
-		const detectedConnectionId = vscode.workspace.getConfiguration().get<string>("postgresql.detectedConnection");
+		const detectedConnectionId = vscode.workspace
+			.getConfiguration()
+			.get<string>("postgresql-schema-sync.detectedConnection");
 		if (detectedConnectionId && this.components?.connectionManager) {
 			const connections = this.components.connectionManager.getConnections();
 			const connection = connections.find((c) => c.id === detectedConnectionId);
@@ -148,7 +150,7 @@ export class RealtimeMonitoringManager {
 	refreshIntelliSenseForFile(document: vscode.TextDocument): void {
 		try {
 			const content = document.getText();
-			const connectionId = vscode.workspace.getConfiguration().get<string>("postgresql.detectedConnection");
+			const connectionId = vscode.workspace.getConfiguration().get<string>("postgresql-schema-sync.detectedConnection");
 
 			if (connectionId && this.components?.queryEditorView) {
 				// Trigger IntelliSense refresh for the current file
@@ -430,7 +432,11 @@ export class RealtimeMonitoringManager {
 			for (const part of pathParts) {
 				const matchingConnection = connections.find((conn) => part.includes(conn.database) || part.includes(conn.name));
 				if (matchingConnection) {
-					vscode.commands.executeCommand("setContext", "postgresql.detectedConnection", matchingConnection.id);
+					vscode.commands.executeCommand(
+						"setContext",
+						"postgresql-schema-sync.detectedConnection",
+						matchingConnection.id,
+					);
 					Logger.debug("Auto-detected connection for SQL file", "detectConnectionForSQLFile", {
 						fileName,
 						detectedConnection: matchingConnection.name,
@@ -442,7 +448,7 @@ export class RealtimeMonitoringManager {
 			// Look for connection hints in file content
 			for (const connection of connections) {
 				if (content.includes(connection.host) || content.includes(connection.database)) {
-					vscode.commands.executeCommand("setContext", "postgresql.detectedConnection", connection.id);
+					vscode.commands.executeCommand("setContext", "postgresql-schema-sync.detectedConnection", connection.id);
 					Logger.debug("Connection detected in SQL content", "detectConnectionForSQLFile", {
 						fileName,
 						detectedConnection: connection.name,
@@ -452,7 +458,7 @@ export class RealtimeMonitoringManager {
 			}
 
 			// No specific connection detected
-			vscode.commands.executeCommand("setContext", "postgresql.detectedConnection", null);
+			vscode.commands.executeCommand("setContext", "postgresql-schema-sync.detectedConnection", null);
 		} catch (error) {
 			Logger.error("Error detecting connection for SQL file", error as Error);
 		}

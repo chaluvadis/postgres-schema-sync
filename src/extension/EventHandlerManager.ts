@@ -94,8 +94,8 @@ export class EventHandlerManager {
 					});
 
 					// Update context for SQL-specific commands
-					vscode.commands.executeCommand("setContext", "postgresql.sqlFileActive", true);
-					vscode.commands.executeCommand("setContext", "postgresql.sqlFilePath", document.fileName);
+					vscode.commands.executeCommand("setContext", "postgresql-schema-sync.sqlFileActive", true);
+					vscode.commands.executeCommand("setContext", "postgresql-schema-sync.sqlFilePath", document.fileName);
 
 					// Set as active SQL file for real-time monitoring
 					realtimeState.activeSQLFile = document.fileName;
@@ -118,7 +118,7 @@ export class EventHandlerManager {
 					}
 				} else {
 					// Clear SQL-specific context when switching away from SQL files
-					vscode.commands.executeCommand("setContext", "postgresql.sqlFileActive", false);
+					vscode.commands.executeCommand("setContext", "postgresql-schema-sync.sqlFileActive", false);
 					realtimeState.activeSQLFile = null;
 					this.clearPersistentStatusBar();
 				}
@@ -269,7 +269,11 @@ export class EventHandlerManager {
 			for (const part of pathParts) {
 				const matchingConnection = connections.find((conn) => part.includes(conn.database) || part.includes(conn.name));
 				if (matchingConnection) {
-					vscode.commands.executeCommand("setContext", "postgresql.detectedConnection", matchingConnection.id);
+					vscode.commands.executeCommand(
+						"setContext",
+						"postgresql-schema-sync.detectedConnection",
+						matchingConnection.id,
+					);
 					Logger.debug("Auto-detected connection for SQL file", "detectConnectionForSQLFile", {
 						fileName,
 						detectedConnection: matchingConnection.name,
@@ -281,7 +285,7 @@ export class EventHandlerManager {
 			// Look for connection hints in file content
 			for (const connection of connections) {
 				if (content.includes(connection.host) || content.includes(connection.database)) {
-					vscode.commands.executeCommand("setContext", "postgresql.detectedConnection", connection.id);
+					vscode.commands.executeCommand("setContext", "postgresql-schema-sync.detectedConnection", connection.id);
 					Logger.debug("Connection detected in SQL content", "detectConnectionForSQLFile", {
 						fileName,
 						detectedConnection: connection.name,
@@ -291,7 +295,7 @@ export class EventHandlerManager {
 			}
 
 			// No specific connection detected
-			vscode.commands.executeCommand("setContext", "postgresql.detectedConnection", null);
+			vscode.commands.executeCommand("setContext", "postgresql-schema-sync.detectedConnection", null);
 		} catch (error) {
 			Logger.error("Error detecting connection for SQL file", error as Error);
 		}

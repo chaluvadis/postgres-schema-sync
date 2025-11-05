@@ -63,7 +63,7 @@ export class NotificationManager {
 	}
 
 	private loadConfig(): NotificationConfig {
-		const vscodeConfig = vscode.workspace.getConfiguration("postgresql.notifications");
+		const vscodeConfig = vscode.workspace.getConfiguration("postgresql-schema-sync.notifications");
 		return {
 			enabled: vscodeConfig.get("enabled", true),
 			soundEnabled: vscodeConfig.get("soundEnabled", false),
@@ -78,7 +78,7 @@ export class NotificationManager {
 	private setupEventListeners(): void {
 		// Listen for configuration changes
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration("postgresql.notifications")) {
+			if (e.affectsConfiguration("postgresql-schema-sync.notifications")) {
 				this.config = this.loadConfig();
 			}
 		});
