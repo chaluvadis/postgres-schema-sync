@@ -1,229 +1,232 @@
-import * as vscode from 'vscode';
-import { PerformanceMonitorService, PerformanceReport } from '@/services/PerformanceMonitorService';
-import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
+import * as vscode from "vscode";
+import { PerformanceMonitorService, PerformanceReport } from "@/services/PerformanceMonitorService";
+import { ErrorHandler } from "@/utils/ErrorHandler";
+import { Logger } from "@/utils/Logger";
 
 export class QueryAnalyticsView {
-    private context: vscode.ExtensionContext;
-    private performanceMonitor: PerformanceMonitorService;
-    private webviewPanel?: vscode.WebviewPanel;
-    private currentReport?: PerformanceReport;
+	private context: vscode.ExtensionContext;
+	private performanceMonitor: PerformanceMonitorService;
+	private webviewPanel?: vscode.WebviewPanel;
+	private currentReport?: PerformanceReport;
 
-    constructor(
-        context: vscode.ExtensionContext,
-        performanceMonitor: PerformanceMonitorService,
-    ) {
-        this.context = context;
-        this.performanceMonitor = performanceMonitor;
-    }
+	constructor(context: vscode.ExtensionContext, performanceMonitor: PerformanceMonitorService) {
+		this.context = context;
+		this.performanceMonitor = performanceMonitor;
+	}
 
-    async showAnalytics(connectionId?: string): Promise<void> {
-        try {
-            Logger.info('Opening query analytics view', 'showAnalytics', { connectionId });
+	async showAnalytics(connectionId?: string): Promise<void> {
+		try {
+			Logger.info("Opening query analytics view", "showAnalytics", {
+				connectionId,
+			});
 
-            // Create or focus existing webview panel
-            if (!this.webviewPanel) {
-                this.webviewPanel = vscode.window.createWebviewPanel(
-                    'queryAnalytics',
-                    'Query Performance Analytics',
-                    vscode.ViewColumn.One,
-                    {
-                        enableScripts: true,
-                        retainContextWhenHidden: true,
-                        localResourceRoots: [
-                            vscode.Uri.file(this.context.extensionPath)
-                        ]
-                    }
-                );
+			// Create or focus existing webview panel
+			if (!this.webviewPanel) {
+				this.webviewPanel = vscode.window.createWebviewPanel(
+					"queryAnalytics",
+					"Query Performance Analytics",
+					vscode.ViewColumn.One,
+					{
+						enableScripts: true,
+						retainContextWhenHidden: true,
+						localResourceRoots: [vscode.Uri.file(this.context.extensionPath)],
+					},
+				);
 
-                this.webviewPanel.onDidDispose(() => {
-                    this.webviewPanel = undefined;
-                }, null, this.context.subscriptions);
+				this.webviewPanel.onDidDispose(
+					() => {
+						this.webviewPanel = undefined;
+					},
+					null,
+					this.context.subscriptions,
+				);
 
-                this.setupMessageHandler();
-            }
+				this.setupMessageHandler();
+			}
 
-            // Generate performance report
-            await this.generateReport(connectionId);
+			// Generate performance report
+			await this.generateReport(connectionId);
 
-            // Update webview content
-            await this.updateWebviewContent();
+			// Update webview content
+			await this.updateWebviewContent();
 
-            this.webviewPanel.reveal();
+			this.webviewPanel.reveal();
+		} catch (error) {
+			Logger.error("Failed to show analytics view", error as Error);
+			ErrorHandler.handleError(error, ErrorHandler.createContext("ShowAnalytics"));
+		}
+	}
 
-        } catch (error) {
-            Logger.error('Failed to show analytics view', error as Error);
-            ErrorHandler.handleError(error, ErrorHandler.createContext('ShowAnalytics'));
-        }
-    }
+	private async generateReport(connectionId?: string): Promise<void> {
+		try {
+			// Get available connections for selection
+			const connections = await this.getAvailableConnections();
 
-    private async generateReport(connectionId?: string): Promise<void> {
-        try {
-            // Get available connections for selection
-            const connections = await this.getAvailableConnections();
+			if (connections.length === 0) {
+				throw new Error("No database connections available");
+			}
 
-            if (connections.length === 0) {
-                throw new Error('No database connections available');
-            }
+			let selectedConnectionId = connectionId;
 
-            let selectedConnectionId = connectionId;
+			// If no specific connection and multiple available, show selection dialog
+			if (!selectedConnectionId && connections.length > 1) {
+				const selected = await vscode.window.showQuickPick(
+					connections.map((conn) => ({
+						label: conn.name,
+						detail: `${conn.host}:${conn.port}/${conn.database}`,
+						connectionId: conn.id,
+					})),
+					{ placeHolder: "Select a database connection for analytics" },
+				);
 
-            // If no specific connection and multiple available, show selection dialog
-            if (!selectedConnectionId && connections.length > 1) {
-                const selected = await vscode.window.showQuickPick(
-                    connections.map(conn => ({
-                        label: conn.name,
-                        detail: `${conn.host}:${conn.port}/${conn.database}`,
-                        connectionId: conn.id
-                    })),
-                    { placeHolder: 'Select a database connection for analytics' }
-                );
+				if (!selected) {
+					return;
+				}
+				selectedConnectionId = selected.connectionId;
+			} else if (!selectedConnectionId) {
+				selectedConnectionId = connections[0].id;
+			}
 
-                if (!selected) {return;}
-                selectedConnectionId = selected.connectionId;
-            } else if (!selectedConnectionId) {
-                selectedConnectionId = connections[0].id;
-            }
+			// Generate comprehensive report
+			if (!selectedConnectionId) {
+				throw new Error("No connection selected for analytics");
+			}
 
-            // Generate comprehensive report
-            if (!selectedConnectionId) {
-                throw new Error('No connection selected for analytics');
-            }
+			this.currentReport = this.performanceMonitor.generatePerformanceReport(
+				selectedConnectionId,
+				`Performance Report - ${new Date().toLocaleDateString()}`,
+				24, // 24 hours
+			);
 
-            this.currentReport = this.performanceMonitor.generatePerformanceReport(
-                selectedConnectionId,
-                `Performance Report - ${new Date().toLocaleDateString()}`,
-                24 // 24 hours
-            );
+			Logger.info("Performance report generated", "generateReport", {
+				connectionId: selectedConnectionId,
+				totalQueries: this.currentReport.summary.totalQueries,
+			});
+		} catch (error) {
+			Logger.error("Failed to generate performance report", error as Error);
+			throw error;
+		}
+	}
 
-            Logger.info('Performance report generated', 'generateReport', {
-                connectionId: selectedConnectionId,
-                totalQueries: this.currentReport.summary.totalQueries
-            });
+	private async getAvailableConnections(): Promise<any[]> {
+		// This would typically get connections from ConnectionManager
+		// For now, return mock data
+		return [
+			{
+				id: "conn-1",
+				name: "Development DB",
+				host: "localhost",
+				port: 5432,
+				database: "dev_db",
+			},
+		];
+	}
 
-        } catch (error) {
-            Logger.error('Failed to generate performance report', error as Error);
-            throw error;
-        }
-    }
+	private setupMessageHandler(): void {
+		if (!this.webviewPanel) {
+			return;
+		}
 
-    private async getAvailableConnections(): Promise<any[]> {
-        // This would typically get connections from ConnectionManager
-        // For now, return mock data
-        return [
-            {
-                id: 'conn-1',
-                name: 'Development DB',
-                host: 'localhost',
-                port: 5432,
-                database: 'dev_db'
-            }
-        ];
-    }
+		this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
+			try {
+				switch (message.command) {
+					case "refreshReport":
+						await this.generateReport(message.connectionId);
+						await this.updateWebviewContent();
+						break;
 
-    private setupMessageHandler(): void {
-        if (!this.webviewPanel) {return;}
+					case "changeTimeRange":
+						await this.changeTimeRange(message.hours);
+						await this.updateWebviewContent();
+						break;
 
-        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
-            try {
-                switch (message.command) {
-                    case 'refreshReport':
-                        await this.generateReport(message.connectionId);
-                        await this.updateWebviewContent();
-                        break;
+					case "resolveAlert":
+						this.performanceMonitor.resolveAlert(message.alertId, message.resolution);
+						await this.updateWebviewContent();
+						break;
 
-                    case 'changeTimeRange':
-                        await this.changeTimeRange(message.hours);
-                        await this.updateWebviewContent();
-                        break;
+					case "applyRecommendation":
+						this.performanceMonitor.updateRecommendationStatus(message.recommendationId, "Applied");
+						await this.updateWebviewContent();
+						break;
 
-                    case 'resolveAlert':
-                        this.performanceMonitor.resolveAlert(message.alertId, message.resolution);
-                        await this.updateWebviewContent();
-                        break;
+					case "dismissRecommendation":
+						this.performanceMonitor.updateRecommendationStatus(message.recommendationId, "Dismissed");
+						await this.updateWebviewContent();
+						break;
 
-                    case 'applyRecommendation':
-                        this.performanceMonitor.updateRecommendationStatus(message.recommendationId, 'Applied');
-                        await this.updateWebviewContent();
-                        break;
+					case "exportReport":
+						await this.exportReport(message.format);
+						break;
+				}
+			} catch (error) {
+				Logger.error("Error handling analytics message", error as Error);
+				ErrorHandler.handleError(error, ErrorHandler.createContext("AnalyticsMessage"));
+			}
+		});
+	}
 
-                    case 'dismissRecommendation':
-                        this.performanceMonitor.updateRecommendationStatus(message.recommendationId, 'Dismissed');
-                        await this.updateWebviewContent();
-                        break;
+	private async changeTimeRange(_hours: number): Promise<void> {
+		if (!this.currentReport) {
+			return;
+		}
 
-                    case 'exportReport':
-                        await this.exportReport(message.format);
-                        break;
-                }
-            } catch (error) {
-                Logger.error('Error handling analytics message', error as Error);
-                ErrorHandler.handleError(error, ErrorHandler.createContext('AnalyticsMessage'));
-            }
-        });
-    }
+		// Regenerate report with new time range
+		const connectionId = this.currentReport.summary.totalQueries > 0 ? this.currentReport.id.split("-")[0] : undefined;
 
-    private async changeTimeRange(_hours: number): Promise<void> {
-        if (!this.currentReport) {return;}
+		await this.generateReport(connectionId);
+	}
 
-        // Regenerate report with new time range
-        const connectionId = this.currentReport.summary.totalQueries > 0 ?
-            this.currentReport.id.split('-')[0] : undefined;
+	private async exportReport(format: "pdf" | "html" | "json"): Promise<void> {
+		try {
+			if (!this.currentReport) {
+				vscode.window.showErrorMessage("No report available to export");
+				return;
+			}
 
-        await this.generateReport(connectionId);
-    }
+			const uri = await vscode.window.showSaveDialog({
+				filters: {
+					PDF: ["pdf"],
+					HTML: ["html"],
+					JSON: ["json"],
+				},
+				defaultUri: vscode.Uri.file(`performance_report_${Date.now()}.${format}`),
+			});
 
-    private async exportReport(format: 'pdf' | 'html' | 'json'): Promise<void> {
-        try {
-            if (!this.currentReport) {
-                vscode.window.showErrorMessage('No report available to export');
-                return;
-            }
+			if (uri) {
+				await this.performExport(this.currentReport, format, uri.fsPath);
+				vscode.window.showInformationMessage(`Report exported to ${uri.fsPath}`);
+			}
+		} catch (error) {
+			Logger.error("Failed to export report", error as Error);
+			vscode.window.showErrorMessage(`Export failed: ${(error as Error).message}`);
+		}
+	}
 
-            const uri = await vscode.window.showSaveDialog({
-                filters: {
-                    'PDF': ['pdf'],
-                    'HTML': ['html'],
-                    'JSON': ['json']
-                },
-                defaultUri: vscode.Uri.file(`performance_report_${Date.now()}.${format}`)
-            });
+	private async performExport(report: PerformanceReport, format: string, filePath: string): Promise<void> {
+		let content: string;
 
-            if (uri) {
-                await this.performExport(this.currentReport, format, uri.fsPath);
-                vscode.window.showInformationMessage(`Report exported to ${uri.fsPath}`);
-            }
+		switch (format) {
+			case "json":
+				content = JSON.stringify(report, null, 2);
+				break;
+			case "html":
+				content = this.generateHTMLReport(report);
+				break;
+			case "pdf":
+				// For PDF, generate HTML first and convert (simplified)
+				content = this.generateHTMLReport(report);
+				break;
+			default:
+				throw new Error(`Unsupported export format: ${format}`);
+		}
 
-        } catch (error) {
-            Logger.error('Failed to export report', error as Error);
-            vscode.window.showErrorMessage(`Export failed: ${(error as Error).message}`);
-        }
-    }
+		const fs = require("fs").promises;
+		await fs.writeFile(filePath, content, "utf8");
+	}
 
-    private async performExport(report: PerformanceReport, format: string, filePath: string): Promise<void> {
-        let content: string;
-
-        switch (format) {
-            case 'json':
-                content = JSON.stringify(report, null, 2);
-                break;
-            case 'html':
-                content = this.generateHTMLReport(report);
-                break;
-            case 'pdf':
-                // For PDF, generate HTML first and convert (simplified)
-                content = this.generateHTMLReport(report);
-                break;
-            default:
-                throw new Error(`Unsupported export format: ${format}`);
-        }
-
-        const fs = require('fs').promises;
-        await fs.writeFile(filePath, content, 'utf8');
-    }
-
-    private generateHTMLReport(report: PerformanceReport): string {
-        return `
+	private generateHTMLReport(report: PerformanceReport): string {
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -273,34 +276,52 @@ export class QueryAnalyticsView {
                     </div>
                 </div>
 
-                ${report.alerts.length > 0 ? `
+                ${
+									report.alerts.length > 0
+										? `
                     <div class="section">
                         <h2>Active Alerts (${report.alerts.length})</h2>
-                        ${report.alerts.map(alert => `
+                        ${report.alerts
+													.map(
+														(alert) => `
                             <div class="alert ${alert.severity.toLowerCase()}">
                                 <strong>${alert.title}</strong><br>
                                 ${alert.description}<br>
                                 <small>${alert.timestamp.toLocaleString()}</small>
                             </div>
-                        `).join('')}
+                        `,
+													)
+													.join("")}
                     </div>
-                ` : ''}
+                `
+										: ""
+								}
 
-                ${report.recommendations.length > 0 ? `
+                ${
+									report.recommendations.length > 0
+										? `
                     <div class="section">
                         <h2>Performance Recommendations (${report.recommendations.length})</h2>
-                        ${report.recommendations.map(rec => `
+                        ${report.recommendations
+													.map(
+														(rec) => `
                             <div class="recommendation">
                                 <strong>${rec.title}</strong> (${rec.impact} Impact, ${rec.effort} Effort)<br>
                                 ${rec.description}<br>
                                 <strong>Suggested Action:</strong> ${rec.suggestedAction}<br>
                                 <strong>Estimated Improvement:</strong> ${rec.estimatedImprovement}
                             </div>
-                        `).join('')}
+                        `,
+													)
+													.join("")}
                     </div>
-                ` : ''}
+                `
+										: ""
+								}
 
-                ${report.topSlowQueries.length > 0 ? `
+                ${
+									report.topSlowQueries.length > 0
+										? `
                     <div class="section">
                         <h2>Top Slow Queries</h2>
                         <table>
@@ -313,35 +334,43 @@ export class QueryAnalyticsView {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${report.topSlowQueries.map(query => `
+                                ${report.topSlowQueries
+																	.map(
+																		(query) => `
                                     <tr>
                                         <td>${query.executionTime}ms</td>
-                                        <td>${query.query.length > 100 ? query.query.substring(0, 100) + '...' : query.query}</td>
+                                        <td>${query.query.length > 100 ? query.query.substring(0, 100) + "..." : query.query}</td>
                                         <td>${query.rowsReturned}</td>
                                         <td>${query.timestamp.toLocaleString()}</td>
                                     </tr>
-                                `).join('')}
+                                `,
+																	)
+																	.join("")}
                             </tbody>
                         </table>
                     </div>
-                ` : ''}
+                `
+										: ""
+								}
             </body>
             </html>
         `;
-    }
+	}
 
-    private async updateWebviewContent(): Promise<void> {
-        if (!this.webviewPanel || !this.currentReport) {return;}
+	private async updateWebviewContent(): Promise<void> {
+		if (!this.webviewPanel || !this.currentReport) {
+			return;
+		}
 
-        const html = await this.generateAnalyticsHtml(this.currentReport);
-        this.webviewPanel.webview.html = html;
-    }
+		const html = await this.generateAnalyticsHtml(this.currentReport);
+		this.webviewPanel.webview.html = html;
+	}
 
-    private async generateAnalyticsHtml(report: PerformanceReport): Promise<string> {
-        const stats = report.summary;
-        const trends = report.performanceTrends;
+	private async generateAnalyticsHtml(report: PerformanceReport): Promise<string> {
+		const stats = report.summary;
+		const trends = report.performanceTrends;
 
-        return `
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -598,11 +627,15 @@ export class QueryAnalyticsView {
                     </div>
                 </div>
 
-                ${report.alerts.length > 0 ? `
+                ${
+									report.alerts.length > 0
+										? `
                     <div class="section">
                         <h3>Active Alerts (${report.alerts.length})</h3>
                         <div class="alerts-grid">
-                            ${report.alerts.map(alert => `
+                            ${report.alerts
+															.map(
+																(alert) => `
                                 <div class="alert-card ${alert.severity.toLowerCase()}">
                                     <div style="display: flex; justify-content: space-between; align-items: start;">
                                         <div>
@@ -614,16 +647,24 @@ export class QueryAnalyticsView {
                                                 title="Mark as resolved">✓</button>
                                     </div>
                                 </div>
-                            `).join('')}
+                            `,
+															)
+															.join("")}
                         </div>
                     </div>
-                ` : ''}
+                `
+										: ""
+								}
 
-                ${report.recommendations.length > 0 ? `
+                ${
+									report.recommendations.length > 0
+										? `
                     <div class="section">
                         <h3>Performance Recommendations (${report.recommendations.length})</h3>
                         <div class="recommendations-grid">
-                            ${report.recommendations.map(rec => `
+                            ${report.recommendations
+															.map(
+																(rec) => `
                                 <div class="recommendation-card">
                                     <div class="recommendation-header">
                                         <span class="recommendation-title">${rec.title}</span>
@@ -639,12 +680,18 @@ export class QueryAnalyticsView {
                                                 title="Dismiss">Dismiss</button>
                                     </div>
                                 </div>
-                            `).join('')}
+                            `,
+															)
+															.join("")}
                         </div>
                     </div>
-                ` : ''}
+                `
+										: ""
+								}
 
-                ${report.topSlowQueries.length > 0 ? `
+                ${
+									report.topSlowQueries.length > 0
+										? `
                     <div class="section">
                         <h3>Top Slow Queries</h3>
                         <table class="slow-queries-table">
@@ -657,20 +704,26 @@ export class QueryAnalyticsView {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${report.topSlowQueries.map(query => `
+                                ${report.topSlowQueries
+																	.map(
+																		(query) => `
                                     <tr>
                                         <td class="execution-time">${query.executionTime}ms</td>
                                         <td title="${query.query}">
-                                            ${query.query.length > 80 ? query.query.substring(0, 80) + '...' : query.query}
+                                            ${query.query.length > 80 ? query.query.substring(0, 80) + "..." : query.query}
                                         </td>
                                         <td>${query.rowsReturned.toLocaleString()}</td>
                                         <td>${query.timestamp.toLocaleString()}</td>
                                     </tr>
-                                `).join('')}
+                                `,
+																	)
+																	.join("")}
                             </tbody>
                         </table>
                     </div>
-                ` : ''}
+                `
+										: ""
+								}
 
                 <script>
                     const vscode = acquireVsCodeApi();
@@ -724,11 +777,11 @@ export class QueryAnalyticsView {
             </body>
             </html>
         `;
-    }
+	}
 
-    dispose(): void {
-        if (this.webviewPanel) {
-            this.webviewPanel.dispose();
-        }
-    }
+	dispose(): void {
+		if (this.webviewPanel) {
+			this.webviewPanel.dispose();
+		}
+	}
 }

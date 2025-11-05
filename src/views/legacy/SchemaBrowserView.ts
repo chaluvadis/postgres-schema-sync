@@ -1,109 +1,113 @@
-import * as vscode from 'vscode';
-import { ModularSchemaManager } from '@/managers/schema';
+import * as vscode from "vscode";
+import { ConnectionManager } from "@/managers/ConnectionManager";
+import { ModularSchemaManager } from "@/managers/schema";
 // DatabaseObject is now defined in SchemaOperations
-import { DatabaseObject } from '@/managers/schema/SchemaOperations';
-import { ConnectionManager } from '@/managers/ConnectionManager';
-import { Logger } from '@/utils/Logger';
+import { DatabaseObject } from "@/managers/schema/SchemaOperations";
+import { Logger } from "@/utils/Logger";
 
 export class SchemaBrowserView {
-    private schemaManager: ModularSchemaManager;
-    private connectionManager: ConnectionManager;
+	private schemaManager: ModularSchemaManager;
+	private connectionManager: ConnectionManager;
 
-    constructor(schemaManager: ModularSchemaManager, connectionManager: ConnectionManager) {
-        this.schemaManager = schemaManager;
-        this.connectionManager = connectionManager;
-    }
+	constructor(schemaManager: ModularSchemaManager, connectionManager: ConnectionManager) {
+		this.schemaManager = schemaManager;
+		this.connectionManager = connectionManager;
+	}
 
-    async showSchemaBrowser(connectionId: string, schemaName?: string): Promise<void> {
-        try {
-            if (!connectionId) {
-                throw new Error('Connection ID is required');
-            }
+	async showSchemaBrowser(connectionId: string, schemaName?: string): Promise<void> {
+		try {
+			if (!connectionId) {
+				throw new Error("Connection ID is required");
+			}
 
-            Logger.info('Opening schema browser', 'showSchemaBrowser', { connectionId, schemaName });
+			Logger.info("Opening schema browser", "showSchemaBrowser", {
+				connectionId,
+				schemaName,
+			});
 
-            const panel = vscode.window.createWebviewPanel(
-                'schemaBrowser',
-                `Schema Browser${schemaName ? `: ${schemaName}` : ''}`,
-                vscode.ViewColumn.One,
-                { enableScripts: true, retainContextWhenHidden: true }
-            );
+			const panel = vscode.window.createWebviewPanel(
+				"schemaBrowser",
+				`Schema Browser${schemaName ? `: ${schemaName}` : ""}`,
+				vscode.ViewColumn.One,
+				{ enableScripts: true, retainContextWhenHidden: true },
+			);
 
-            // Load schema data
-            const schemaData = await this.loadSchemaData(connectionId, schemaName);
-            const browserHtml = await this.generateSchemaBrowserHtml(schemaData);
-            panel.webview.html = browserHtml;
+			// Load schema data
+			const schemaData = await this.loadSchemaData(connectionId, schemaName);
+			const browserHtml = await this.generateSchemaBrowserHtml(schemaData);
+			panel.webview.html = browserHtml;
 
-            // Handle messages from webview
-            panel.webview.onDidReceiveMessage(async (message) => {
-                switch (message.command) {
-                    case 'viewObjectDetails':
-                        await this.handleViewObjectDetails(message.object);
-                        break;
-                    case 'refreshSchema':
-                        await this.handleRefreshSchema(panel, connectionId, schemaName);
-                        break;
-                    default:
-                        Logger.warn('Unknown schema browser command', 'handleWebviewMessage', { command: message.command });
-                        break;
-                }
-            });
-        } catch (error) {
-            Logger.error('Failed to show schema browser', error as Error);
-            vscode.window.showErrorMessage(
-                `Failed to open schema browser: ${(error as Error).message}`
-            );
-        }
-    }
+			// Handle messages from webview
+			panel.webview.onDidReceiveMessage(async (message) => {
+				switch (message.command) {
+					case "viewObjectDetails":
+						await this.handleViewObjectDetails(message.object);
+						break;
+					case "refreshSchema":
+						await this.handleRefreshSchema(panel, connectionId, schemaName);
+						break;
+					default:
+						Logger.warn("Unknown schema browser command", "handleWebviewMessage", { command: message.command });
+						break;
+				}
+			});
+		} catch (error) {
+			Logger.error("Failed to show schema browser", error as Error);
+			vscode.window.showErrorMessage(`Failed to open schema browser: ${(error as Error).message}`);
+		}
+	}
 
-    private async loadSchemaData(connectionId: string, schemaName?: string): Promise<SchemaBrowserData> {
-        try {
-            const objects = await this.schemaManager.getDatabaseObjects(connectionId);
+	private async loadSchemaData(connectionId: string, schemaName?: string): Promise<SchemaBrowserData> {
+		try {
+			const objects = await this.schemaManager.getDatabaseObjects(connectionId);
 
-            let filteredObjects = objects;
-            if (schemaName) {
-                filteredObjects = objects.filter(obj => obj.schema === schemaName);
-            }
+			let filteredObjects = objects;
+			if (schemaName) {
+				filteredObjects = objects.filter((obj) => obj.schema === schemaName);
+			}
 
-            // Group objects by type
-            const objectsByType = filteredObjects.reduce((acc, obj) => {
-                if (!acc[obj.type]) {
-                    acc[obj.type] = [];
-                }
-                acc[obj.type].push(obj);
-                return acc;
-            }, {} as Record<string, DatabaseObject[]>);
+			// Group objects by type
+			const objectsByType = filteredObjects.reduce(
+				(acc, obj) => {
+					if (!acc[obj.type]) {
+						acc[obj.type] = [];
+					}
+					acc[obj.type].push(obj);
+					return acc;
+				},
+				{} as Record<string, DatabaseObject[]>,
+			);
 
-            // Get connection info
-            const connection = this.connectionManager.getConnection(connectionId);
-            if (!connection) {
-                throw new Error(`Connection not found: ${connectionId}`);
-            }
+			// Get connection info
+			const connection = this.connectionManager.getConnection(connectionId);
+			if (!connection) {
+				throw new Error(`Connection not found: ${connectionId}`);
+			}
 
-            return {
-                connectionId,
-                connectionName: connection.name || 'Unknown',
-                schemaName: schemaName || 'All Schemas',
-                objectsByType,
-                totalObjects: filteredObjects.length,
-                lastUpdated: new Date()
-            };
-        } catch (error) {
-            Logger.error('Failed to load schema data', error as Error);
-            throw error;
-        }
-    }
+			return {
+				connectionId,
+				connectionName: connection.name || "Unknown",
+				schemaName: schemaName || "All Schemas",
+				objectsByType,
+				totalObjects: filteredObjects.length,
+				lastUpdated: new Date(),
+			};
+		} catch (error) {
+			Logger.error("Failed to load schema data", error as Error);
+			throw error;
+		}
+	}
 
-    private async generateSchemaBrowserHtml(data: SchemaBrowserData): Promise<string> {
-        const typeSummaries = Object.entries(data.objectsByType)
-            .map(([type, objects]) => `<div class="type-summary">${type}: ${objects.length}</div>`)
-            .join('');
+	private async generateSchemaBrowserHtml(data: SchemaBrowserData): Promise<string> {
+		const typeSummaries = Object.entries(data.objectsByType)
+			.map(([type, objects]) => `<div class="type-summary">${type}: ${objects.length}</div>`)
+			.join("");
 
-        const typeSections = Object.entries(data.objectsByType)
-            .map(([type, objects]) => this.generateTypeSection(type, objects))
-            .join('');
+		const typeSections = Object.entries(data.objectsByType)
+			.map(([type, objects]) => this.generateTypeSection(type, objects))
+			.join("");
 
-        return `
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -318,19 +322,23 @@ export class SchemaBrowserView {
             </body>
             </html>
         `;
-    }
+	}
 
-    private generateTypeSection(type: string, objects: DatabaseObject[]): string {
-        const objectItems = objects.map(obj => `
+	private generateTypeSection(type: string, objects: DatabaseObject[]): string {
+		const objectItems = objects
+			.map(
+				(obj) => `
             <div class="object-item" onclick='viewObjectDetails(${JSON.stringify(obj)})'>
                 <div class="object-name">${obj.name}</div>
                 <div class="object-meta">
                     <span>Schema: ${obj.schema}</span>
                 </div>
             </div>
-        `).join('');
+        `,
+			)
+			.join("");
 
-        return `
+		return `
             <div class="type-section">
                 <div class="type-header">
                     <span>${type} (${objects.length})</span>
@@ -341,50 +349,58 @@ export class SchemaBrowserView {
                 </div>
             </div>
         `;
-    }
+	}
 
-    private async handleViewObjectDetails(object: DatabaseObject): Promise<void> {
-        if (!object || !object.name) {
-            Logger.warn('Invalid object provided for details view', 'handleViewObjectDetails', { object });
-            return;
-        }
+	private async handleViewObjectDetails(object: DatabaseObject): Promise<void> {
+		if (!object || !object.name) {
+			Logger.warn("Invalid object provided for details view", "handleViewObjectDetails", { object });
+			return;
+		}
 
-        try {
-            // Implement object details view
-            const panel = vscode.window.createWebviewPanel(
-                'objectDetails',
-                `Object Details: ${object.name}`,
-                vscode.ViewColumn.One,
-                { enableScripts: true }
-            );
+		try {
+			// Implement object details view
+			const panel = vscode.window.createWebviewPanel(
+				"objectDetails",
+				`Object Details: ${object.name}`,
+				vscode.ViewColumn.One,
+				{ enableScripts: true },
+			);
 
-            const detailsHtml = this.generateObjectDetailsHtml(object);
-            panel.webview.html = detailsHtml;
+			const detailsHtml = this.generateObjectDetailsHtml(object);
+			panel.webview.html = detailsHtml;
 
-            Logger.info('Viewing object details', 'handleViewObjectDetails', { object: object.name, type: object.type });
-        } catch (error) {
-            Logger.error('Failed to view object details', error as Error, 'handleViewObjectDetails', { object });
-            vscode.window.showErrorMessage(`Failed to view object details: ${(error as Error).message}`);
-        }
-    }
+			Logger.info("Viewing object details", "handleViewObjectDetails", {
+				object: object.name,
+				type: object.type,
+			});
+		} catch (error) {
+			Logger.error("Failed to view object details", error as Error, "handleViewObjectDetails", { object });
+			vscode.window.showErrorMessage(`Failed to view object details: ${(error as Error).message}`);
+		}
+	}
 
-    private generateObjectDetailsHtml(object: DatabaseObject): string {
-        const metadataEntries = Object.entries(object.properties || {})
-            .map(([key, value]) => `
+	private generateObjectDetailsHtml(object: DatabaseObject): string {
+		const metadataEntries = Object.entries(object.properties || {})
+			.map(
+				([key, value]) => `
                 <tr>
                     <td>${this.escapeHtml(key)}</td>
-                    <td>${this.escapeHtml(String(value ?? ''))}</td>
+                    <td>${this.escapeHtml(String(value ?? ""))}</td>
                 </tr>
-            `).join('');
+            `,
+			)
+			.join("");
 
-        const definitionSection = object.definition ? `
+		const definitionSection = object.definition
+			? `
             <section>
                 <h3>Definition</h3>
                 <pre>${this.escapeHtml(object.definition)}</pre>
             </section>
-        ` : '';
+        `
+			: "";
 
-        return `
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -429,7 +445,7 @@ export class SchemaBrowserView {
             </head>
             <body>
                 <h1>${this.escapeHtml(object.name)}</h1>
-                <div>Schema: ${this.escapeHtml(object.schema || 'unknown')}</div>
+                <div>Schema: ${this.escapeHtml(object.schema || "unknown")}</div>
                 <div>Object Type: ${this.escapeHtml(object.type)}</div>
 
                 <section>
@@ -445,34 +461,38 @@ export class SchemaBrowserView {
             </body>
             </html>
         `;
-    }
+	}
 
-    private escapeHtml(value: string): string {
-        return value
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
+	private escapeHtml(value: string): string {
+		return value
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&#39;");
+	}
 
-    private async handleRefreshSchema(panel: vscode.WebviewPanel, connectionId: string, schemaName?: string): Promise<void> {
-        try {
-            const schemaData = await this.loadSchemaData(connectionId, schemaName);
-            const browserHtml = await this.generateSchemaBrowserHtml(schemaData);
-            panel.webview.html = browserHtml;
-        } catch (error) {
-            Logger.error('Failed to refresh schema', error as Error);
-            vscode.window.showErrorMessage('Failed to refresh schema data');
-        }
-    }
+	private async handleRefreshSchema(
+		panel: vscode.WebviewPanel,
+		connectionId: string,
+		schemaName?: string,
+	): Promise<void> {
+		try {
+			const schemaData = await this.loadSchemaData(connectionId, schemaName);
+			const browserHtml = await this.generateSchemaBrowserHtml(schemaData);
+			panel.webview.html = browserHtml;
+		} catch (error) {
+			Logger.error("Failed to refresh schema", error as Error);
+			vscode.window.showErrorMessage("Failed to refresh schema data");
+		}
+	}
 }
 
 interface SchemaBrowserData {
-    connectionId: string;
-    connectionName: string;
-    schemaName: string;
-    objectsByType: Record<string, DatabaseObject[]>;
-    totalObjects: number;
-    lastUpdated: Date;
+	connectionId: string;
+	connectionName: string;
+	schemaName: string;
+	objectsByType: Record<string, DatabaseObject[]>;
+	totalObjects: number;
+	lastUpdated: Date;
 }

@@ -23,7 +23,8 @@
       "@/providers/*": ["providers/*"],
       "@/views/*": ["views/*"],
       "@/extension/*": ["extension/*"]
-    }
+    },
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*", "test/**/*", "scripts/**/*"],
   "exclude": ["node_modules", ".vscode-test", "out"]

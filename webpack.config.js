@@ -11,7 +11,7 @@ module.exports = {
     settings: './src/views/pages/Settings.tsx'
   },
   output: {
-    path: path.resolve(__dirname, 'out/views'),
+    path: path.resolve(__dirname, 'dist/views'),
     filename: '[name].bundle.js',
     clean: true
   },

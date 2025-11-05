@@ -1,90 +1,92 @@
-import * as vscode from 'vscode';
-import { Logger } from '@/utils/Logger';
+import * as vscode from "vscode";
+import { Logger } from "@/utils/Logger";
 
 export interface ErrorDisplayData {
-    title: string;
-    message: string;
-    details?: string;
-    suggestions?: string[];
-    canRetry?: boolean;
-    canReport?: boolean;
-    timestamp: Date;
-    operation?: string;
-    connectionId?: string | undefined;
-    retryProgress?: {
-        currentAttempt: number;
-        maxAttempts: number;
-        operationName: string;
-        isRetrying: boolean;
-    };
-    actionableGuidance?: ActionableGuidance[];
+	title: string;
+	message: string;
+	details?: string;
+	suggestions?: string[];
+	canRetry?: boolean;
+	canReport?: boolean;
+	timestamp: Date;
+	operation?: string;
+	connectionId?: string | undefined;
+	retryProgress?: {
+		currentAttempt: number;
+		maxAttempts: number;
+		operationName: string;
+		isRetrying: boolean;
+	};
+	actionableGuidance?: ActionableGuidance[];
 }
 
 export interface ActionableGuidance {
-    id: string;
-    title: string;
-    description: string;
-    action: string;
-    category: 'immediate' | 'configuration' | 'diagnostic' | 'preventive';
-    priority: 'high' | 'medium' | 'low';
+	id: string;
+	title: string;
+	description: string;
+	action: string;
+	category: "immediate" | "configuration" | "diagnostic" | "preventive";
+	priority: "high" | "medium" | "low";
 }
 
 export class ErrorDisplayView {
-    async showError(data: ErrorDisplayData): Promise<void> {
-        try {
-            Logger.info('Displaying error', 'showError', { title: data.title, operation: data.operation });
+	async showError(data: ErrorDisplayData): Promise<void> {
+		try {
+			Logger.info("Displaying error", "showError", {
+				title: data.title,
+				operation: data.operation,
+			});
 
-            const panel = vscode.window.createWebviewPanel(
-                'errorDisplay',
-                `Error: ${data.title}`,
-                vscode.ViewColumn.One,
-                { enableScripts: true }
-            );
+			const panel = vscode.window.createWebviewPanel("errorDisplay", `Error: ${data.title}`, vscode.ViewColumn.One, {
+				enableScripts: true,
+			});
 
-            const errorHtml = await this.generateErrorHtml(data);
-            panel.webview.html = errorHtml;
+			const errorHtml = await this.generateErrorHtml(data);
+			panel.webview.html = errorHtml;
 
-            // Handle messages from webview
-            panel.webview.onDidReceiveMessage(async (message) => {
-                switch (message.command) {
-                    case 'retryOperation':
-                        await this.handleRetryOperation(data);
-                        panel.dispose();
-                        break;
-                    case 'reportIssue':
-                        await this.handleReportIssue(data);
-                        break;
-                    case 'showLogs':
-                        await this.handleShowLogs();
-                        break;
-                    case 'copyError':
-                        await this.handleCopyError(data);
-                        break;
-                    case 'executeGuidance':
-                        await this.handleExecuteGuidance(message.guidanceId, data);
-                        break;
-                }
-            });
-        } catch (error) {
-            Logger.error('Failed to show error display', error as Error);
-            // Fallback to simple message box
-            vscode.window.showErrorMessage(data.message);
-        }
-    }
+			// Handle messages from webview
+			panel.webview.onDidReceiveMessage(async (message) => {
+				switch (message.command) {
+					case "retryOperation":
+						await this.handleRetryOperation(data);
+						panel.dispose();
+						break;
+					case "reportIssue":
+						await this.handleReportIssue(data);
+						break;
+					case "showLogs":
+						await this.handleShowLogs();
+						break;
+					case "copyError":
+						await this.handleCopyError(data);
+						break;
+					case "executeGuidance":
+						await this.handleExecuteGuidance(message.guidanceId, data);
+						break;
+				}
+			});
+		} catch (error) {
+			Logger.error("Failed to show error display", error as Error);
+			// Fallback to simple message box
+			vscode.window.showErrorMessage(data.message);
+		}
+	}
 
-    private async generateErrorHtml(data: ErrorDisplayData): Promise<string> {
-        // Generate suggestions HTML
-        const suggestionsHtml = data.suggestions && data.suggestions.length > 0 ?
-            `<div class="suggestions">
+	private async generateErrorHtml(data: ErrorDisplayData): Promise<string> {
+		// Generate suggestions HTML
+		const suggestionsHtml =
+			data.suggestions && data.suggestions.length > 0
+				? `<div class="suggestions">
                 <h4>💡 Suggestions</h4>
                 <ul>
-                    ${data.suggestions.map(suggestion => `<li>${suggestion}</li>`).join('')}
+                    ${data.suggestions.map((suggestion) => `<li>${suggestion}</li>`).join("")}
                 </ul>
-            </div>` : '';
+            </div>`
+				: "";
 
-        // Generate retry progress HTML
-        const retryProgressHtml = data.retryProgress ?
-            `<div class="retry-progress ${data.retryProgress.isRetrying ? 'active' : ''}">
+		// Generate retry progress HTML
+		const retryProgressHtml = data.retryProgress
+			? `<div class="retry-progress ${data.retryProgress.isRetrying ? "active" : ""}">
                 <h4>🔄 Retry Progress</h4>
                 <div class="progress-container">
                     <div class="progress-bar">
@@ -95,16 +97,20 @@ export class ErrorDisplayView {
                     </div>
                 </div>
                 <div class="retry-status">
-                    ${data.retryProgress.isRetrying ? '⏳ Retrying operation...' : '✅ Retry completed'}
+                    ${data.retryProgress.isRetrying ? "⏳ Retrying operation..." : "✅ Retry completed"}
                 </div>
-            </div>` : '';
+            </div>`
+			: "";
 
-        // Generate actionable guidance HTML
-        const guidanceHtml = data.actionableGuidance && data.actionableGuidance.length > 0 ?
-            `<div class="actionable-guidance">
+		// Generate actionable guidance HTML
+		const guidanceHtml =
+			data.actionableGuidance && data.actionableGuidance.length > 0
+				? `<div class="actionable-guidance">
                 <h4>🎯 Actionable Guidance</h4>
                 <div class="guidance-cards">
-                    ${data.actionableGuidance.map(guidance => `
+                    ${data.actionableGuidance
+											.map(
+												(guidance) => `
                         <div class="guidance-card priority-${guidance.priority} category-${guidance.category}">
                             <div class="guidance-header">
                                 <span class="guidance-title">${guidance.title}</span>
@@ -115,20 +121,23 @@ export class ErrorDisplayView {
                                 ${guidance.action}
                             </button>
                         </div>
-                    `).join('')}
+                    `,
+											)
+											.join("")}
                 </div>
-            </div>` : '';
+            </div>`
+				: "";
 
-        const actionsHtml = `
+		const actionsHtml = `
             <div class="actions">
-                ${data.canRetry ? '<button class="btn btn-primary" onclick="retryOperation()">Retry Operation</button>' : ''}
+                ${data.canRetry ? '<button class="btn btn-primary" onclick="retryOperation()">Retry Operation</button>' : ""}
                 <button class="btn btn-secondary" onclick="showLogs()">Show Logs</button>
                 <button class="btn btn-secondary" onclick="copyError()">Copy Error Details</button>
-                ${data.canReport ? '<button class="btn btn-secondary" onclick="reportIssue()">Report Issue</button>' : ''}
+                ${data.canReport ? '<button class="btn btn-secondary" onclick="reportIssue()">Report Issue</button>' : ""}
             </div>
         `;
 
-        return `
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -357,14 +366,18 @@ export class ErrorDisplayView {
 
                 <div class="error-meta">
                     <div><strong>Timestamp:</strong> ${data.timestamp.toLocaleString()}</div>
-                    ${data.operation ? `<div><strong>Operation:</strong> ${data.operation}</div>` : ''}
-                    ${data.connectionId ? `<div><strong>Connection:</strong> ${data.connectionId}</div>` : ''}
+                    ${data.operation ? `<div><strong>Operation:</strong> ${data.operation}</div>` : ""}
+                    ${data.connectionId ? `<div><strong>Connection:</strong> ${data.connectionId}</div>` : ""}
                 </div>
 
-                ${data.details ? `
+                ${
+									data.details
+										? `
                 <h3>Technical Details</h3>
                 <div class="error-details">${data.details}</div>
-                ` : ''}
+                `
+										: ""
+								}
 
                 ${retryProgressHtml}
 
@@ -435,32 +448,34 @@ export class ErrorDisplayView {
             </body>
             </html>
         `;
-    }
+	}
 
-    private async handleRetryOperation(data: ErrorDisplayData): Promise<void> {
-        // This would trigger the original operation that failed
-        Logger.info('Retrying operation', 'handleRetryOperation', { operation: data.operation });
+	private async handleRetryOperation(data: ErrorDisplayData): Promise<void> {
+		// This would trigger the original operation that failed
+		Logger.info("Retrying operation", "handleRetryOperation", {
+			operation: data.operation,
+		});
 
-        // For now, just show a message
-        vscode.window.showInformationMessage(`Retry functionality for "${data.operation}" not yet implemented`);
-    }
+		// For now, just show a message
+		vscode.window.showInformationMessage(`Retry functionality for "${data.operation}" not yet implemented`);
+	}
 
-    private async handleReportIssue(data: ErrorDisplayData): Promise<void> {
-        try {
-            const issueBody = `
+	private async handleReportIssue(data: ErrorDisplayData): Promise<void> {
+		try {
+			const issueBody = `
 **Error Report**
 
 **Title:** ${data.title}
 **Message:** ${data.message}
-**Operation:** ${data.operation || 'Unknown'}
+**Operation:** ${data.operation || "Unknown"}
 **Timestamp:** ${data.timestamp.toISOString()}
-**Connection:** ${data.connectionId || 'None'}
+**Connection:** ${data.connectionId || "None"}
 
 **Details:**
-${data.details || 'No additional details'}
+${data.details || "No additional details"}
 
 **Suggestions:**
-${data.suggestions ? data.suggestions.map(s => `- ${s}`).join('\n') : 'None provided'}
+${data.suggestions ? data.suggestions.map((s) => `- ${s}`).join("\n") : "None provided"}
 
 **Environment:**
 - VSCode Extension: PostgreSQL Schema Compare & Sync
@@ -477,88 +492,94 @@ ${data.suggestions ? data.suggestions.map(s => `- ${s}`).join('\n') : 'None prov
 [Describe what actually happened]
             `.trim();
 
-            const issueTitle = `Error: ${data.title} - ${data.operation || 'Unknown Operation'}`;
+			const issueTitle = `Error: ${data.title} - ${data.operation || "Unknown Operation"}`;
 
-            // Open GitHub issues page with pre-filled content
-            const githubUrl = `https://github.com/yourusername/postgresql-schema-sync/issues/new?title=${encodeURIComponent(issueTitle)}&body=${encodeURIComponent(issueBody)}`;
-            vscode.env.openExternal(vscode.Uri.parse(githubUrl));
+			// Open GitHub issues page with pre-filled content
+			const githubUrl = `https://github.com/yourusername/postgresql-schema-sync/issues/new?title=${encodeURIComponent(issueTitle)}&body=${encodeURIComponent(issueBody)}`;
+			vscode.env.openExternal(vscode.Uri.parse(githubUrl));
+		} catch (error) {
+			Logger.error("Failed to report issue", error as Error);
+			vscode.window.showErrorMessage("Failed to open issue reporter");
+		}
+	}
 
-        } catch (error) {
-            Logger.error('Failed to report issue', error as Error);
-            vscode.window.showErrorMessage('Failed to open issue reporter');
-        }
-    }
+	private async handleShowLogs(): Promise<void> {
+		Logger.showOutputChannel();
+	}
 
-    private async handleShowLogs(): Promise<void> {
-        Logger.showOutputChannel();
-    }
-
-    private async handleCopyError(data: ErrorDisplayData): Promise<void> {
-        try {
-            const errorText = `
+	private async handleCopyError(data: ErrorDisplayData): Promise<void> {
+		try {
+			const errorText = `
 PostgreSQL Schema Sync - Error Details
 
 Title: ${data.title}
 Message: ${data.message}
-Operation: ${data.operation || 'Unknown'}
+Operation: ${data.operation || "Unknown"}
 Timestamp: ${data.timestamp.toISOString()}
-Connection: ${data.connectionId || 'None'}
+Connection: ${data.connectionId || "None"}
 
 Details:
-${data.details || 'No additional details'}
+${data.details || "No additional details"}
 
 Suggestions:
-${data.suggestions ? data.suggestions.map(s => `- ${s}`).join('\n') : 'None provided'}
+${data.suggestions ? data.suggestions.map((s) => `- ${s}`).join("\n") : "None provided"}
             `.trim();
 
-            await vscode.env.clipboard.writeText(errorText);
-            vscode.window.showInformationMessage('Error details copied to clipboard');
-        } catch (error) {
-            Logger.error('Failed to copy error details', error as Error);
-            vscode.window.showErrorMessage('Failed to copy error details');
-        }
-    }
+			await vscode.env.clipboard.writeText(errorText);
+			vscode.window.showInformationMessage("Error details copied to clipboard");
+		} catch (error) {
+			Logger.error("Failed to copy error details", error as Error);
+			vscode.window.showErrorMessage("Failed to copy error details");
+		}
+	}
 
-    private async handleExecuteGuidance(guidanceId: string, data: ErrorDisplayData): Promise<void> {
-        try {
-            Logger.info('Executing guidance action', 'handleExecuteGuidance', { guidanceId, operation: data.operation });
+	private async handleExecuteGuidance(guidanceId: string, data: ErrorDisplayData): Promise<void> {
+		try {
+			Logger.info("Executing guidance action", "handleExecuteGuidance", {
+				guidanceId,
+				operation: data.operation,
+			});
 
-            // Handle different guidance actions based on ID
-            switch (guidanceId) {
-                case 'check-connection':
-                    vscode.commands.executeCommand('postgresql.connection.test');
-                    break;
-                case 'view-logs':
-                    Logger.showOutputChannel();
-                    break;
-                case 'reset-circuit-breakers':
-                    vscode.commands.executeCommand('postgresql.service.resetCircuitBreakers');
-                    break;
-                case 'validate-configuration':
-                    vscode.commands.executeCommand('postgresql.settings.validate');
-                    break;
-                case 'retry-operation':
-                    await this.handleRetryOperation(data);
-                    break;
-                default:
-                    vscode.window.showInformationMessage(`Guidance action "${guidanceId}" not implemented yet`);
-            }
-        } catch (error) {
-            Logger.error('Failed to execute guidance', error as Error);
-            vscode.window.showErrorMessage('Failed to execute guidance action');
-        }
-    }
+			// Handle different guidance actions based on ID
+			switch (guidanceId) {
+				case "check-connection":
+					vscode.commands.executeCommand("postgresql.connection.test");
+					break;
+				case "view-logs":
+					Logger.showOutputChannel();
+					break;
+				case "reset-circuit-breakers":
+					vscode.commands.executeCommand("postgresql.service.resetCircuitBreakers");
+					break;
+				case "validate-configuration":
+					vscode.commands.executeCommand("postgresql.settings.validate");
+					break;
+				case "retry-operation":
+					await this.handleRetryOperation(data);
+					break;
+				default:
+					vscode.window.showInformationMessage(`Guidance action "${guidanceId}" not implemented yet`);
+			}
+		} catch (error) {
+			Logger.error("Failed to execute guidance", error as Error);
+			vscode.window.showErrorMessage("Failed to execute guidance action");
+		}
+	}
 
-    /**
-     * Update error display with retry progress
-     */
-    updateRetryProgress(panel: vscode.WebviewPanel, currentAttempt: number, maxAttempts: number, isRetrying: boolean): void {
-        panel.webview.postMessage({
-            command: 'updateRetryProgress',
-            currentAttempt,
-            maxAttempts,
-            isRetrying
-        });
-    }
-
+	/**
+	 * Update error display with retry progress
+	 */
+	updateRetryProgress(
+		panel: vscode.WebviewPanel,
+		currentAttempt: number,
+		maxAttempts: number,
+		isRetrying: boolean,
+	): void {
+		panel.webview.postMessage({
+			command: "updateRetryProgress",
+			currentAttempt,
+			maxAttempts,
+			isRetrying,
+		});
+	}
 }

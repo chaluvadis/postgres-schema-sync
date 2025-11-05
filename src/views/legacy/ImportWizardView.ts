@@ -1,168 +1,192 @@
-import * as vscode from 'vscode';
-import { Logger } from '@/utils/Logger';
-import { DataImportService, DetectedColumn, ColumnMapping, DataQualityReport } from '@/services/DataImportService';
-import { ConnectionManager } from '@/managers/ConnectionManager';
+import * as vscode from "vscode";
+import { ConnectionManager } from "@/managers/ConnectionManager";
+import { ColumnMapping, DataImportService, DataQualityReport, DetectedColumn } from "@/services/DataImportService";
+import { Logger } from "@/utils/Logger";
 
 export interface ImportWizardData {
-    jobId: string;
-    filePath: string;
-    format: 'csv' | 'json' | 'excel' | 'sql' | 'parquet';
-    detectedColumns: DetectedColumn[];
-    previewData: any[];
-    columnMappings: ColumnMapping[];
-    targetTable: string;
-    targetSchema: string;
-    dataQualityReport?: DataQualityReport;
-    validationIssues: any[];
+	jobId: string;
+	filePath: string;
+	format: "csv" | "json" | "excel" | "sql" | "parquet";
+	detectedColumns: DetectedColumn[];
+	previewData: any[];
+	columnMappings: ColumnMapping[];
+	targetTable: string;
+	targetSchema: string;
+	dataQualityReport?: DataQualityReport;
+	validationIssues: any[];
 }
 
 export class ImportWizardView {
-    private panel: vscode.WebviewPanel | undefined;
-    private wizardData: ImportWizardData | undefined;
-    private currentStep = 0;
-    private importService: DataImportService;
-    private connectionManager: ConnectionManager;
+	private panel: vscode.WebviewPanel | undefined;
+	private wizardData: ImportWizardData | undefined;
+	private currentStep = 0;
+	private importService: DataImportService;
+	private connectionManager: ConnectionManager;
 
-    constructor(importService: DataImportService, connectionManager: ConnectionManager) {
-        this.importService = importService;
-        this.connectionManager = connectionManager;
-    }
+	constructor(importService: DataImportService, connectionManager: ConnectionManager) {
+		this.importService = importService;
+		this.connectionManager = connectionManager;
+	}
 
-    async showImportWizard(filePath?: string, format?: string): Promise<void> {
-        try {
-            Logger.info('Opening import wizard');
+	async showImportWizard(filePath?: string, format?: string): Promise<void> {
+		try {
+			Logger.info("Opening import wizard");
 
-            this.panel = vscode.window.createWebviewPanel(
-                'postgresqlImportWizard',
-                'Import Data Wizard',
-                vscode.ViewColumn.One,
-                {
-                    enableScripts: true,
-                    retainContextWhenHidden: true,
-                    localResourceRoots: [
-                        vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.parse(''), 'resources')
-                    ]
-                }
-            );
+			this.panel = vscode.window.createWebviewPanel(
+				"postgresqlImportWizard",
+				"Import Data Wizard",
+				vscode.ViewColumn.One,
+				{
+					enableScripts: true,
+					retainContextWhenHidden: true,
+					localResourceRoots: [
+						vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.parse(""), "resources"),
+					],
+				},
+			);
 
-            // Handle panel disposal
-            this.panel.onDidDispose(() => {
-                this.panel = undefined;
-                this.wizardData = undefined;
-                this.currentStep = 0;
-            });
+			// Handle panel disposal
+			this.panel.onDidDispose(() => {
+				this.panel = undefined;
+				this.wizardData = undefined;
+				this.currentStep = 0;
+			});
 
-            // Handle messages from webview
-            this.panel.webview.onDidReceiveMessage(async (message) => {
-                await this.handleWizardMessage(message);
-            });
+			// Handle messages from webview
+			this.panel.webview.onDidReceiveMessage(async (message) => {
+				await this.handleWizardMessage(message);
+			});
 
-            // Show file selection if no file provided
-            if (!filePath) {
-                const selectedFiles = await vscode.window.showOpenDialog({
-                    canSelectFiles: true,
-                    canSelectFolders: false,
-                    filters: {
-                        'Data Files': ['csv', 'json', 'xlsx', 'xls', 'sql'],
-                        'All Files': ['*']
-                    }
-                });
+			// Show file selection if no file provided
+			if (!filePath) {
+				const selectedFiles = await vscode.window.showOpenDialog({
+					canSelectFiles: true,
+					canSelectFolders: false,
+					filters: {
+						"Data Files": ["csv", "json", "xlsx", "xls", "sql"],
+						"All Files": ["*"],
+					},
+				});
 
-                if (!selectedFiles || selectedFiles.length === 0) {
-                    return;
-                }
+				if (!selectedFiles || selectedFiles.length === 0) {
+					return;
+				}
 
-                filePath = selectedFiles[0].fsPath;
-                format = this.detectFormat(filePath);
-            }
+				filePath = selectedFiles[0].fsPath;
+				format = this.detectFormat(filePath);
+			}
 
-            // Create import job
-            const connections = this.connectionManager.getConnections();
-            if (connections.length === 0) {
-                vscode.window.showErrorMessage('No database connections available. Please add a connection first.');
-                return;
-            }
+			// Create import job
+			const connections = this.connectionManager.getConnections();
+			if (connections.length === 0) {
+				vscode.window.showErrorMessage("No database connections available. Please add a connection first.");
+				return;
+			}
 
-            const connectionItems = connections.map(conn => ({
-                label: conn.name,
-                detail: `${conn.host}:${conn.port}/${conn.database}`,
-                connection: conn
-            }));
+			const connectionItems = connections.map((conn) => ({
+				label: conn.name,
+				detail: `${conn.host}:${conn.port}/${conn.database}`,
+				connection: conn,
+			}));
 
-            const selectedConnection = await vscode.window.showQuickPick(connectionItems, {
-                placeHolder: 'Select target database connection'
-            });
+			const selectedConnection = await vscode.window.showQuickPick(connectionItems, {
+				placeHolder: "Select target database connection",
+			});
 
-            if (!selectedConnection) {
-                return;
-            }
+			if (!selectedConnection) {
+				return;
+			}
 
-            const jobId = await this.importService.createImportJob(
-                `Import ${new Date().toISOString()}`,
-                selectedConnection.connection.id,
-                filePath,
-                format as any
-            );
+			const jobId = await this.importService.createImportJob(
+				`Import ${new Date().toISOString()}`,
+				selectedConnection.connection.id,
+				filePath,
+				format as any,
+			);
 
-            // Analyze file
-            const analysisResult = await this.importService.analyzeImportFile(jobId);
+			// Analyze file
+			const analysisResult = await this.importService.analyzeImportFile(jobId);
 
-            // Create wizard data
-            this.wizardData = {
-                jobId,
-                filePath,
-                format: format as any,
-                detectedColumns: analysisResult.detectedColumns,
-                previewData: analysisResult.previewData,
-                columnMappings: analysisResult.recommendedMappings,
-                targetTable: '',
-                targetSchema: 'public',
-                dataQualityReport: analysisResult.dataQualityReport,
-                validationIssues: analysisResult.validationIssues || []
-            };
+			// Create wizard data
+			this.wizardData = {
+				jobId,
+				filePath,
+				format: format as any,
+				detectedColumns: analysisResult.detectedColumns,
+				previewData: analysisResult.previewData,
+				columnMappings: analysisResult.recommendedMappings,
+				targetTable: "",
+				targetSchema: "public",
+				dataQualityReport: analysisResult.dataQualityReport,
+				validationIssues: analysisResult.validationIssues || [],
+			};
 
-            // Show wizard
-            await this.showCurrentStep();
+			// Show wizard
+			await this.showCurrentStep();
+		} catch (error) {
+			Logger.error("Failed to show import wizard", error as Error);
+			vscode.window.showErrorMessage(`Failed to open import wizard: ${(error as Error).message}`);
+		}
+	}
 
-        } catch (error) {
-            Logger.error('Failed to show import wizard', error as Error);
-            vscode.window.showErrorMessage(`Failed to open import wizard: ${(error as Error).message}`);
-        }
-    }
+	private detectFormat(filePath: string): string {
+		const ext = filePath.toLowerCase().split(".").pop();
+		switch (ext) {
+			case "csv":
+				return "csv";
+			case "json":
+				return "json";
+			case "xlsx":
+			case "xls":
+				return "excel";
+			case "sql":
+				return "sql";
+			default:
+				return "csv";
+		}
+	}
 
-    private detectFormat(filePath: string): string {
-        const ext = filePath.toLowerCase().split('.').pop();
-        switch (ext) {
-            case 'csv': return 'csv';
-            case 'json': return 'json';
-            case 'xlsx':
-            case 'xls': return 'excel';
-            case 'sql': return 'sql';
-            default: return 'csv';
-        }
-    }
+	private async showCurrentStep(): Promise<void> {
+		if (!this.panel || !this.wizardData) {
+			return;
+		}
 
-    private async showCurrentStep(): Promise<void> {
-        if (!this.panel || !this.wizardData) {return;}
+		const steps = [
+			{
+				id: "file-analysis",
+				title: "File Analysis",
+				description: "Analyze and preview data",
+			},
+			{
+				id: "column-mapping",
+				title: "Column Mapping",
+				description: "Map source columns to target table",
+			},
+			{
+				id: "target-config",
+				title: "Target Configuration",
+				description: "Configure import settings",
+			},
+			{
+				id: "validation",
+				title: "Validation & Preview",
+				description: "Review and validate import",
+			},
+			{ id: "import", title: "Import Data", description: "Execute the import" },
+		];
 
-        const steps = [
-            { id: 'file-analysis', title: 'File Analysis', description: 'Analyze and preview data' },
-            { id: 'column-mapping', title: 'Column Mapping', description: 'Map source columns to target table' },
-            { id: 'target-config', title: 'Target Configuration', description: 'Configure import settings' },
-            { id: 'validation', title: 'Validation & Preview', description: 'Review and validate import' },
-            { id: 'import', title: 'Import Data', description: 'Execute the import' }
-        ];
+		const htmlContent = this.generateWizardHtml(steps);
+		this.panel.webview.html = htmlContent;
+	}
 
-        const htmlContent = this.generateWizardHtml(steps);
-        this.panel.webview.html = htmlContent;
-    }
+	private generateWizardHtml(steps: any[]): string {
+		if (!this.wizardData) {
+			return "";
+		}
 
-    private generateWizardHtml(steps: any[]): string {
-        if (!this.wizardData) {return '';}
+		const currentStepData = steps[this.currentStep];
 
-        const currentStepData = steps[this.currentStep];
-
-        return `
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -465,11 +489,15 @@ export class ImportWizardView {
                     <h1 class="wizard-title">Import Data Wizard</h1>
                     <div class="wizard-subtitle">${currentStepData.description}</div>
                     <div class="wizard-progress">
-                        ${steps.map((step, index) => `
-                            <div class="progress-step ${index === this.currentStep ? 'active' : index < this.currentStep ? 'completed' : ''}">
+                        ${steps
+													.map(
+														(step, index) => `
+                            <div class="progress-step ${index === this.currentStep ? "active" : index < this.currentStep ? "completed" : ""}">
                                 ${index + 1}. ${step.title}
                             </div>
-                        `).join('')}
+                        `,
+													)
+													.join("")}
                     </div>
                 </div>
 
@@ -482,16 +510,21 @@ export class ImportWizardView {
                 <div class="wizard-footer">
                     <div class="wizard-info">
                         ${this.currentStep + 1} of ${steps.length}
-                        ${this.wizardData.dataQualityReport ? `
+                        ${
+													this.wizardData.dataQualityReport
+														? `
                             • Quality Score: ${this.getQualityBadge(this.wizardData.dataQualityReport.overallScore)}
-                        ` : ''}
+                        `
+														: ""
+												}
                     </div>
                     <div class="wizard-actions">
-                        ${this.currentStep > 0 ? `<button class="btn btn-secondary" onclick="previousStep()">Previous</button>` : ''}
-                        ${this.currentStep < steps.length - 1 ?
-                            `<button class="btn btn-primary" onclick="nextStep()">Next</button>` :
-                            `<button class="btn btn-primary" onclick="finishWizard()">Import Data</button>`
-                        }
+                        ${this.currentStep > 0 ? `<button class="btn btn-secondary" onclick="previousStep()">Previous</button>` : ""}
+                        ${
+													this.currentStep < steps.length - 1
+														? `<button class="btn btn-primary" onclick="nextStep()">Next</button>`
+														: `<button class="btn btn-primary" onclick="finishWizard()">Import Data</button>`
+												}
                         <button class="btn btn-secondary" onclick="cancelWizard()">Cancel</button>
                     </div>
                 </div>
@@ -535,31 +568,33 @@ export class ImportWizardView {
             </body>
             </html>
         `;
-    }
+	}
 
-    private generateStepContent(stepId: string): string {
-        if (!this.wizardData) {return '';}
+	private generateStepContent(stepId: string): string {
+		if (!this.wizardData) {
+			return "";
+		}
 
-        switch (stepId) {
-            case 'file-analysis':
-                return this.generateFileAnalysisStep();
-            case 'column-mapping':
-                return this.generateColumnMappingStep();
-            case 'target-config':
-                return this.generateTargetConfigStep();
-            case 'validation':
-                return this.generateValidationStep();
-            case 'import':
-                return this.generateImportStep();
-            default:
-                return '<div>Unknown step</div>';
-        }
-    }
+		switch (stepId) {
+			case "file-analysis":
+				return this.generateFileAnalysisStep();
+			case "column-mapping":
+				return this.generateColumnMappingStep();
+			case "target-config":
+				return this.generateTargetConfigStep();
+			case "validation":
+				return this.generateValidationStep();
+			case "import":
+				return this.generateImportStep();
+			default:
+				return "<div>Unknown step</div>";
+		}
+	}
 
-    private generateFileAnalysisStep(): string {
-        const data = this.wizardData!;
+	private generateFileAnalysisStep(): string {
+		const data = this.wizardData!;
 
-        return `
+		return `
             <div class="form-section">
                 <div class="section-header">File Information</div>
                 <div class="section-content">
@@ -574,7 +609,7 @@ export class ImportWizardView {
                         </div>
                         <div class="form-group">
                             <div class="form-label">Total Rows</div>
-                            <div class="form-input" readonly>${data.detectedColumns.length > 0 ? 'Analyzing...' : '0'}</div>
+                            <div class="form-input" readonly>${data.detectedColumns.length > 0 ? "Analyzing..." : "0"}</div>
                         </div>
                         <div class="form-group">
                             <div class="form-label">Columns Detected</div>
@@ -584,7 +619,9 @@ export class ImportWizardView {
                 </div>
             </div>
 
-            ${data.detectedColumns.length > 0 ? `
+            ${
+							data.detectedColumns.length > 0
+								? `
                 <div class="form-section">
                     <div class="section-header">Data Preview</div>
                     <div class="section-content">
@@ -593,23 +630,32 @@ export class ImportWizardView {
                             <table class="preview-table">
                                 <thead>
                                     <tr>
-                                        ${data.detectedColumns.map(col => `<th>${col.name}</th>`).join('')}
+                                        ${data.detectedColumns.map((col) => `<th>${col.name}</th>`).join("")}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${data.previewData.slice(0, 5).map(row => `
+                                    ${data.previewData
+																			.slice(0, 5)
+																			.map(
+																				(row) => `
                                         <tr>
-                                            ${data.detectedColumns.map(col => `<td>${row[col.name] || ''}</td>`).join('')}
+                                            ${data.detectedColumns.map((col) => `<td>${row[col.name] || ""}</td>`).join("")}
                                         </tr>
-                                    `).join('')}
+                                    `,
+																			)
+																			.join("")}
                                 </tbody>
                             </table>
                         </div>
                     </div>
                 </div>
-            ` : ''}
+            `
+								: ""
+						}
 
-            ${data.dataQualityReport ? `
+            ${
+							data.dataQualityReport
+								? `
                 <div class="form-section">
                     <div class="section-header">Data Quality Report</div>
                     <div class="section-content">
@@ -633,86 +679,104 @@ export class ImportWizardView {
                                 </div>
                             </div>
 
-                            ${data.dataQualityReport.issues.length > 0 ? `
+                            ${
+															data.dataQualityReport.issues.length > 0
+																? `
                                 <div class="validation-issues">
                                     <h4>Data Quality Issues</h4>
-                                    ${data.dataQualityReport.issues.map(issue => `
+                                    ${data.dataQualityReport.issues
+																			.map(
+																				(issue) => `
                                         <div class="issue-item">
                                             <strong>${issue.columnName}:</strong> ${issue.description}
                                         </div>
-                                    `).join('')}
+                                    `,
+																			)
+																			.join("")}
                                 </div>
-                            ` : ''}
+                            `
+																: ""
+														}
 
-                            ${data.dataQualityReport.recommendations.length > 0 ? `
+                            ${
+															data.dataQualityReport.recommendations.length > 0
+																? `
                                 <div class="recommendations">
                                     <h4>Recommendations</h4>
                                     <ul>
-                                        ${data.dataQualityReport.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                                        ${data.dataQualityReport.recommendations.map((rec) => `<li>${rec}</li>`).join("")}
                                     </ul>
                                 </div>
-                            ` : ''}
+                            `
+																: ""
+														}
                         </div>
                     </div>
                 </div>
-            ` : ''}
+            `
+								: ""
+						}
         `;
-    }
+	}
 
-    private generateColumnMappingStep(): string {
-        const data = this.wizardData!;
+	private generateColumnMappingStep(): string {
+		const data = this.wizardData!;
 
-        return `
+		return `
             <div class="form-section">
                 <div class="section-header">Column Mapping</div>
                 <div class="section-content">
                     <p>Map source columns to target table columns. Adjust data types and add transformations as needed.</p>
 
                     <div class="column-mappings">
-                        ${data.detectedColumns.map((column, index) => `
+                        ${data.detectedColumns
+													.map(
+														(column, index) => `
                             <div class="column-mapping">
                                 <div>
                                     <div class="form-label">Source Column</div>
                                     <div class="form-input" readonly>${column.name}</div>
                                     <small style="color: var(--vscode-descriptionForeground);">
-                                        Type: ${column.type} | Nullable: ${column.nullable ? 'Yes' : 'No'}
+                                        Type: ${column.type} | Nullable: ${column.nullable ? "Yes" : "No"}
                                     </small>
                                 </div>
                                 <div>
                                     <div class="form-label">Target Column</div>
                                     <input type="text" class="form-input"
                                            value="${data.columnMappings[index]?.targetColumn || column.name}"
-                                           onchange="updateColumnMapping('${column.name}', this.value, '${data.columnMappings[index]?.dataType || 'TEXT'}')">
+                                           onchange="updateColumnMapping('${column.name}', this.value, '${data.columnMappings[index]?.dataType || "TEXT"}')">
                                 </div>
                                 <div>
                                     <div class="form-label">Data Type</div>
                                     <select class="form-input"
                                             onchange="updateColumnMapping('${column.name}', '${data.columnMappings[index]?.targetColumn || column.name}', this.value)">
-                                        <option value="TEXT" ${data.columnMappings[index]?.dataType === 'TEXT' ? 'selected' : ''}>TEXT</option>
-                                        <option value="VARCHAR(255)" ${data.columnMappings[index]?.dataType === 'VARCHAR(255)' ? 'selected' : ''}>VARCHAR(255)</option>
-                                        <option value="INTEGER" ${data.columnMappings[index]?.dataType === 'INTEGER' ? 'selected' : ''}>INTEGER</option>
-                                        <option value="NUMERIC" ${data.columnMappings[index]?.dataType === 'NUMERIC' ? 'selected' : ''}>NUMERIC</option>
-                                        <option value="DATE" ${data.columnMappings[index]?.dataType === 'DATE' ? 'selected' : ''}>DATE</option>
-                                        <option value="BOOLEAN" ${data.columnMappings[index]?.dataType === 'BOOLEAN' ? 'selected' : ''}>BOOLEAN</option>
-                                        <option value="JSON" ${data.columnMappings[index]?.dataType === 'JSON' ? 'selected' : ''}>JSON</option>
+                                        <option value="TEXT" ${data.columnMappings[index]?.dataType === "TEXT" ? "selected" : ""}>TEXT</option>
+                                        <option value="VARCHAR(255)" ${data.columnMappings[index]?.dataType === "VARCHAR(255)" ? "selected" : ""}>VARCHAR(255)</option>
+                                        <option value="INTEGER" ${data.columnMappings[index]?.dataType === "INTEGER" ? "selected" : ""}>INTEGER</option>
+                                        <option value="NUMERIC" ${data.columnMappings[index]?.dataType === "NUMERIC" ? "selected" : ""}>NUMERIC</option>
+                                        <option value="DATE" ${data.columnMappings[index]?.dataType === "DATE" ? "selected" : ""}>DATE</option>
+                                        <option value="BOOLEAN" ${data.columnMappings[index]?.dataType === "BOOLEAN" ? "selected" : ""}>BOOLEAN</option>
+                                        <option value="JSON" ${data.columnMappings[index]?.dataType === "JSON" ? "selected" : ""}>JSON</option>
                                     </select>
                                 </div>
                                 <div>
                                     <div class="form-label">Quality</div>
-                                    <div class="quality-score ${this.getQualityClass(data.dataQualityReport?.validity.find(v => v.columnName === column.name)?.score || 0)}">
-                                        ${data.dataQualityReport?.validity.find(v => v.columnName === column.name)?.score.toFixed(0) || 0}%
+                                    <div class="quality-score ${this.getQualityClass(data.dataQualityReport?.validity.find((v) => v.columnName === column.name)?.score || 0)}">
+                                        ${data.dataQualityReport?.validity.find((v) => v.columnName === column.name)?.score.toFixed(0) || 0}%
                                     </div>
                                 </div>
                             </div>
-                        `).join('')}
+                        `,
+													)
+													.join("")}
                     </div>
                 </div>
             </div>
         `;
-    }
+	}
 
-    private generateTargetConfigStep(): string {
-        return `
+	private generateTargetConfigStep(): string {
+		return `
             <div class="form-section">
                 <div class="section-header">Target Configuration</div>
                 <div class="section-content">
@@ -720,13 +784,13 @@ export class ImportWizardView {
                         <div class="form-group">
                             <div class="form-label">Target Schema</div>
                             <input type="text" class="form-input" id="targetSchema"
-                                   value="${this.wizardData?.targetSchema || 'public'}"
+                                   value="${this.wizardData?.targetSchema || "public"}"
                                    onchange="updateTargetConfig(this.value, document.getElementById('targetTable').value)">
                         </div>
                         <div class="form-group">
                             <div class="form-label">Target Table</div>
                             <input type="text" class="form-input" id="targetTable"
-                                   value="${this.wizardData?.targetTable || ''}"
+                                   value="${this.wizardData?.targetTable || ""}"
                                    onchange="updateTargetConfig(document.getElementById('targetSchema').value, this.value)"
                                    placeholder="Enter table name">
                         </div>
@@ -738,7 +802,7 @@ export class ImportWizardView {
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label>
-                                        <input type="checkbox" id="createTable" ${this.wizardData?.targetTable ? '' : 'checked'}>
+                                        <input type="checkbox" id="createTable" ${this.wizardData?.targetTable ? "" : "checked"}>
                                         Create table if not exists
                                     </label>
                                 </div>
@@ -766,12 +830,12 @@ export class ImportWizardView {
                 </div>
             </div>
         `;
-    }
+	}
 
-    private generateValidationStep(): string {
-        const data = this.wizardData!;
+	private generateValidationStep(): string {
+		const data = this.wizardData!;
 
-        return `
+		return `
             <div class="form-section">
                 <div class="section-header">Import Validation</div>
                 <div class="section-content">
@@ -780,7 +844,7 @@ export class ImportWizardView {
                         <div class="form-grid">
                             <div class="form-group">
                                 <div class="form-label">Source File</div>
-                                <div class="form-input" readonly>${data.filePath.split('/').pop()}</div>
+                                <div class="form-input" readonly>${data.filePath.split("/").pop()}</div>
                             </div>
                             <div class="form-group">
                                 <div class="form-label">Target Table</div>
@@ -792,35 +856,43 @@ export class ImportWizardView {
                             </div>
                             <div class="form-group">
                                 <div class="form-label">Estimated Rows</div>
-                                <div class="form-input" readonly>${data.detectedColumns.length > 0 ? '~' + data.previewData.length * 10 : '0'}</div>
+                                <div class="form-input" readonly>${data.detectedColumns.length > 0 ? "~" + data.previewData.length * 10 : "0"}</div>
                             </div>
                         </div>
                     </div>
 
                     <div class="validation-issues">
                         <h3>Validation Results</h3>
-                        ${data.validationIssues.length > 0 ? `
+                        ${
+													data.validationIssues.length > 0
+														? `
                             <div style="background: var(--vscode-inputValidation-warningBackground); border: 1px solid var(--vscode-inputValidation-warningBorder); border-radius: 4px; padding: 10px; margin: 10px 0;">
                                 <h4>⚠️ Validation Issues Found</h4>
-                                ${data.validationIssues.map(issue => `
+                                ${data.validationIssues
+																	.map(
+																		(issue) => `
                                     <div style="margin: 5px 0;">
-                                        <strong>${issue.columnName || 'General'}:</strong> ${issue.message}
+                                        <strong>${issue.columnName || "General"}:</strong> ${issue.message}
                                     </div>
-                                `).join('')}
+                                `,
+																	)
+																	.join("")}
                             </div>
-                        ` : `
+                        `
+														: `
                             <div style="background: var(--vscode-inputValidation-infoBackground); border: 1px solid var(--vscode-inputValidation-infoBorder); border-radius: 4px; padding: 10px; margin: 10px 0;">
                                 ✅ No validation issues found. Ready to import.
                             </div>
-                        `}
+                        `
+												}
                     </div>
                 </div>
             </div>
         `;
-    }
+	}
 
-    private generateImportStep(): string {
-        return `
+	private generateImportStep(): string {
+		return `
             <div class="form-section">
                 <div class="section-header">Import Execution</div>
                 <div class="section-content">
@@ -832,7 +904,7 @@ export class ImportWizardView {
                         <div style="background: var(--vscode-textBlockQuote-background); padding: 20px; border-radius: 8px; margin: 20px 0;">
                             <h4>Import Summary</h4>
                             <ul style="text-align: left;">
-                                <li><strong>File:</strong> ${this.wizardData?.filePath.split('/').pop()}</li>
+                                <li><strong>File:</strong> ${this.wizardData?.filePath.split("/").pop()}</li>
                                 <li><strong>Target:</strong> ${this.wizardData?.targetSchema}.${this.wizardData?.targetTable}</li>
                                 <li><strong>Columns:</strong> ${this.wizardData?.columnMappings.length}</li>
                                 <li><strong>Format:</strong> ${this.wizardData?.format.toUpperCase()}</li>
@@ -846,105 +918,119 @@ export class ImportWizardView {
                 </div>
             </div>
         `;
-    }
+	}
 
-    private getQualityBadge(score: number): string {
-        if (score >= 90) {return `<span class="quality-score quality-excellent">${score.toFixed(0)}%</span>`;}
-        if (score >= 70) {return `<span class="quality-score quality-good">${score.toFixed(0)}%</span>`;}
-        return `<span class="quality-score quality-poor">${score.toFixed(0)}%</span>`;
-    }
+	private getQualityBadge(score: number): string {
+		if (score >= 90) {
+			return `<span class="quality-score quality-excellent">${score.toFixed(0)}%</span>`;
+		}
+		if (score >= 70) {
+			return `<span class="quality-score quality-good">${score.toFixed(0)}%</span>`;
+		}
+		return `<span class="quality-score quality-poor">${score.toFixed(0)}%</span>`;
+	}
 
-    private getQualityClass(score: number): string {
-        if (score >= 90) {return 'quality-excellent';}
-        if (score >= 70) {return 'quality-good';}
-        return 'quality-poor';
-    }
+	private getQualityClass(score: number): string {
+		if (score >= 90) {
+			return "quality-excellent";
+		}
+		if (score >= 70) {
+			return "quality-good";
+		}
+		return "quality-poor";
+	}
 
-    private async handleWizardMessage(message: any): Promise<void> {
-        switch (message.command) {
-            case 'nextStep':
-                await this.nextStep();
-                break;
-            case 'previousStep':
-                await this.previousStep();
-                break;
-            case 'finishWizard':
-                await this.finishWizard();
-                break;
-            case 'cancelWizard':
-                this.panel?.dispose();
-                break;
-            case 'updateColumnMapping':
-                this.updateColumnMapping(message.sourceColumn, message.targetColumn, message.dataType);
-                break;
-            case 'updateTargetConfig':
-                this.updateTargetConfig(message.table, message.schema);
-                break;
-        }
-    }
+	private async handleWizardMessage(message: any): Promise<void> {
+		switch (message.command) {
+			case "nextStep":
+				await this.nextStep();
+				break;
+			case "previousStep":
+				await this.previousStep();
+				break;
+			case "finishWizard":
+				await this.finishWizard();
+				break;
+			case "cancelWizard":
+				this.panel?.dispose();
+				break;
+			case "updateColumnMapping":
+				this.updateColumnMapping(message.sourceColumn, message.targetColumn, message.dataType);
+				break;
+			case "updateTargetConfig":
+				this.updateTargetConfig(message.table, message.schema);
+				break;
+		}
+	}
 
-    private async nextStep(): Promise<void> {
-        if (this.currentStep < 4) {
-            this.currentStep++;
-            await this.showCurrentStep();
-        }
-    }
+	private async nextStep(): Promise<void> {
+		if (this.currentStep < 4) {
+			this.currentStep++;
+			await this.showCurrentStep();
+		}
+	}
 
-    private async previousStep(): Promise<void> {
-        if (this.currentStep > 0) {
-            this.currentStep--;
-            await this.showCurrentStep();
-        }
-    }
+	private async previousStep(): Promise<void> {
+		if (this.currentStep > 0) {
+			this.currentStep--;
+			await this.showCurrentStep();
+		}
+	}
 
-    private async finishWizard(): Promise<void> {
-        if (!this.wizardData) {return;}
+	private async finishWizard(): Promise<void> {
+		if (!this.wizardData) {
+			return;
+		}
 
-        try {
-            // Get target configuration from form
-            const targetSchema = 'public'; // Would get from form
-            const targetTable = `imported_${Date.now()}`; // Would get from form
+		try {
+			// Get target configuration from form
+			const targetSchema = "public"; // Would get from form
+			const targetTable = `imported_${Date.now()}`; // Would get from form
 
-            // Execute import
-            await this.importService.executeImportJob(
-                this.wizardData.jobId,
-                targetTable,
-                targetSchema,
-                this.wizardData.columnMappings
-            );
+			// Execute import
+			await this.importService.executeImportJob(
+				this.wizardData.jobId,
+				targetTable,
+				targetSchema,
+				this.wizardData.columnMappings,
+			);
 
-            vscode.window.showInformationMessage('Import started successfully!');
+			vscode.window.showInformationMessage("Import started successfully!");
 
-            this.panel?.dispose();
-        } catch (error) {
-            Logger.error('Failed to execute import', error as Error);
-            vscode.window.showErrorMessage(`Import failed: ${(error as Error).message}`);
-        }
-    }
+			this.panel?.dispose();
+		} catch (error) {
+			Logger.error("Failed to execute import", error as Error);
+			vscode.window.showErrorMessage(`Import failed: ${(error as Error).message}`);
+		}
+	}
 
-    private updateColumnMapping(sourceColumn: string, targetColumn: string, dataType: string): void {
-        if (!this.wizardData) {return;}
+	private updateColumnMapping(sourceColumn: string, targetColumn: string, dataType: string): void {
+		if (!this.wizardData) {
+			return;
+		}
 
-        const mapping = this.wizardData.columnMappings.find(m => m.sourceColumn === sourceColumn);
-        if (mapping) {
-            mapping.targetColumn = targetColumn;
-            mapping.dataType = dataType;
-        }
-    }
+		const mapping = this.wizardData.columnMappings.find((m) => m.sourceColumn === sourceColumn);
+		if (mapping) {
+			mapping.targetColumn = targetColumn;
+			mapping.dataType = dataType;
+		}
+	}
 
-    private updateTargetConfig(table: string, schema: string): void {
-        if (!this.wizardData) {return;}
+	private updateTargetConfig(table: string, schema: string): void {
+		if (!this.wizardData) {
+			return;
+		}
 
-        this.wizardData.targetTable = table;
-        this.wizardData.targetSchema = schema;
-    }
+		this.wizardData.targetTable = table;
+		this.wizardData.targetSchema = schema;
+	}
 
-    dispose(): void {
-        if (this.panel) {
-            this.panel.dispose();
-            this.panel = undefined;
-        }
-        this.wizardData = undefined;
-        this.currentStep = 0;
-    }
+	dispose(): void {
+		if (this.panel) {
+			this.panel.dispose();
+			this.panel = undefined;
+		}
+		this.wizardData = undefined;
+		this.currentStep = 0;
+	}
 }

@@ -1,488 +1,503 @@
-import * as vscode from 'vscode';
-import { ConnectionManager } from '@/managers/ConnectionManager';
-import { QueryExecutionService } from '@/services/QueryExecutionService';
-import { Logger } from '@/utils/Logger';
-import { ErrorHandler } from '@/utils/ErrorHandler';
+import * as vscode from "vscode";
+import { ConnectionManager } from "@/managers/ConnectionManager";
+import { QueryExecutionService } from "@/services/QueryExecutionService";
+import { ErrorHandler } from "@/utils/ErrorHandler";
+import { Logger } from "@/utils/Logger";
 
 export interface QueryTab {
-    id: string;
-    name: string;
-    connectionId?: string;
-    query: string;
-    isDirty: boolean;
-    createdAt: Date;
-    lastExecuted?: Date;
-    executionResults?: QueryResult[];
+	id: string;
+	name: string;
+	connectionId?: string;
+	query: string;
+	isDirty: boolean;
+	createdAt: Date;
+	lastExecuted?: Date;
+	executionResults?: QueryResult[];
 }
 
 export interface QueryResult {
-    id: string;
-    query: string;
-    executionTime: number;
-    rowCount: number;
-    columns: QueryColumn[];
-    rows: any[][];
-    error?: string;
-    executionPlan?: string;
-    timestamp: Date;
+	id: string;
+	query: string;
+	executionTime: number;
+	rowCount: number;
+	columns: QueryColumn[];
+	rows: any[][];
+	error?: string;
+	executionPlan?: string;
+	timestamp: Date;
 }
 
 export interface QueryColumn {
-    name: string;
-    type: string;
-    nullable: boolean;
+	name: string;
+	type: string;
+	nullable: boolean;
 }
 
 export class QueryEditorView {
-    private context?: vscode.ExtensionContext;
-    private connectionManager: ConnectionManager;
-    private queryExecutionService: QueryExecutionService;
-    private tabs: Map<string, QueryTab> = new Map();
-    private activeTabId?: string;
-    private webviewPanel?: vscode.WebviewPanel;
-    private queryHistory: string[] = [];
-    private favorites: string[] = [];
-
-    constructor(
-        connectionManager: ConnectionManager,
-        queryExecutionService: QueryExecutionService,
-        context?: vscode.ExtensionContext
-    ) {
-        this.connectionManager = connectionManager;
-        this.queryExecutionService = queryExecutionService;
-        if (context) {
-            this.context = context;
-            this.loadQueryHistory();
-            this.loadFavorites();
-        }
-    }
-
-    async showQueryEditor(connectionId?: string): Promise<void> {
-        try {
-            Logger.info('Opening query editor', 'showQueryEditor', { connectionId });
-
-            // Create or focus existing webview panel
-            if (!this.webviewPanel) {
-                this.webviewPanel = vscode.window.createWebviewPanel(
-                    'queryEditor',
-                    'PostgreSQL Query Editor',
-                    vscode.ViewColumn.One,
-                    {
-                        enableScripts: true,
-                        retainContextWhenHidden: true,
-                        localResourceRoots: this.context ? [
-                            vscode.Uri.file(this.context.extensionPath)
-                        ] : []
-                    }
-                );
-
-                this.webviewPanel.onDidDispose(() => {
-                    this.webviewPanel = undefined;
-                });
-
-                this.setupMessageHandler();
-            }
-
-            // Create new tab or switch to existing connection tab
-            const tabId = this.createOrGetTab(connectionId);
-            this.activeTabId = tabId;
-
-            // Update webview content
-            await this.updateWebviewContent();
-
-            this.webviewPanel.reveal();
-
-        } catch (error) {
-            Logger.error('Failed to show query editor', error as Error);
-            ErrorHandler.handleError(error, ErrorHandler.createContext('ShowQueryEditor'));
-        }
-    }
-
-    private createOrGetTab(connectionId?: string): string {
-        // If no connection specified, create a new tab
-        if (!connectionId) {
-            const tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            const tab: QueryTab = {
-                id: tabId,
-                name: `Query ${this.tabs.size + 1}`,
-                query: '',
-                isDirty: false,
-                createdAt: new Date()
-            };
-            this.tabs.set(tabId, tab);
-            return tabId;
-        }
-
-        // Check if tab already exists for this connection
-        for (const [id, tab] of this.tabs) {
-            if (tab.connectionId === connectionId) {
-                return id;
-            }
-        }
-
-        // Create new tab for connection
-        const tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const connection = this.connectionManager.getConnection(connectionId);
-        const tab: QueryTab = {
-            id: tabId,
-            name: connection ? `${connection.name} - Query` : 'Query',
-            connectionId,
-            query: '',
-            isDirty: false,
-            createdAt: new Date()
-        };
-        this.tabs.set(tabId, tab);
-        return tabId;
-    }
-
-    private setupMessageHandler(): void {
-        if (!this.webviewPanel) {return;}
-
-        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
-            try {
-                switch (message.command) {
-                    case 'executeQuery':
-                        await this.executeQuery(message.query, message.tabId);
-                        break;
-
-                    case 'updateQuery':
-                        this.updateQuery(message.tabId, message.query);
-                        break;
-
-                    case 'switchTab':
-                        this.switchTab(message.tabId);
-                        await this.updateWebviewContent();
-                        break;
-
-                    case 'closeTab':
-                        this.closeTab(message.tabId);
-                        await this.updateWebviewContent();
-                        break;
-
-                    case 'newTab':
-                        this.createOrGetTab();
-                        await this.updateWebviewContent();
-                        break;
-
-                    case 'addToFavorites':
-                        this.addToFavorites(message.query);
-                        break;
-
-                    case 'exportResults':
-                        await this.exportResults(message.resultId, message.format);
-                        break;
-
-                    case 'clearHistory':
-                        this.clearHistory();
-                        break;
-
-                    case 'formatQuery':
-                        await this.formatQuery(message.tabId);
-                        break;
-
-                    case 'getIntelliSense':
-                        await this.getIntelliSense(message.tabId, message.position);
-                        break;
-                }
-            } catch (error) {
-                Logger.error('Error handling query editor message', error as Error);
-                ErrorHandler.handleError(error, ErrorHandler.createContext('QueryEditorMessage'));
-            }
-        });
-    }
-
-    private async executeQuery(query: string, tabId: string): Promise<void> {
-        try {
-            const tab = this.tabs.get(tabId);
-            if (!tab) {
-                throw new Error(`Tab ${tabId} not found`);
-            }
-
-            if (!tab.connectionId) {
-                vscode.window.showErrorMessage('Please select a database connection for this query tab');
-                return;
-            }
-
-            Logger.info('Executing query', 'executeQuery', {
-                tabId,
-                connectionId: tab.connectionId,
-                queryLength: query.length
-            });
-
-            // Show progress with cancellation support
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Executing Query',
-                cancellable: true
-            }, async (progress, token) => {
-                progress.report({ increment: 0, message: 'Executing query...' });
-
-                try {
-                    const result = await this.queryExecutionService.executeQuery(
-                        tab.connectionId!,
-                        query,
-                        {
-                            timeout: 30000,
-                            maxRows: 1000,
-                            includeExecutionPlan: true
-                        },
-                        token
-                    );
-
-                    progress.report({ increment: 50, message: 'Processing results...' });
-
-                    // Update tab with execution info
-                    tab.lastExecuted = new Date();
-                    tab.executionResults = [result];
-                    this.tabs.set(tabId, tab);
-
-                    // Add to history
-                    this.addToHistory(query);
-
-                    progress.report({ increment: 100, message: `Query completed (${result.rowCount} rows)` });
-
-                    // Update webview
-                    await this.updateWebviewContent();
-
-                    // Show success message with row count
-                    vscode.window.showInformationMessage(
-                        `Query executed successfully: ${result.rowCount} rows returned in ${result.executionTime}ms`,
-                        'View Results', 'Export Results'
-                    ).then(selection => {
-                        if (selection === 'View Results') {
-                            // Results are already shown in the webview
-                        } else if (selection === 'Export Results') {
-                            this.webviewPanel?.webview.postMessage({
-                                command: 'exportResults',
-                                resultId: result.id,
-                                format: 'csv'
-                            });
-                        }
-                    });
-
-                    Logger.info('Query executed successfully', 'executeQuery', {
-                        tabId,
-                        rowCount: result.rowCount,
-                        executionTime: result.executionTime
-                    });
-
-                } catch (error) {
-                    progress.report({ increment: 100, message: 'Query execution failed' });
-
-                    Logger.error('Query execution failed', error as Error);
-
-                    // Create error result
-                    const errorResult: QueryResult = {
-                        id: `error_${Date.now()}`,
-                        query,
-                        executionTime: 0,
-                        rowCount: 0,
-                        columns: [],
-                        rows: [],
-                        error: (error as Error).message,
-                        timestamp: new Date()
-                    };
-
-                    tab.executionResults = [errorResult];
-                    this.tabs.set(tabId, tab);
-
-                    await this.updateWebviewContent();
-
-                    // Show error with recovery options
-                    vscode.window.showErrorMessage(
-                        `Query execution failed: ${(error as Error).message}`,
-                        'Retry', 'View Logs', 'Edit Connection'
-                    ).then(selection => {
-                        if (selection === 'Retry') {
-                            this.executeQuery(query, tabId);
-                        } else if (selection === 'View Logs') {
-                            Logger.showOutputChannel();
-                        } else if (selection === 'Edit Connection') {
-                            vscode.commands.executeCommand('postgresql.editConnection');
-                        }
-                    });
-
-                    throw error;
-                }
-            });
-
-        } catch (error) {
-            Logger.error('Failed to execute query', error as Error);
-            // Error message already shown above
-        }
-    }
-
-    private updateQuery(tabId: string, query: string): void {
-        const tab = this.tabs.get(tabId);
-        if (tab) {
-            tab.query = query;
-            tab.isDirty = true;
-            this.tabs.set(tabId, tab);
-        }
-    }
-
-    private switchTab(tabId: string): void {
-        this.activeTabId = tabId;
-    }
-
-    private closeTab(tabId: string): void {
-        this.tabs.delete(tabId);
-        if (this.activeTabId === tabId) {
-            this.activeTabId = this.tabs.size > 0 ? this.tabs.keys().next().value : undefined;
-        }
-    }
-
-    private addToHistory(query: string): void {
-        if (!this.queryHistory.includes(query)) {
-            this.queryHistory.unshift(query);
-            if (this.queryHistory.length > 100) {
-                this.queryHistory = this.queryHistory.slice(0, 100);
-            }
-            this.saveQueryHistory();
-        }
-    }
-
-    private addToFavorites(query: string): void {
-        if (!this.favorites.includes(query)) {
-            this.favorites.push(query);
-            this.saveFavorites();
-            vscode.window.showInformationMessage('Query added to favorites');
-        }
-    }
-
-    private clearHistory(): void {
-        this.queryHistory = [];
-        this.saveQueryHistory();
-        vscode.window.showInformationMessage('Query history cleared');
-    }
-
-    private async formatQuery(tabId: string): Promise<void> {
-        const tab = this.tabs.get(tabId);
-        if (!tab) {return;}
-
-        try {
-            // Basic SQL formatting (can be enhanced with a proper SQL formatter)
-            const formatted = tab.query
-                .replace(/\s+/g, ' ')
-                .replace(/\s*,\s*/g, ',\n    ')
-                .replace(/\s*FROM\s+/gi, '\nFROM ')
-                .replace(/\s*WHERE\s+/gi, '\nWHERE ')
-                .replace(/\s*ORDER BY\s+/gi, '\nORDER BY ')
-                .replace(/\s*GROUP BY\s+/gi, '\nGROUP BY ')
-                .replace(/\s*HAVING\s+/gi, '\nHAVING ')
-                .trim();
-
-            tab.query = formatted;
-            tab.isDirty = true;
-            this.tabs.set(tabId, tab);
-
-            await this.updateWebviewContent();
-
-            vscode.window.showInformationMessage('Query formatted');
-        } catch (error) {
-            Logger.error('Failed to format query', error as Error);
-        }
-    }
-
-    private async getIntelliSense(tabId: string, position: { line: number; column: number }): Promise<void> {
-        const tab = this.tabs.get(tabId);
-        if (!tab || !tab.connectionId) {return;}
-
-        try {
-            // Get the current query up to cursor position for better context
-            const lines = tab.query.split('\n');
-            const currentLine = lines[position.line] || '';
-            const queryUpToCursor = currentLine.substring(0, position.column);
-
-            const suggestions = await this.queryExecutionService.getIntelliSense(
-                tab.connectionId,
-                tab.query,
-                position
-            );
-
-            // Filter suggestions based on current context
-            const filteredSuggestions = this.filterSuggestionsByContext(suggestions, queryUpToCursor);
-
-            this.webviewPanel?.webview.postMessage({
-                command: 'intelliSenseResults',
-                suggestions: filteredSuggestions,
-                position: position
-            });
-        } catch (error) {
-            Logger.error('Failed to get IntelliSense', error as Error);
-        }
-    }
-
-    private filterSuggestionsByContext(suggestions: any[], currentQuery: string): any[] {
-        const lastWord = currentQuery.split(/[\s,;()]+/).pop() || '';
-        const upperLastWord = lastWord.toUpperCase();
-
-        return suggestions.filter(suggestion => {
-            const upperLabel = suggestion.label.toUpperCase();
-
-            // If we're typing a word, filter suggestions that start with it
-            if (lastWord.length > 0) {
-                return upperLabel.startsWith(upperLastWord);
-            }
-
-            // Otherwise return all suggestions
-            return true;
-        });
-    }
-
-    private async exportResults(resultId: string, format: 'csv' | 'json' | 'excel'): Promise<void> {
-        try {
-            // Find result in any tab
-            let targetResult: QueryResult | undefined;
-            for (const tab of this.tabs.values()) {
-                if (tab.executionResults) {
-                    targetResult = tab.executionResults.find(r => r.id === resultId);
-                    if (targetResult) {break;}
-                }
-            }
-
-            if (!targetResult) {
-                vscode.window.showErrorMessage('Query result not found');
-                return;
-            }
-
-            const uri = await vscode.window.showSaveDialog({
-                filters: {
-                    'CSV': ['csv'],
-                    'JSON': ['json'],
-                    'Excel': ['xlsx']
-                },
-                defaultUri: vscode.Uri.file(`query_result_${Date.now()}.${format}`)
-            });
-
-            if (uri) {
-                await this.queryExecutionService.exportResults(targetResult, format, uri.fsPath);
-                vscode.window.showInformationMessage(`Results exported to ${uri.fsPath}`);
-            }
-
-        } catch (error) {
-            Logger.error('Failed to export results', error as Error);
-            vscode.window.showErrorMessage(`Export failed: ${(error as Error).message}`);
-        }
-    }
-
-    private async updateWebviewContent(): Promise<void> {
-        if (!this.webviewPanel) {return;}
-
-        const tabs = Array.from(this.tabs.values());
-        const activeTab = this.activeTabId ? this.tabs.get(this.activeTabId) : undefined;
-        const connections = this.connectionManager.getConnections();
-
-        const html = await this.generateQueryEditorHtml(tabs, activeTab, connections);
-        this.webviewPanel.webview.html = html;
-    }
-
-    private async generateQueryEditorHtml(
-        tabs: QueryTab[],
-        activeTab?: QueryTab,
-        connections?: any[]
-    ): Promise<string> {
-        return `
+	private context?: vscode.ExtensionContext;
+	private connectionManager: ConnectionManager;
+	private queryExecutionService: QueryExecutionService;
+	private tabs: Map<string, QueryTab> = new Map();
+	private activeTabId?: string;
+	private webviewPanel?: vscode.WebviewPanel;
+	private queryHistory: string[] = [];
+	private favorites: string[] = [];
+
+	constructor(
+		connectionManager: ConnectionManager,
+		queryExecutionService: QueryExecutionService,
+		context?: vscode.ExtensionContext,
+	) {
+		this.connectionManager = connectionManager;
+		this.queryExecutionService = queryExecutionService;
+		if (context) {
+			this.context = context;
+			this.loadQueryHistory();
+			this.loadFavorites();
+		}
+	}
+
+	async showQueryEditor(connectionId?: string): Promise<void> {
+		try {
+			Logger.info("Opening query editor", "showQueryEditor", { connectionId });
+
+			// Create or focus existing webview panel
+			if (!this.webviewPanel) {
+				this.webviewPanel = vscode.window.createWebviewPanel(
+					"queryEditor",
+					"PostgreSQL Query Editor",
+					vscode.ViewColumn.One,
+					{
+						enableScripts: true,
+						retainContextWhenHidden: true,
+						localResourceRoots: this.context ? [vscode.Uri.file(this.context.extensionPath)] : [],
+					},
+				);
+
+				this.webviewPanel.onDidDispose(() => {
+					this.webviewPanel = undefined;
+				});
+
+				this.setupMessageHandler();
+			}
+
+			// Create new tab or switch to existing connection tab
+			const tabId = this.createOrGetTab(connectionId);
+			this.activeTabId = tabId;
+
+			// Update webview content
+			await this.updateWebviewContent();
+
+			this.webviewPanel.reveal();
+		} catch (error) {
+			Logger.error("Failed to show query editor", error as Error);
+			ErrorHandler.handleError(error, ErrorHandler.createContext("ShowQueryEditor"));
+		}
+	}
+
+	private createOrGetTab(connectionId?: string): string {
+		// If no connection specified, create a new tab
+		if (!connectionId) {
+			const tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+			const tab: QueryTab = {
+				id: tabId,
+				name: `Query ${this.tabs.size + 1}`,
+				query: "",
+				isDirty: false,
+				createdAt: new Date(),
+			};
+			this.tabs.set(tabId, tab);
+			return tabId;
+		}
+
+		// Check if tab already exists for this connection
+		for (const [id, tab] of this.tabs) {
+			if (tab.connectionId === connectionId) {
+				return id;
+			}
+		}
+
+		// Create new tab for connection
+		const tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+		const connection = this.connectionManager.getConnection(connectionId);
+		const tab: QueryTab = {
+			id: tabId,
+			name: connection ? `${connection.name} - Query` : "Query",
+			connectionId,
+			query: "",
+			isDirty: false,
+			createdAt: new Date(),
+		};
+		this.tabs.set(tabId, tab);
+		return tabId;
+	}
+
+	private setupMessageHandler(): void {
+		if (!this.webviewPanel) {
+			return;
+		}
+
+		this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
+			try {
+				switch (message.command) {
+					case "executeQuery":
+						await this.executeQuery(message.query, message.tabId);
+						break;
+
+					case "updateQuery":
+						this.updateQuery(message.tabId, message.query);
+						break;
+
+					case "switchTab":
+						this.switchTab(message.tabId);
+						await this.updateWebviewContent();
+						break;
+
+					case "closeTab":
+						this.closeTab(message.tabId);
+						await this.updateWebviewContent();
+						break;
+
+					case "newTab":
+						this.createOrGetTab();
+						await this.updateWebviewContent();
+						break;
+
+					case "addToFavorites":
+						this.addToFavorites(message.query);
+						break;
+
+					case "exportResults":
+						await this.exportResults(message.resultId, message.format);
+						break;
+
+					case "clearHistory":
+						this.clearHistory();
+						break;
+
+					case "formatQuery":
+						await this.formatQuery(message.tabId);
+						break;
+
+					case "getIntelliSense":
+						await this.getIntelliSense(message.tabId, message.position);
+						break;
+				}
+			} catch (error) {
+				Logger.error("Error handling query editor message", error as Error);
+				ErrorHandler.handleError(error, ErrorHandler.createContext("QueryEditorMessage"));
+			}
+		});
+	}
+
+	private async executeQuery(query: string, tabId: string): Promise<void> {
+		try {
+			const tab = this.tabs.get(tabId);
+			if (!tab) {
+				throw new Error(`Tab ${tabId} not found`);
+			}
+
+			if (!tab.connectionId) {
+				vscode.window.showErrorMessage("Please select a database connection for this query tab");
+				return;
+			}
+
+			Logger.info("Executing query", "executeQuery", {
+				tabId,
+				connectionId: tab.connectionId,
+				queryLength: query.length,
+			});
+
+			// Show progress with cancellation support
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: "Executing Query",
+					cancellable: true,
+				},
+				async (progress, token) => {
+					progress.report({ increment: 0, message: "Executing query..." });
+
+					try {
+						const result = await this.queryExecutionService.executeQuery(
+							tab.connectionId!,
+							query,
+							{
+								timeout: 30000,
+								maxRows: 1000,
+								includeExecutionPlan: true,
+							},
+							token,
+						);
+
+						progress.report({
+							increment: 50,
+							message: "Processing results...",
+						});
+
+						// Update tab with execution info
+						tab.lastExecuted = new Date();
+						tab.executionResults = [result];
+						this.tabs.set(tabId, tab);
+
+						// Add to history
+						this.addToHistory(query);
+
+						progress.report({
+							increment: 100,
+							message: `Query completed (${result.rowCount} rows)`,
+						});
+
+						// Update webview
+						await this.updateWebviewContent();
+
+						// Show success message with row count
+						vscode.window
+							.showInformationMessage(
+								`Query executed successfully: ${result.rowCount} rows returned in ${result.executionTime}ms`,
+								"View Results",
+								"Export Results",
+							)
+							.then((selection) => {
+								if (selection === "View Results") {
+									// Results are already shown in the webview
+								} else if (selection === "Export Results") {
+									this.webviewPanel?.webview.postMessage({
+										command: "exportResults",
+										resultId: result.id,
+										format: "csv",
+									});
+								}
+							});
+
+						Logger.info("Query executed successfully", "executeQuery", {
+							tabId,
+							rowCount: result.rowCount,
+							executionTime: result.executionTime,
+						});
+					} catch (error) {
+						progress.report({
+							increment: 100,
+							message: "Query execution failed",
+						});
+
+						Logger.error("Query execution failed", error as Error);
+
+						// Create error result
+						const errorResult: QueryResult = {
+							id: `error_${Date.now()}`,
+							query,
+							executionTime: 0,
+							rowCount: 0,
+							columns: [],
+							rows: [],
+							error: (error as Error).message,
+							timestamp: new Date(),
+						};
+
+						tab.executionResults = [errorResult];
+						this.tabs.set(tabId, tab);
+
+						await this.updateWebviewContent();
+
+						// Show error with recovery options
+						vscode.window
+							.showErrorMessage(
+								`Query execution failed: ${(error as Error).message}`,
+								"Retry",
+								"View Logs",
+								"Edit Connection",
+							)
+							.then((selection) => {
+								if (selection === "Retry") {
+									this.executeQuery(query, tabId);
+								} else if (selection === "View Logs") {
+									Logger.showOutputChannel();
+								} else if (selection === "Edit Connection") {
+									vscode.commands.executeCommand("postgresql.editConnection");
+								}
+							});
+
+						throw error;
+					}
+				},
+			);
+		} catch (error) {
+			Logger.error("Failed to execute query", error as Error);
+			// Error message already shown above
+		}
+	}
+
+	private updateQuery(tabId: string, query: string): void {
+		const tab = this.tabs.get(tabId);
+		if (tab) {
+			tab.query = query;
+			tab.isDirty = true;
+			this.tabs.set(tabId, tab);
+		}
+	}
+
+	private switchTab(tabId: string): void {
+		this.activeTabId = tabId;
+	}
+
+	private closeTab(tabId: string): void {
+		this.tabs.delete(tabId);
+		if (this.activeTabId === tabId) {
+			this.activeTabId = this.tabs.size > 0 ? this.tabs.keys().next().value : undefined;
+		}
+	}
+
+	private addToHistory(query: string): void {
+		if (!this.queryHistory.includes(query)) {
+			this.queryHistory.unshift(query);
+			if (this.queryHistory.length > 100) {
+				this.queryHistory = this.queryHistory.slice(0, 100);
+			}
+			this.saveQueryHistory();
+		}
+	}
+
+	private addToFavorites(query: string): void {
+		if (!this.favorites.includes(query)) {
+			this.favorites.push(query);
+			this.saveFavorites();
+			vscode.window.showInformationMessage("Query added to favorites");
+		}
+	}
+
+	private clearHistory(): void {
+		this.queryHistory = [];
+		this.saveQueryHistory();
+		vscode.window.showInformationMessage("Query history cleared");
+	}
+
+	private async formatQuery(tabId: string): Promise<void> {
+		const tab = this.tabs.get(tabId);
+		if (!tab) {
+			return;
+		}
+
+		try {
+			// Basic SQL formatting (can be enhanced with a proper SQL formatter)
+			const formatted = tab.query
+				.replace(/\s+/g, " ")
+				.replace(/\s*,\s*/g, ",\n    ")
+				.replace(/\s*FROM\s+/gi, "\nFROM ")
+				.replace(/\s*WHERE\s+/gi, "\nWHERE ")
+				.replace(/\s*ORDER BY\s+/gi, "\nORDER BY ")
+				.replace(/\s*GROUP BY\s+/gi, "\nGROUP BY ")
+				.replace(/\s*HAVING\s+/gi, "\nHAVING ")
+				.trim();
+
+			tab.query = formatted;
+			tab.isDirty = true;
+			this.tabs.set(tabId, tab);
+
+			await this.updateWebviewContent();
+
+			vscode.window.showInformationMessage("Query formatted");
+		} catch (error) {
+			Logger.error("Failed to format query", error as Error);
+		}
+	}
+
+	private async getIntelliSense(tabId: string, position: { line: number; column: number }): Promise<void> {
+		const tab = this.tabs.get(tabId);
+		if (!tab || !tab.connectionId) {
+			return;
+		}
+
+		try {
+			// Get the current query up to cursor position for better context
+			const lines = tab.query.split("\n");
+			const currentLine = lines[position.line] || "";
+			const queryUpToCursor = currentLine.substring(0, position.column);
+
+			const suggestions = await this.queryExecutionService.getIntelliSense(tab.connectionId, tab.query, position);
+
+			// Filter suggestions based on current context
+			const filteredSuggestions = this.filterSuggestionsByContext(suggestions, queryUpToCursor);
+
+			this.webviewPanel?.webview.postMessage({
+				command: "intelliSenseResults",
+				suggestions: filteredSuggestions,
+				position: position,
+			});
+		} catch (error) {
+			Logger.error("Failed to get IntelliSense", error as Error);
+		}
+	}
+
+	private filterSuggestionsByContext(suggestions: any[], currentQuery: string): any[] {
+		const lastWord = currentQuery.split(/[\s,;()]+/).pop() || "";
+		const upperLastWord = lastWord.toUpperCase();
+
+		return suggestions.filter((suggestion) => {
+			const upperLabel = suggestion.label.toUpperCase();
+
+			// If we're typing a word, filter suggestions that start with it
+			if (lastWord.length > 0) {
+				return upperLabel.startsWith(upperLastWord);
+			}
+
+			// Otherwise return all suggestions
+			return true;
+		});
+	}
+
+	private async exportResults(resultId: string, format: "csv" | "json" | "excel"): Promise<void> {
+		try {
+			// Find result in any tab
+			let targetResult: QueryResult | undefined;
+			for (const tab of this.tabs.values()) {
+				if (tab.executionResults) {
+					targetResult = tab.executionResults.find((r) => r.id === resultId);
+					if (targetResult) {
+						break;
+					}
+				}
+			}
+
+			if (!targetResult) {
+				vscode.window.showErrorMessage("Query result not found");
+				return;
+			}
+
+			const uri = await vscode.window.showSaveDialog({
+				filters: {
+					CSV: ["csv"],
+					JSON: ["json"],
+					Excel: ["xlsx"],
+				},
+				defaultUri: vscode.Uri.file(`query_result_${Date.now()}.${format}`),
+			});
+
+			if (uri) {
+				await this.queryExecutionService.exportResults(targetResult, format, uri.fsPath);
+				vscode.window.showInformationMessage(`Results exported to ${uri.fsPath}`);
+			}
+		} catch (error) {
+			Logger.error("Failed to export results", error as Error);
+			vscode.window.showErrorMessage(`Export failed: ${(error as Error).message}`);
+		}
+	}
+
+	private async updateWebviewContent(): Promise<void> {
+		if (!this.webviewPanel) {
+			return;
+		}
+
+		const tabs = Array.from(this.tabs.values());
+		const activeTab = this.activeTabId ? this.tabs.get(this.activeTabId) : undefined;
+		const connections = this.connectionManager.getConnections();
+
+		const html = await this.generateQueryEditorHtml(tabs, activeTab, connections);
+		this.webviewPanel.webview.html = html;
+	}
+
+	private async generateQueryEditorHtml(tabs: QueryTab[], activeTab?: QueryTab, connections?: any[]): Promise<string> {
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -624,7 +639,7 @@ export class QueryEditorView {
 
                     .results-container {
                         flex: 1;
-                        display: ${activeTab?.executionResults?.length ? 'block' : 'none'};
+                        display: ${activeTab?.executionResults?.length ? "block" : "none"};
                         border-top: 1px solid var(--vscode-panel-border);
                     }
 
@@ -749,11 +764,15 @@ export class QueryEditorView {
                 <div class="toolbar">
                     <select class="connection-selector" id="connectionSelect" onchange="changeConnection()">
                         <option value="">Select Connection...</option>
-                        ${connections?.map(conn => `
-                            <option value="${conn.id}" ${activeTab?.connectionId === conn.id ? 'selected' : ''}>
+                        ${connections
+													?.map(
+														(conn) => `
+                            <option value="${conn.id}" ${activeTab?.connectionId === conn.id ? "selected" : ""}>
                                 ${conn.name}
                             </option>
-                        `).join('')}
+                        `,
+													)
+													.join("")}
                     </select>
 
                     <button class="btn" onclick="executeQuery()">Execute</button>
@@ -766,16 +785,22 @@ export class QueryEditorView {
                 </div>
 
                 <div class="tab-bar">
-                    ${tabs.map(tab => `
-                        <div class="tab ${activeTab?.id === tab.id ? 'active' : ''}" onclick="switchTab('${tab.id}')">
-                            <span>${tab.name}${tab.isDirty ? ' *' : ''}</span>
+                    ${tabs
+											.map(
+												(tab) => `
+                        <div class="tab ${activeTab?.id === tab.id ? "active" : ""}" onclick="switchTab('${tab.id}')">
+                            <span>${tab.name}${tab.isDirty ? " *" : ""}</span>
                             <span class="tab-close" onclick="closeTab('${tab.id}')" title="Close tab">×</span>
                         </div>
-                    `).join('')}
+                    `,
+											)
+											.join("")}
                 </div>
 
                 <div class="editor-container">
-                    ${activeTab ? `
+                    ${
+											activeTab
+												? `
                         <div class="query-editor">
                             <textarea
                                 class="query-textarea"
@@ -788,13 +813,15 @@ export class QueryEditorView {
                             <div id="autocompleteContainer" class="autocomplete-container"></div>
                         </div>
 
-                        ${activeTab.executionResults?.length ? `
+                        ${
+													activeTab.executionResults?.length
+														? `
                             <div class="results-container">
                                 <div class="results-header">
                                     <div>
                                         <strong>Query Results</strong>
                                         (${activeTab.executionResults[0].rowCount} rows, ${activeTab.executionResults[0].executionTime}ms)
-                                        ${activeTab.executionResults[0].executionPlan ? '<span title="Execution plan available">📊</span>' : ''}
+                                        ${activeTab.executionResults[0].executionPlan ? '<span title="Execution plan available">📊</span>' : ""}
                                     </div>
                                     <div>
                                         <button class="btn btn-secondary" onclick="exportResults('${activeTab.executionResults[0].id}', 'csv')" title="Export as CSV">📄 CSV</button>
@@ -806,25 +833,29 @@ export class QueryEditorView {
                                     ${this.generateResultsTable(activeTab.executionResults[0])}
                                 </div>
                             </div>
-                        ` : ''}
-                    ` : `
+                        `
+														: ""
+												}
+                    `
+												: `
                         <div style="padding: 20px; text-align: center; color: var(--vscode-descriptionForeground);">
                             <div style="margin-bottom: 20px;">Select a tab to start editing queries</div>
                             <div style="font-size: 12px; opacity: 0.7;">
                                 💡 Tip: Use the toolbar buttons to execute queries, format SQL, and manage tabs
                             </div>
                         </div>
-                    `}
+                    `
+										}
                 </div>
 
                 <div class="status-bar">
-                    ${activeTab?.connectionId ? `Connected to: ${connections?.find(c => c.id === activeTab.connectionId)?.name}` : 'No connection selected'}
-                    ${activeTab?.lastExecuted ? ` | Last executed: ${activeTab.lastExecuted.toLocaleTimeString()}` : ''}
+                    ${activeTab?.connectionId ? `Connected to: ${connections?.find((c) => c.id === activeTab.connectionId)?.name}` : "No connection selected"}
+                    ${activeTab?.lastExecuted ? ` | Last executed: ${activeTab.lastExecuted.toLocaleTimeString()}` : ""}
                 </div>
 
                 <script>
                     const vscode = acquireVsCodeApi();
-                    let activeTabId = '${activeTab?.id || ''}';
+                    let activeTabId = '${activeTab?.id || ""}';
                     let autocompleteVisible = false;
                     let selectedAutocompleteIndex = -1;
                     let autocompleteSuggestions = [];
@@ -1191,20 +1222,20 @@ export class QueryEditorView {
             </body>
             </html>
         `;
-    }
+	}
 
-    private generateResultsTable(result: QueryResult): string {
-        if (result.error) {
-            return `
+	private generateResultsTable(result: QueryResult): string {
+		if (result.error) {
+			return `
                 <div class="error">
                     <strong>Query Error:</strong><br>
                     ${result.error}
                 </div>
             `;
-        }
+		}
 
-        if (!result.columns.length || !result.rows.length) {
-            return `
+		if (!result.columns.length || !result.rows.length) {
+			return `
                 <div style="padding: 40px; text-align: center; color: var(--vscode-descriptionForeground);">
                     <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
                     <div>No data returned</div>
@@ -1213,108 +1244,126 @@ export class QueryEditorView {
                     </div>
                 </div>
             `;
-        }
+		}
 
-        const headers = result.columns.map((col, index) =>
-            `<th title="${col.type}" onclick="sortTable(${index})">
+		const headers = result.columns
+			.map(
+				(col, index) =>
+					`<th title="${col.type}" onclick="sortTable(${index})">
                 ${col.name}
                 <span style="color: var(--vscode-descriptionForeground); font-weight: normal;">(${col.type})</span>
-            </th>`
-        ).join('');
+            </th>`,
+			)
+			.join("");
 
-        const rows = result.rows.slice(0, 500).map((row, rowIndex) =>
-            `<tr onclick="selectRow(${rowIndex})" style="cursor: pointer;">` +
-            row.map((cell) => {
-                const cellValue = cell !== null ? String(cell) : '<em style="opacity: 0.6;">null</em>';
-                const title = cell !== null ? cellValue : 'NULL value';
+		const rows = result.rows
+			.slice(0, 500)
+			.map(
+				(row, rowIndex) =>
+					`<tr onclick="selectRow(${rowIndex})" style="cursor: pointer;">` +
+					row
+						.map((cell) => {
+							const cellValue = cell !== null ? String(cell) : '<em style="opacity: 0.6;">null</em>';
+							const title = cell !== null ? cellValue : "NULL value";
 
-                // Format different data types
-                let formattedValue = cellValue;
-                if (cell !== null) {
-                    if (typeof cell === 'boolean') {
-                        formattedValue = cell ? '✓' : '✗';
-                    } else if (cell instanceof Date) {
-                        formattedValue = cell.toLocaleString();
-                    } else if (typeof cell === 'number') {
-                        formattedValue = Number(cell).toLocaleString();
-                    } else if (cellValue.length > 50) {
-                        formattedValue = cellValue.substring(0, 50) + '...';
-                    }
-                }
+							// Format different data types
+							let formattedValue = cellValue;
+							if (cell !== null) {
+								if (typeof cell === "boolean") {
+									formattedValue = cell ? "✓" : "✗";
+								} else if (cell instanceof Date) {
+									formattedValue = cell.toLocaleString();
+								} else if (typeof cell === "number") {
+									formattedValue = Number(cell).toLocaleString();
+								} else if (cellValue.length > 50) {
+									formattedValue = cellValue.substring(0, 50) + "...";
+								}
+							}
 
-                return `<td title="${title.replace(/"/g, '"')}">${formattedValue}</td>`;
-            }).join('') + '</tr>'
-        ).join('');
+							return `<td title="${title.replace(/"/g, '"')}">${formattedValue}</td>`;
+						})
+						.join("") +
+					"</tr>",
+			)
+			.join("");
 
-        const totalRows = result.rowCount;
-        const displayedRows = Math.min(result.rows.length, 500);
+		const totalRows = result.rowCount;
+		const displayedRows = Math.min(result.rows.length, 500);
 
-        return `
+		return `
             <table id="resultsTable">
                 <thead><tr>${headers}</tr></thead>
                 <tbody>${rows}</tbody>
             </table>
             <div style="padding: 10px; text-align: center; color: var(--vscode-descriptionForeground); font-size: 11px; border-top: 1px solid var(--vscode-panel-border);">
                 Showing ${displayedRows.toLocaleString()} of ${totalRows.toLocaleString()} rows
-                ${totalRows > 500 ? ' (first 500 rows displayed)' : ''}
-                ${result.executionPlan ? `<span style="margin-left: 16px;">📊 Execution plan available</span>` : ''}
+                ${totalRows > 500 ? " (first 500 rows displayed)" : ""}
+                ${result.executionPlan ? `<span style="margin-left: 16px;">📊 Execution plan available</span>` : ""}
             </div>
         `;
-    }
+	}
 
-    private loadQueryHistory(): void {
-        if (!this.context) {return;}
+	private loadQueryHistory(): void {
+		if (!this.context) {
+			return;
+		}
 
-        try {
-            const history = this.context.globalState.get<string[]>('postgresql.queryHistory', []);
-            this.queryHistory = history;
-        } catch (error) {
-            Logger.error('Failed to load query history', error as Error);
-        }
-    }
+		try {
+			const history = this.context.globalState.get<string[]>("postgresql.queryHistory", []);
+			this.queryHistory = history;
+		} catch (error) {
+			Logger.error("Failed to load query history", error as Error);
+		}
+	}
 
-    private saveQueryHistory(): void {
-        if (!this.context) {return;}
+	private saveQueryHistory(): void {
+		if (!this.context) {
+			return;
+		}
 
-        try {
-            this.context.globalState.update('postgresql.queryHistory', this.queryHistory);
-        } catch (error) {
-            Logger.error('Failed to save query history', error as Error);
-        }
-    }
+		try {
+			this.context.globalState.update("postgresql.queryHistory", this.queryHistory);
+		} catch (error) {
+			Logger.error("Failed to save query history", error as Error);
+		}
+	}
 
-    private loadFavorites(): void {
-        if (!this.context) {return;}
+	private loadFavorites(): void {
+		if (!this.context) {
+			return;
+		}
 
-        try {
-            const favorites = this.context.globalState.get<string[]>('postgresql.queryFavorites', []);
-            this.favorites = favorites;
-        } catch (error) {
-            Logger.error('Failed to load favorites', error as Error);
-        }
-    }
+		try {
+			const favorites = this.context.globalState.get<string[]>("postgresql.queryFavorites", []);
+			this.favorites = favorites;
+		} catch (error) {
+			Logger.error("Failed to load favorites", error as Error);
+		}
+	}
 
-    private saveFavorites(): void {
-        if (!this.context) {return;}
+	private saveFavorites(): void {
+		if (!this.context) {
+			return;
+		}
 
-        try {
-            this.context.globalState.update('postgresql.queryFavorites', this.favorites);
-        } catch (error) {
-            Logger.error('Failed to save favorites', error as Error);
-        }
-    }
+		try {
+			this.context.globalState.update("postgresql.queryFavorites", this.favorites);
+		} catch (error) {
+			Logger.error("Failed to save favorites", error as Error);
+		}
+	}
 
-    getQueryHistory(): string[] {
-        return [...this.queryHistory];
-    }
+	getQueryHistory(): string[] {
+		return [...this.queryHistory];
+	}
 
-    getFavorites(): string[] {
-        return [...this.favorites];
-    }
+	getFavorites(): string[] {
+		return [...this.favorites];
+	}
 
-    dispose(): void {
-        if (this.webviewPanel) {
-            this.webviewPanel.dispose();
-        }
-    }
+	dispose(): void {
+		if (this.webviewPanel) {
+			this.webviewPanel.dispose();
+		}
+	}
 }

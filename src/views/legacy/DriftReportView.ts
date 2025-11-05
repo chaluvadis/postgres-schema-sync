@@ -1,110 +1,118 @@
-import * as vscode from 'vscode';
-import { ReportingService, ComparisonHistoryEntry, SanitizedDifference } from '@/services/ReportingService';
-import { Logger } from '@/utils/Logger';
+import * as vscode from "vscode";
+import { ComparisonHistoryEntry, ReportingService, SanitizedDifference } from "@/services/ReportingService";
+import { Logger } from "@/utils/Logger";
 
 export class DriftReportView {
-    private panel: vscode.WebviewPanel | undefined;
+	private panel: vscode.WebviewPanel | undefined;
 
-    constructor(
-        private readonly context: vscode.ExtensionContext,
-        private readonly reportingService: ReportingService
-    ) { }
+	constructor(
+		private readonly context: vscode.ExtensionContext,
+		private readonly reportingService: ReportingService,
+	) {}
 
-    async showReport(focusComparisonId?: string): Promise<void> {
-        try {
-            if (this.panel) {
-                this.panel.reveal(vscode.ViewColumn.One);
-            } else {
-                this.panel = vscode.window.createWebviewPanel(
-                    'postgresqlDriftReport',
-                    'Schema Drift Report',
-                    vscode.ViewColumn.One,
-                    {
-                        enableScripts: true,
-                        retainContextWhenHidden: true
-                    }
-                );
+	async showReport(focusComparisonId?: string): Promise<void> {
+		try {
+			if (this.panel) {
+				this.panel.reveal(vscode.ViewColumn.One);
+			} else {
+				this.panel = vscode.window.createWebviewPanel(
+					"postgresqlDriftReport",
+					"Schema Drift Report",
+					vscode.ViewColumn.One,
+					{
+						enableScripts: true,
+						retainContextWhenHidden: true,
+					},
+				);
 
-                this.panel.onDidDispose(() => {
-                    this.panel = undefined;
-                });
+				this.panel.onDidDispose(() => {
+					this.panel = undefined;
+				});
 
-                this.panel.webview.onDidReceiveMessage(async message => {
-                    switch (message.command) {
-                        case 'refresh':
-                            await this.render(message.focusComparisonId);
-                            break;
-                        case 'clearHistory':
-                            await this.reportingService.clearComparisonHistory();
-                            await this.render();
-                            vscode.window.showInformationMessage('Schema comparison history cleared');
-                            break;
-                        case 'requestDetails':
-                            await this.handleDetailRequest(message.comparisonId);
-                            break;
-                        default:
-                            Logger.warn('Unknown message received in drift report view', 'DriftReportView.onDidReceiveMessage', message);
-                    }
-                });
-            }
+				this.panel.webview.onDidReceiveMessage(async (message) => {
+					switch (message.command) {
+						case "refresh":
+							await this.render(message.focusComparisonId);
+							break;
+						case "clearHistory":
+							await this.reportingService.clearComparisonHistory();
+							await this.render();
+							vscode.window.showInformationMessage("Schema comparison history cleared");
+							break;
+						case "requestDetails":
+							await this.handleDetailRequest(message.comparisonId);
+							break;
+						default:
+							Logger.warn(
+								"Unknown message received in drift report view",
+								"DriftReportView.onDidReceiveMessage",
+								message,
+							);
+					}
+				});
+			}
 
-            await this.render(focusComparisonId);
-        } catch (error) {
-            Logger.error('Failed to render drift report view', error as Error);
-            vscode.window.showErrorMessage(`Unable to show schema drift report: ${(error as Error).message}`);
-        }
-    }
+			await this.render(focusComparisonId);
+		} catch (error) {
+			Logger.error("Failed to render drift report view", error as Error);
+			vscode.window.showErrorMessage(`Unable to show schema drift report: ${(error as Error).message}`);
+		}
+	}
 
-    private async render(focusComparisonId?: string): Promise<void> {
-        if (!this.panel) {
-            return;
-        }
+	private async render(focusComparisonId?: string): Promise<void> {
+		if (!this.panel) {
+			return;
+		}
 
-        const history = await this.reportingService.getComparisonHistory();
-        const html = this.generateHtml(history, focusComparisonId);
-        this.panel.webview.html = html;
-    }
+		const history = await this.reportingService.getComparisonHistory();
+		const html = this.generateHtml(history, focusComparisonId);
+		this.panel.webview.html = html;
+	}
 
-    private async handleDetailRequest(comparisonId: string): Promise<void> {
-        if (!this.panel) {
-            return;
-        }
+	private async handleDetailRequest(comparisonId: string): Promise<void> {
+		if (!this.panel) {
+			return;
+		}
 
-        try {
-            const details = await this.reportingService.getComparisonDetails(comparisonId);
-            this.panel.webview.postMessage({
-                command: 'renderDetails',
-                comparisonId,
-                details
-            });
-        } catch (error) {
-            Logger.error('Failed to load comparison details', error as Error, 'DriftReportView.handleDetailRequest', { comparisonId });
-            vscode.window.showErrorMessage(`Failed to load comparison details: ${(error as Error).message}`);
-        }
-    }
+		try {
+			const details = await this.reportingService.getComparisonDetails(comparisonId);
+			this.panel.webview.postMessage({
+				command: "renderDetails",
+				comparisonId,
+				details,
+			});
+		} catch (error) {
+			Logger.error("Failed to load comparison details", error as Error, "DriftReportView.handleDetailRequest", {
+				comparisonId,
+			});
+			vscode.window.showErrorMessage(`Failed to load comparison details: ${(error as Error).message}`);
+		}
+	}
 
-    private generateHtml(history: ComparisonHistoryEntry[], focusComparisonId?: string): string {
-        const nonce = this.getNonce();
-        const totalComparisons = history.length;
-        const latest = history[0];
+	private generateHtml(history: ComparisonHistoryEntry[], focusComparisonId?: string): string {
+		const nonce = this.getNonce();
+		const totalComparisons = history.length;
+		const latest = history[0];
 
-        const aggregateSummary = history.reduce(
-            (acc, entry) => {
-                acc.totalDifferences += entry.differenceCount;
-                Object.entries(entry.differenceSummary).forEach(([key, value]) => {
-                    acc.byType[key] = (acc.byType[key] || 0) + value;
-                });
-                return acc;
-            },
-            { totalDifferences: 0, byType: {} as Record<string, number> }
-        );
+		const aggregateSummary = history.reduce(
+			(acc, entry) => {
+				acc.totalDifferences += entry.differenceCount;
+				Object.entries(entry.differenceSummary).forEach(([key, value]) => {
+					acc.byType[key] = (acc.byType[key] || 0) + value;
+				});
+				return acc;
+			},
+			{ totalDifferences: 0, byType: {} as Record<string, number> },
+		);
 
-        const focusedId = focusComparisonId || latest?.id || '';
+		const focusedId = focusComparisonId || latest?.id || "";
 
-        const historyRows = history.map(entry => {
-            const isFocused = entry.id === focusedId;
-            return `
-                <tr class="history-row ${isFocused ? 'focused' : ''}" data-comparison-id="${entry.id}">
+		const historyRows =
+			history
+				.map((entry) => {
+					const isFocused = entry.id === focusedId;
+					return `
+                <tr class="history-row ${isFocused ? "focused" : ""}" data-comparison-id="${entry.id}">
                     <td>
                         <div class="connection-names">
                             <span class="source">${entry.sourceName}</span>
@@ -118,7 +126,7 @@ export class DriftReportView {
                     </td>
                     <td>
                         <div class="highlights">
-                            ${entry.highlights.map(highlight => `<div class="highlight">${highlight}</div>`).join('')}
+                            ${entry.highlights.map((highlight) => `<div class="highlight">${highlight}</div>`).join("")}
                         </div>
                     </td>
                     <td>
@@ -128,11 +136,14 @@ export class DriftReportView {
                     </td>
                 </tr>
             `;
-        }).join('') || '<tr><td colspan="4" class="empty">No schema comparisons recorded yet.</td></tr>';
+				})
+				.join("") || '<tr><td colspan="4" class="empty">No schema comparisons recorded yet.</td></tr>';
 
-        const latestSummary = latest ? this.renderLatestSummary(latest) : '<p class="empty">Run a schema comparison to populate this report.</p>';
+		const latestSummary = latest
+			? this.renderLatestSummary(latest)
+			: '<p class="empty">Run a schema comparison to populate this report.</p>';
 
-        return `
+		return `
             <!DOCTYPE html>
             <html lang="en">
             <head>
@@ -312,7 +323,7 @@ export class DriftReportView {
                 <div class="header">
                     <div>
                         <div class="title">Schema Drift Report</div>
-                        <div class="meta">${totalComparisons} comparison${totalComparisons === 1 ? '' : 's'} tracked · ${aggregateSummary.totalDifferences} differences recorded</div>
+                        <div class="meta">${totalComparisons} comparison${totalComparisons === 1 ? "" : "s"} tracked · ${aggregateSummary.totalDifferences} differences recorded</div>
                     </div>
                     <div>
                         <button id="refresh">Refresh</button>
@@ -331,15 +342,15 @@ export class DriftReportView {
                         </div>
                         <div class="summary-card">
                             <h3>Added Objects</h3>
-                            <div class="value">${aggregateSummary.byType['added'] || 0}</div>
+                            <div class="value">${aggregateSummary.byType["added"] || 0}</div>
                         </div>
                         <div class="summary-card">
                             <h3>Removed Objects</h3>
-                            <div class="value">${aggregateSummary.byType['removed'] || 0}</div>
+                            <div class="value">${aggregateSummary.byType["removed"] || 0}</div>
                         </div>
                         <div class="summary-card">
                             <h3>Modified Objects</h3>
-                            <div class="value">${aggregateSummary.byType['modified'] || 0}</div>
+                            <div class="value">${aggregateSummary.byType["modified"] || 0}</div>
                         </div>
                     </div>
 
@@ -431,10 +442,10 @@ export class DriftReportView {
             </body>
             </html>
         `;
-    }
+	}
 
-    private renderLatestSummary(entry: ComparisonHistoryEntry): string {
-        return `
+	private renderLatestSummary(entry: ComparisonHistoryEntry): string {
+		return `
             <div class="latest-summary">
                 <div class="connection-names">
                     <span class="source">${entry.sourceName}</span>
@@ -443,14 +454,14 @@ export class DriftReportView {
                 </div>
                 <div class="secondary">Run ${new Date(entry.createdAt).toLocaleString()} · ${entry.differenceCount} differences</div>
                 <div class="highlights" style="margin-top: 12px;">
-                    ${entry.highlights.map(highlight => `<div class="highlight">${highlight}</div>`).join('')}
+                    ${entry.highlights.map((highlight) => `<div class="highlight">${highlight}</div>`).join("")}
                 </div>
             </div>
         `;
-    }
+	}
 
-    private getNonce(): string {
-        const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        return Array.from({ length: 16 }, () => possible.charAt(Math.floor(Math.random() * possible.length))).join('');
-    }
+	private getNonce(): string {
+		const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+		return Array.from({ length: 16 }, () => possible.charAt(Math.floor(Math.random() * possible.length))).join("");
+	}
 }

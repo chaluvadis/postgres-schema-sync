@@ -1,166 +1,162 @@
-import * as vscode from 'vscode';
-import { Logger } from '@/utils/Logger';
+import * as vscode from "vscode";
+import { Logger } from "@/utils/Logger";
 
 export interface ExtensionSettings {
-    compare: {
-        mode: 'strict' | 'lenient';
-        ignoreSchemas: string[];
-        includeSystemObjects: boolean;
-        caseSensitive: boolean;
-    };
-    migration: {
-        dryRun: boolean;
-        batchSize: number;
-        stopOnError: boolean;
-        transactionMode: 'all_or_nothing' | 'continue_on_error';
-    };
-    notifications: {
-        enabled: boolean;
-        showProgress: boolean;
-        soundEnabled: boolean;
-    };
-    theme: {
-        colorScheme: 'auto' | 'light' | 'dark';
-        compactMode: boolean;
-    };
-    debug: {
-        enabled: boolean;
-        logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
-    };
-    security: {
-        certificateValidation: boolean;
-        allowSelfSigned: boolean;
-        securityLevel: 'strict' | 'warning' | 'permissive';
-    };
+	compare: {
+		mode: "strict" | "lenient";
+		ignoreSchemas: string[];
+		includeSystemObjects: boolean;
+		caseSensitive: boolean;
+	};
+	migration: {
+		dryRun: boolean;
+		batchSize: number;
+		stopOnError: boolean;
+		transactionMode: "all_or_nothing" | "continue_on_error";
+	};
+	notifications: {
+		enabled: boolean;
+		showProgress: boolean;
+		soundEnabled: boolean;
+	};
+	theme: {
+		colorScheme: "auto" | "light" | "dark";
+		compactMode: boolean;
+	};
+	debug: {
+		enabled: boolean;
+		logLevel: "trace" | "debug" | "info" | "warn" | "error";
+	};
+	security: {
+		certificateValidation: boolean;
+		allowSelfSigned: boolean;
+		securityLevel: "strict" | "warning" | "permissive";
+	};
 }
 
 export class SettingsView {
-    private panel: vscode.WebviewPanel | undefined;
-    private settings: ExtensionSettings;
+	private panel: vscode.WebviewPanel | undefined;
+	private settings: ExtensionSettings;
 
-    constructor() {
-        this.settings = this.loadSettings();
-    }
+	constructor() {
+		this.settings = this.loadSettings();
+	}
 
-    async showSettings(): Promise<void> {
-        try {
-            Logger.info('Opening extension settings view');
+	async showSettings(): Promise<void> {
+		try {
+			Logger.info("Opening extension settings view");
 
-            this.panel = vscode.window.createWebviewPanel(
-                'postgresqlSettings',
-                'PostgreSQL Extension Settings',
-                vscode.ViewColumn.One,
-                {
-                    enableScripts: true,
-                    retainContextWhenHidden: true,
-                    localResourceRoots: [
-                        vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.parse(''), 'resources')
-                    ]
-                }
-            );
+			this.panel = vscode.window.createWebviewPanel(
+				"postgresqlSettings",
+				"PostgreSQL Extension Settings",
+				vscode.ViewColumn.One,
+				{
+					enableScripts: true,
+					retainContextWhenHidden: true,
+					localResourceRoots: [
+						vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.parse(""), "resources"),
+					],
+				},
+			);
 
-            // Handle panel disposal
-            this.panel.onDidDispose(() => {
-                this.panel = undefined;
-            });
+			// Handle panel disposal
+			this.panel.onDidDispose(() => {
+				this.panel = undefined;
+			});
 
-            // Generate and set HTML content
-            const htmlContent = await this.generateSettingsHtml(this.settings);
-            this.panel.webview.html = htmlContent;
+			// Generate and set HTML content
+			const htmlContent = await this.generateSettingsHtml(this.settings);
+			this.panel.webview.html = htmlContent;
 
-            // Handle messages from webview
-            this.panel.webview.onDidReceiveMessage(async (message) => {
-                await this.handleWebviewMessage(message);
-            });
+			// Handle messages from webview
+			this.panel.webview.onDidReceiveMessage(async (message) => {
+				await this.handleWebviewMessage(message);
+			});
+		} catch (error) {
+			Logger.error("Failed to show settings view", error as Error, "showSettings");
+			vscode.window.showErrorMessage(`Failed to open settings: ${(error as Error).message}`);
+		}
+	}
 
-        } catch (error) {
-            Logger.error('Failed to show settings view', error as Error, 'showSettings');
-            vscode.window.showErrorMessage(
-                `Failed to open settings: ${(error as Error).message}`
-            );
-        }
-    }
+	private loadSettings(): ExtensionSettings {
+		const config = vscode.workspace.getConfiguration("postgresql-schema-sync");
 
-    private loadSettings(): ExtensionSettings {
-        const config = vscode.workspace.getConfiguration('postgresql-schema-sync');
+		return {
+			compare: {
+				mode: config.get("compare.mode", "strict"),
+				ignoreSchemas: config.get("compare.ignoreSchemas", ["information_schema", "pg_catalog", "pg_toast"]),
+				includeSystemObjects: config.get("compare.includeSystemObjects", false),
+				caseSensitive: config.get("compare.caseSensitive", true),
+			},
+			migration: {
+				dryRun: config.get("migration.dryRun", true),
+				batchSize: config.get("migration.batchSize", 50),
+				stopOnError: config.get("migration.stopOnError", true),
+				transactionMode: config.get("migration.transactionMode", "all_or_nothing"),
+			},
+			notifications: {
+				enabled: config.get("notifications.enabled", true),
+				showProgress: config.get("notifications.showProgress", true),
+				soundEnabled: config.get("notifications.soundEnabled", false),
+			},
+			theme: {
+				colorScheme: config.get("theme.colorScheme", "auto"),
+				compactMode: config.get("theme.compactMode", false),
+			},
+			debug: {
+				enabled: config.get("debug.enabled", false),
+				logLevel: config.get("debug.logLevel", "info"),
+			},
+			security: {
+				certificateValidation: config.get("security.certificateValidation", true),
+				allowSelfSigned: config.get("security.allowSelfSigned", false),
+				securityLevel: config.get("security.securityLevel", "warning"),
+			},
+		};
+	}
 
-        return {
-            compare: {
-                mode: config.get('compare.mode', 'strict'),
-                ignoreSchemas: config.get('compare.ignoreSchemas', ['information_schema', 'pg_catalog', 'pg_toast']),
-                includeSystemObjects: config.get('compare.includeSystemObjects', false),
-                caseSensitive: config.get('compare.caseSensitive', true)
-            },
-            migration: {
-                dryRun: config.get('migration.dryRun', true),
-                batchSize: config.get('migration.batchSize', 50),
-                stopOnError: config.get('migration.stopOnError', true),
-                transactionMode: config.get('migration.transactionMode', 'all_or_nothing')
-            },
-            notifications: {
-                enabled: config.get('notifications.enabled', true),
-                showProgress: config.get('notifications.showProgress', true),
-                soundEnabled: config.get('notifications.soundEnabled', false)
-            },
-            theme: {
-                colorScheme: config.get('theme.colorScheme', 'auto'),
-                compactMode: config.get('theme.compactMode', false)
-            },
-            debug: {
-                enabled: config.get('debug.enabled', false),
-                logLevel: config.get('debug.logLevel', 'info')
-            },
-            security: {
-                certificateValidation: config.get('security.certificateValidation', true),
-                allowSelfSigned: config.get('security.allowSelfSigned', false),
-                securityLevel: config.get('security.securityLevel', 'warning')
-            }
-        };
-    }
+	private async saveSettings(newSettings: ExtensionSettings): Promise<void> {
+		try {
+			const config = vscode.workspace.getConfiguration("postgresql-schema-sync");
 
-    private async saveSettings(newSettings: ExtensionSettings): Promise<void> {
-        try {
-            const config = vscode.workspace.getConfiguration('postgresql-schema-sync');
+			// Update configuration values
+			await config.update("compare.mode", newSettings.compare.mode);
+			await config.update("compare.ignoreSchemas", newSettings.compare.ignoreSchemas);
+			await config.update("compare.includeSystemObjects", newSettings.compare.includeSystemObjects);
+			await config.update("compare.caseSensitive", newSettings.compare.caseSensitive);
 
-            // Update configuration values
-            await config.update('compare.mode', newSettings.compare.mode);
-            await config.update('compare.ignoreSchemas', newSettings.compare.ignoreSchemas);
-            await config.update('compare.includeSystemObjects', newSettings.compare.includeSystemObjects);
-            await config.update('compare.caseSensitive', newSettings.compare.caseSensitive);
+			await config.update("migration.dryRun", newSettings.migration.dryRun);
+			await config.update("migration.batchSize", newSettings.migration.batchSize);
+			await config.update("migration.stopOnError", newSettings.migration.stopOnError);
+			await config.update("migration.transactionMode", newSettings.migration.transactionMode);
 
-            await config.update('migration.dryRun', newSettings.migration.dryRun);
-            await config.update('migration.batchSize', newSettings.migration.batchSize);
-            await config.update('migration.stopOnError', newSettings.migration.stopOnError);
-            await config.update('migration.transactionMode', newSettings.migration.transactionMode);
+			await config.update("notifications.enabled", newSettings.notifications.enabled);
+			await config.update("notifications.showProgress", newSettings.notifications.showProgress);
+			await config.update("notifications.soundEnabled", newSettings.notifications.soundEnabled);
 
-            await config.update('notifications.enabled', newSettings.notifications.enabled);
-            await config.update('notifications.showProgress', newSettings.notifications.showProgress);
-            await config.update('notifications.soundEnabled', newSettings.notifications.soundEnabled);
+			await config.update("theme.colorScheme", newSettings.theme.colorScheme);
+			await config.update("theme.compactMode", newSettings.theme.compactMode);
 
-            await config.update('theme.colorScheme', newSettings.theme.colorScheme);
-            await config.update('theme.compactMode', newSettings.theme.compactMode);
+			await config.update("debug.enabled", newSettings.debug.enabled);
+			await config.update("debug.logLevel", newSettings.debug.logLevel);
 
-            await config.update('debug.enabled', newSettings.debug.enabled);
-            await config.update('debug.logLevel', newSettings.debug.logLevel);
+			await config.update("security.certificateValidation", newSettings.security.certificateValidation);
+			await config.update("security.allowSelfSigned", newSettings.security.allowSelfSigned);
+			await config.update("security.securityLevel", newSettings.security.securityLevel);
 
-            await config.update('security.certificateValidation', newSettings.security.certificateValidation);
-            await config.update('security.allowSelfSigned', newSettings.security.allowSelfSigned);
-            await config.update('security.securityLevel', newSettings.security.securityLevel);
+			this.settings = newSettings;
 
-            this.settings = newSettings;
+			Logger.info("Settings saved successfully", "saveSettings");
 
-            Logger.info('Settings saved successfully', 'saveSettings');
+			vscode.window.showInformationMessage("Settings saved successfully");
+		} catch (error) {
+			Logger.error("Failed to save settings", error as Error, "saveSettings");
+			vscode.window.showErrorMessage("Failed to save settings");
+		}
+	}
 
-            vscode.window.showInformationMessage('Settings saved successfully');
-
-        } catch (error) {
-            Logger.error('Failed to save settings', error as Error, 'saveSettings');
-            vscode.window.showErrorMessage('Failed to save settings');
-        }
-    }
-
-    private async generateSettingsHtml(settings: ExtensionSettings): Promise<string> {
-        return `
+	private async generateSettingsHtml(settings: ExtensionSettings): Promise<string> {
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -427,8 +423,8 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <select class="setting-select" id="compareMode">
-                                            <option value="strict" ${settings.compare.mode === 'strict' ? 'selected' : ''}>Strict</option>
-                                            <option value="lenient" ${settings.compare.mode === 'lenient' ? 'selected' : ''}>Lenient</option>
+                                            <option value="strict" ${settings.compare.mode === "strict" ? "selected" : ""}>Strict</option>
+                                            <option value="lenient" ${settings.compare.mode === "lenient" ? "selected" : ""}>Lenient</option>
                                         </select>
                                     </div>
                                 </div>
@@ -440,7 +436,7 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <input type="checkbox" class="setting-checkbox" id="caseSensitive"
-                                               ${settings.compare.caseSensitive ? 'checked' : ''}>
+                                               ${settings.compare.caseSensitive ? "checked" : ""}>
                                     </div>
                                 </div>
 
@@ -451,7 +447,7 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <input type="checkbox" class="setting-checkbox" id="includeSystemObjects"
-                                               ${settings.compare.includeSystemObjects ? 'checked' : ''}>
+                                               ${settings.compare.includeSystemObjects ? "checked" : ""}>
                                     </div>
                                 </div>
 
@@ -462,12 +458,16 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <div class="setting-array" id="ignoreSchemas">
-                                            ${settings.compare.ignoreSchemas.map(schema => `
+                                            ${settings.compare.ignoreSchemas
+																							.map(
+																								(schema) => `
                                                 <div class="array-item">
                                                     <input type="text" class="array-input" value="${schema}">
                                                     <button class="remove-btn" onclick="removeArrayItem(this)">×</button>
                                                 </div>
-                                            `).join('')}
+                                            `,
+																							)
+																							.join("")}
                                         </div>
                                         <button class="add-btn" onclick="addArrayItem('ignoreSchemas')">Add Schema</button>
                                     </div>
@@ -488,7 +488,7 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <input type="checkbox" class="setting-checkbox" id="dryRun"
-                                               ${settings.migration.dryRun ? 'checked' : ''}>
+                                               ${settings.migration.dryRun ? "checked" : ""}>
                                     </div>
                                 </div>
 
@@ -510,7 +510,7 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <input type="checkbox" class="setting-checkbox" id="stopOnError"
-                                               ${settings.migration.stopOnError ? 'checked' : ''}>
+                                               ${settings.migration.stopOnError ? "checked" : ""}>
                                     </div>
                                 </div>
 
@@ -521,8 +521,8 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <select class="setting-select" id="transactionMode">
-                                            <option value="all_or_nothing" ${settings.migration.transactionMode === 'all_or_nothing' ? 'selected' : ''}>All or Nothing</option>
-                                            <option value="continue_on_error" ${settings.migration.transactionMode === 'continue_on_error' ? 'selected' : ''}>Continue on Error</option>
+                                            <option value="all_or_nothing" ${settings.migration.transactionMode === "all_or_nothing" ? "selected" : ""}>All or Nothing</option>
+                                            <option value="continue_on_error" ${settings.migration.transactionMode === "continue_on_error" ? "selected" : ""}>Continue on Error</option>
                                         </select>
                                     </div>
                                 </div>
@@ -542,7 +542,7 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <input type="checkbox" class="setting-checkbox" id="certificateValidation"
-                                               ${settings.security.certificateValidation ? 'checked' : ''}>
+                                               ${settings.security.certificateValidation ? "checked" : ""}>
                                     </div>
                                 </div>
 
@@ -553,7 +553,7 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <input type="checkbox" class="setting-checkbox" id="allowSelfSigned"
-                                               ${settings.security.allowSelfSigned ? 'checked' : ''}>
+                                               ${settings.security.allowSelfSigned ? "checked" : ""}>
                                     </div>
                                 </div>
 
@@ -564,9 +564,9 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <select class="setting-select" id="securityLevel">
-                                            <option value="strict" ${settings.security.securityLevel === 'strict' ? 'selected' : ''}>Strict</option>
-                                            <option value="warning" ${settings.security.securityLevel === 'warning' ? 'selected' : ''}>Warning</option>
-                                            <option value="permissive" ${settings.security.securityLevel === 'permissive' ? 'selected' : ''}>Permissive</option>
+                                            <option value="strict" ${settings.security.securityLevel === "strict" ? "selected" : ""}>Strict</option>
+                                            <option value="warning" ${settings.security.securityLevel === "warning" ? "selected" : ""}>Warning</option>
+                                            <option value="permissive" ${settings.security.securityLevel === "permissive" ? "selected" : ""}>Permissive</option>
                                         </select>
                                     </div>
                                 </div>
@@ -586,9 +586,9 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <select class="setting-select" id="colorScheme">
-                                            <option value="auto" ${settings.theme.colorScheme === 'auto' ? 'selected' : ''}>Auto</option>
-                                            <option value="light" ${settings.theme.colorScheme === 'light' ? 'selected' : ''}>Light</option>
-                                            <option value="dark" ${settings.theme.colorScheme === 'dark' ? 'selected' : ''}>Dark</option>
+                                            <option value="auto" ${settings.theme.colorScheme === "auto" ? "selected" : ""}>Auto</option>
+                                            <option value="light" ${settings.theme.colorScheme === "light" ? "selected" : ""}>Light</option>
+                                            <option value="dark" ${settings.theme.colorScheme === "dark" ? "selected" : ""}>Dark</option>
                                         </select>
                                     </div>
                                 </div>
@@ -600,7 +600,7 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <input type="checkbox" class="setting-checkbox" id="compactMode"
-                                               ${settings.theme.compactMode ? 'checked' : ''}>
+                                               ${settings.theme.compactMode ? "checked" : ""}>
                                     </div>
                                 </div>
                             </div>
@@ -619,7 +619,7 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <input type="checkbox" class="setting-checkbox" id="debugEnabled"
-                                               ${settings.debug.enabled ? 'checked' : ''}>
+                                               ${settings.debug.enabled ? "checked" : ""}>
                                     </div>
                                 </div>
 
@@ -630,11 +630,11 @@ export class SettingsView {
                                     </div>
                                     <div class="setting-control">
                                         <select class="setting-select" id="logLevel">
-                                            <option value="trace" ${settings.debug.logLevel === 'trace' ? 'selected' : ''}>Trace</option>
-                                            <option value="debug" ${settings.debug.logLevel === 'debug' ? 'selected' : ''}>Debug</option>
-                                            <option value="info" ${settings.debug.logLevel === 'info' ? 'selected' : ''}>Info</option>
-                                            <option value="warn" ${settings.debug.logLevel === 'warn' ? 'selected' : ''}>Warning</option>
-                                            <option value="error" ${settings.debug.logLevel === 'error' ? 'selected' : ''}>Error</option>
+                                            <option value="trace" ${settings.debug.logLevel === "trace" ? "selected" : ""}>Trace</option>
+                                            <option value="debug" ${settings.debug.logLevel === "debug" ? "selected" : ""}>Debug</option>
+                                            <option value="info" ${settings.debug.logLevel === "info" ? "selected" : ""}>Info</option>
+                                            <option value="warn" ${settings.debug.logLevel === "warn" ? "selected" : ""}>Warning</option>
+                                            <option value="error" ${settings.debug.logLevel === "error" ? "selected" : ""}>Error</option>
                                         </select>
                                     </div>
                                 </div>
@@ -758,91 +758,90 @@ export class SettingsView {
             </body>
             </html>
         `;
-    }
+	}
 
-    private async handleWebviewMessage(message: any): Promise<void> {
-        switch (message.command) {
-            case 'saveSettings':
-                await this.saveSettings(message.settings);
-                break;
-            case 'resetToDefaults':
-                await this.resetToDefaults();
-                break;
-            case 'importSettings':
-                await this.importSettings();
-                break;
-        }
-    }
+	private async handleWebviewMessage(message: any): Promise<void> {
+		switch (message.command) {
+			case "saveSettings":
+				await this.saveSettings(message.settings);
+				break;
+			case "resetToDefaults":
+				await this.resetToDefaults();
+				break;
+			case "importSettings":
+				await this.importSettings();
+				break;
+		}
+	}
 
-    private async resetToDefaults(): Promise<void> {
-        try {
-            const config = vscode.workspace.getConfiguration('postgresql-schema-sync');
+	private async resetToDefaults(): Promise<void> {
+		try {
+			const config = vscode.workspace.getConfiguration("postgresql-schema-sync");
 
-            // Reset all settings to defaults
-            await config.update('compare.mode', undefined);
-            await config.update('compare.ignoreSchemas', undefined);
-            await config.update('compare.includeSystemObjects', undefined);
-            await config.update('compare.caseSensitive', undefined);
+			// Reset all settings to defaults
+			await config.update("compare.mode", undefined);
+			await config.update("compare.ignoreSchemas", undefined);
+			await config.update("compare.includeSystemObjects", undefined);
+			await config.update("compare.caseSensitive", undefined);
 
-            await config.update('migration.dryRun', undefined);
-            await config.update('migration.batchSize', undefined);
-            await config.update('migration.stopOnError', undefined);
-            await config.update('migration.transactionMode', undefined);
+			await config.update("migration.dryRun", undefined);
+			await config.update("migration.batchSize", undefined);
+			await config.update("migration.stopOnError", undefined);
+			await config.update("migration.transactionMode", undefined);
 
-            await config.update('security.certificateValidation', undefined);
-            await config.update('security.allowSelfSigned', undefined);
-            await config.update('security.securityLevel', undefined);
+			await config.update("security.certificateValidation", undefined);
+			await config.update("security.allowSelfSigned", undefined);
+			await config.update("security.securityLevel", undefined);
 
-            await config.update('theme.colorScheme', undefined);
-            await config.update('theme.compactMode', undefined);
+			await config.update("theme.colorScheme", undefined);
+			await config.update("theme.compactMode", undefined);
 
-            await config.update('debug.enabled', undefined);
-            await config.update('debug.logLevel', undefined);
+			await config.update("debug.enabled", undefined);
+			await config.update("debug.logLevel", undefined);
 
-            this.settings = this.loadSettings();
+			this.settings = this.loadSettings();
 
-            // Refresh the webview
-            if (this.panel) {
-                const htmlContent = await this.generateSettingsHtml(this.settings);
-                this.panel.webview.html = htmlContent;
-            }
+			// Refresh the webview
+			if (this.panel) {
+				const htmlContent = await this.generateSettingsHtml(this.settings);
+				this.panel.webview.html = htmlContent;
+			}
 
-            Logger.info('Settings reset to defaults', 'resetToDefaults');
-            vscode.window.showInformationMessage('Settings reset to defaults');
+			Logger.info("Settings reset to defaults", "resetToDefaults");
+			vscode.window.showInformationMessage("Settings reset to defaults");
+		} catch (error) {
+			Logger.error("Failed to reset settings", error as Error, "resetToDefaults");
+			vscode.window.showErrorMessage("Failed to reset settings");
+		}
+	}
 
-        } catch (error) {
-            Logger.error('Failed to reset settings', error as Error, 'resetToDefaults');
-            vscode.window.showErrorMessage('Failed to reset settings');
-        }
-    }
+	private async importSettings(): Promise<void> {
+		try {
+			const uri = await vscode.window.showOpenDialog({
+				filters: {
+					"JSON Files": ["json"],
+					"All Files": ["*"],
+				},
+				openLabel: "Import Settings",
+			});
 
-    private async importSettings(): Promise<void> {
-        try {
-            const uri = await vscode.window.showOpenDialog({
-                filters: {
-                    'JSON Files': ['json'],
-                    'All Files': ['*']
-                },
-                openLabel: 'Import Settings'
-            });
+			if (uri && uri[0]) {
+				const content = await vscode.workspace.fs.readFile(uri[0]);
+				const importedSettings = JSON.parse(content.toString());
 
-            if (uri && uri[0]) {
-                const content = await vscode.workspace.fs.readFile(uri[0]);
-                const importedSettings = JSON.parse(content.toString());
+				await this.saveSettings(importedSettings);
+				vscode.window.showInformationMessage("Settings imported successfully");
+			}
+		} catch (error) {
+			Logger.error("Failed to import settings", error as Error, "importSettings");
+			vscode.window.showErrorMessage("Failed to import settings");
+		}
+	}
 
-                await this.saveSettings(importedSettings);
-                vscode.window.showInformationMessage('Settings imported successfully');
-            }
-        } catch (error) {
-            Logger.error('Failed to import settings', error as Error, 'importSettings');
-            vscode.window.showErrorMessage('Failed to import settings');
-        }
-    }
-
-    dispose(): void {
-        if (this.panel) {
-            this.panel.dispose();
-            this.panel = undefined;
-        }
-    }
+	dispose(): void {
+		if (this.panel) {
+			this.panel.dispose();
+			this.panel = undefined;
+		}
+	}
 }
