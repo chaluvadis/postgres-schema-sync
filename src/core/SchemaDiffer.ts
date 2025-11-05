@@ -1,4 +1,4 @@
-import { Logger } from '../utils/Logger';
+import { Logger } from '@/utils/Logger';
 import { Parser } from 'node-sql-parser';
 
 export interface SchemaObject {
