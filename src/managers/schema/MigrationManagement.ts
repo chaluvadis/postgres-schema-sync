@@ -2,8 +2,6 @@ import { SchemaDifference } from './SchemaComparison';
 import { Logger } from '@/utils/Logger';
 import { QueryExecutionService } from '@/services/QueryExecutionService';
 import { ValidationFramework } from '../../core/ValidationFramework';
-import { MigrationScriptGenerator } from './MigrationScriptGenerator';
-import { MigrationExecutor } from './MigrationExecutor';
 import {
     EnhancedMigrationScript,
     MigrationExecutionResult,
@@ -25,27 +23,17 @@ import {
 export class MigrationManagement {
     private queryService: QueryExecutionService;
     private validationFramework: ValidationFramework;
-    private scriptGenerator: MigrationScriptGenerator;
-    private executor: MigrationExecutor;
 
     /**
      * Creates a new MigrationManagement instance
      * @param queryService - Service for executing database queries
      * @param validationFramework - Framework for validating migration operations
-     * @param scriptGenerator - Module for generating migration scripts
-     * @param executor - Module for executing migration scripts
-     * @param validator - Module for validating migration scripts
      */
     constructor(
         queryService: QueryExecutionService,
-        scriptGenerator: MigrationScriptGenerator,
-        executor: MigrationExecutor,
         validationFramework: ValidationFramework
     ) {
         this.queryService = queryService;
-        this.validationFramework = validationFramework;
-        this.scriptGenerator = scriptGenerator;
-        this.executor = executor;
         this.validationFramework = validationFramework;
     }
     /**
@@ -97,13 +85,59 @@ export class MigrationManagement {
                 options
             });
 
-            // Delegate to script generator module
-            return await this.scriptGenerator.generateEnhancedMigrationScript(
-                sourceConnectionId,
-                targetConnectionId,
-                schemaChanges,
-                options
-            );
+            // Generate migration steps
+            const migrationSteps = await this.generateMigrationSteps(schemaChanges, sourceConnectionId, targetConnectionId);
+
+            // Generate validation steps if requested
+            const validationSteps = options.includeValidation ?
+                await this.generateValidationSteps(migrationSteps, sourceConnectionId, targetConnectionId) : [];
+
+            // Generate rollback script if requested
+            const rollbackScript = options.includeRollback ?
+                await this.generateRollbackScript(migrationSteps, sourceConnectionId, targetConnectionId) : this.getDefaultRollbackScript();
+
+            // Assess overall risk level
+            const riskLevel = this.assessMigrationRiskLevel(migrationSteps);
+
+            // Calculate estimated execution time
+            const estimatedExecutionTime = migrationSteps.reduce((total, step) => total + step.estimatedDuration, 0);
+
+            // Create enhanced migration script
+            const enhancedScript: EnhancedMigrationScript = {
+                id: this.generateId(),
+                name: `Migration_${sourceConnectionId}_to_${targetConnectionId}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}`,
+                description: `Schema migration from ${sourceConnectionId} to ${targetConnectionId} with ${schemaChanges.length} changes`,
+                version: '1.0.0',
+                sourceSchema: await this.createSchemaSnapshot(sourceConnectionId),
+                targetSchema: await this.createSchemaSnapshot(targetConnectionId),
+                migrationSteps,
+                rollbackScript,
+                validationSteps,
+                dependencies: await this.analyzeMigrationDependencies(migrationSteps, sourceConnectionId, targetConnectionId),
+                metadata: {
+                    author: 'MigrationManagement',
+                    tags: ['schema-migration', 'automated'],
+                    businessJustification: options.businessJustification || 'Automated schema migration',
+                    changeType: 'schema',
+                    environment: 'production',
+                    testingRequired: true,
+                    documentationUpdated: false
+                },
+                generatedAt: new Date(),
+                estimatedExecutionTime,
+                riskLevel
+            };
+
+            Logger.info('Enhanced migration script generated successfully', 'generateEnhancedMigrationScript', {
+                scriptId: enhancedScript.id,
+                stepCount: migrationSteps.length,
+                validationCount: validationSteps.length,
+                rollbackComplete: rollbackScript.isComplete,
+                riskLevel,
+                estimatedTime: `${estimatedExecutionTime}s`
+            });
+
+            return enhancedScript;
 
         } catch (error) {
             Logger.error('Failed to generate enhanced migration script', error as Error);
@@ -149,8 +183,131 @@ export class MigrationManagement {
                 validateOnly: options.validateOnly || false
             });
 
-            // Delegate to executor module
-            return await this.executor.executeMigrationScript(script, connectionId, options);
+            const executionId = this.generateId();
+            const startTime = new Date();
+
+            // Initialize execution result
+            const executionResult: MigrationExecutionResult = {
+                scriptId: script.id,
+                executionId,
+                startTime,
+                status: 'running',
+                completedSteps: 0,
+                failedSteps: 0,
+                executionLog: [],
+                performanceMetrics: {
+                    totalExecutionTime: 0,
+                    averageStepTime: 0,
+                    peakMemoryUsage: 0,
+                    databaseLoad: 0
+                },
+                validationResults: []
+            };
+
+            // If validateOnly, run validation steps only
+            if (options.validateOnly) {
+                Logger.info('Running validation only', 'executeMigrationScript', { scriptId: script.id });
+                executionResult.validationResults = await this.performFrameworkValidation(script, connectionId);
+                executionResult.status = 'completed';
+                executionResult.endTime = new Date();
+                return executionResult;
+            }
+
+            // Execute migration steps
+            let stepIndex = 0;
+            for (const step of script.migrationSteps) {
+                try {
+                    executionResult.currentStep = stepIndex + 1;
+
+                    Logger.info('Executing migration step', 'executeMigrationScript', {
+                        scriptId: script.id,
+                        stepId: step.id,
+                        stepOrder: step.order,
+                        operation: step.operation
+                    });
+
+                    const stepStartTime = Date.now();
+
+                    // Execute the step
+                    if (!options.dryRun) {
+                        await this.executeMigrationStep(step, connectionId);
+                    }
+
+                    const stepDuration = Date.now() - stepStartTime;
+
+                    // Log successful step execution
+                    executionResult.executionLog.push({
+                        timestamp: new Date(),
+                        stepId: step.id,
+                        level: 'info',
+                        message: `Step ${step.order} completed successfully`,
+                        duration: stepDuration
+                    });
+
+                    executionResult.completedSteps++;
+
+                } catch (stepError) {
+                    Logger.error('Migration step failed', stepError as Error, 'executeMigrationScript', {
+                        scriptId: script.id,
+                        stepId: step.id,
+                        stepOrder: step.order
+                    });
+
+                    executionResult.failedSteps++;
+                    executionResult.executionLog.push({
+                        timestamp: new Date(),
+                        stepId: step.id,
+                        level: 'error',
+                        message: `Step ${step.order} failed: ${(stepError as Error).message}`
+                    });
+
+                    // Stop on first error if configured
+                    if (options.stopOnError) {
+                        executionResult.status = 'failed';
+                        executionResult.endTime = new Date();
+                        return executionResult;
+                    }
+                }
+
+                stepIndex++;
+            }
+
+            // Run validation steps if available
+            if (script.validationSteps && script.validationSteps.length > 0) {
+                Logger.info('Running post-migration validation', 'executeMigrationScript', {
+                    scriptId: script.id,
+                    validationCount: script.validationSteps.length
+                });
+
+                try {
+                    executionResult.validationResults = await this.performFrameworkValidation(script, connectionId);
+                } catch (validationError) {
+                    Logger.warn('Post-migration validation failed', 'executeMigrationScript', {
+                        scriptId: script.id,
+                        error: (validationError as Error).message
+                    });
+                }
+            }
+
+            // Calculate performance metrics
+            const endTime = new Date();
+            executionResult.endTime = endTime;
+            executionResult.performanceMetrics.totalExecutionTime = endTime.getTime() - startTime.getTime();
+            executionResult.performanceMetrics.averageStepTime = executionResult.completedSteps > 0 ?
+                executionResult.performanceMetrics.totalExecutionTime / executionResult.completedSteps : 0;
+
+            // Set final status
+            executionResult.status = executionResult.failedSteps === 0 ? 'completed' : 'failed';
+
+            Logger.info('Migration execution completed', 'executeMigrationScript', {
+                scriptId: script.id,
+                status: executionResult.status,
+                completedSteps: executionResult.completedSteps,
+                failedSteps: executionResult.failedSteps,
+                totalTime: `${executionResult.performanceMetrics.totalExecutionTime}ms`
+            });
+
+            return executionResult;
 
         } catch (error) {
             Logger.error('Migration script execution failed', error as Error);
