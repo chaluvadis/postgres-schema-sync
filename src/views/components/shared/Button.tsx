@@ -1,5 +1,5 @@
-import React from 'react';
-import { vscodeTheme, getThemeStyles } from '../../theme/vscode-theme';
+import React, { useMemo } from 'react';
+import { vscodeTheme } from '../../theme/vscode-theme';
 
 export interface ButtonProps {
   children: React.ReactNode;
@@ -13,7 +13,7 @@ export interface ButtonProps {
   className?: string;
 }
 
-export const Button: React.FC<ButtonProps> = ({
+export const Button: React.FC<ButtonProps> = React.memo(({
   children,
   onClick,
   variant = 'primary',
@@ -24,83 +24,85 @@ export const Button: React.FC<ButtonProps> = ({
   type = 'button',
   className = ''
 }) => {
-  const sizeStyles = {
-    sm: {
-      padding: `${vscodeTheme.spacing.xs} ${vscodeTheme.spacing.sm}`,
-      fontSize: vscodeTheme.typography.fontSize.xs
-    },
-    md: {
-      padding: `${vscodeTheme.spacing.sm} ${vscodeTheme.spacing.md}`,
-      fontSize: vscodeTheme.typography.fontSize.sm
-    },
-    lg: {
-      padding: `${vscodeTheme.spacing.md} ${vscodeTheme.spacing.lg}`,
-      fontSize: vscodeTheme.typography.fontSize.md
-    }
-  };
+  const buttonStyles = useMemo(() => {
+    const sizeStyles = {
+      sm: {
+        padding: `${vscodeTheme.spacing.xs} ${vscodeTheme.spacing.sm}`,
+        fontSize: vscodeTheme.typography.fontSize.xs
+      },
+      md: {
+        padding: `${vscodeTheme.spacing.sm} ${vscodeTheme.spacing.md}`,
+        fontSize: vscodeTheme.typography.fontSize.sm
+      },
+      lg: {
+        padding: `${vscodeTheme.spacing.md} ${vscodeTheme.spacing.lg}`,
+        fontSize: vscodeTheme.typography.fontSize.md
+      }
+    };
 
-  const variantStyles = {
-    primary: {
-      backgroundColor: vscodeTheme.colors.accent,
-      color: vscodeTheme.colors.accentForeground,
-      border: `1px solid ${vscodeTheme.colors.accent}`,
-      ':hover:not(:disabled)': {
-        backgroundColor: vscodeTheme.colors.listHoverBackground,
-        borderColor: vscodeTheme.colors.listHoverBackground
+    const variantStyles = {
+      primary: {
+        backgroundColor: vscodeTheme.colors.accent,
+        color: vscodeTheme.colors.accentForeground,
+        border: `1px solid ${vscodeTheme.colors.accent}`,
+        ':hover:not(:disabled)': {
+          backgroundColor: vscodeTheme.colors.listHoverBackground,
+          borderColor: vscodeTheme.colors.listHoverBackground
+        }
+      },
+      secondary: {
+        backgroundColor: vscodeTheme.colors.background,
+        color: vscodeTheme.colors.foreground,
+        border: `1px solid ${vscodeTheme.colors.border}`,
+        ':hover:not(:disabled)': {
+          backgroundColor: vscodeTheme.colors.listHoverBackground
+        }
+      },
+      danger: {
+        backgroundColor: vscodeTheme.colors.error,
+        color: vscodeTheme.colors.background,
+        border: `1px solid ${vscodeTheme.colors.error}`,
+        ':hover:not(:disabled)': {
+          opacity: 0.9
+        }
+      },
+      success: {
+        backgroundColor: vscodeTheme.colors.success,
+        color: vscodeTheme.colors.background,
+        border: `1px solid ${vscodeTheme.colors.success}`,
+        ':hover:not(:disabled)': {
+          opacity: 0.9
+        }
       }
-    },
-    secondary: {
-      backgroundColor: vscodeTheme.colors.background,
-      color: vscodeTheme.colors.foreground,
-      border: `1px solid ${vscodeTheme.colors.border}`,
-      ':hover:not(:disabled)': {
-        backgroundColor: vscodeTheme.colors.listHoverBackground
-      }
-    },
-    danger: {
-      backgroundColor: vscodeTheme.colors.error,
-      color: vscodeTheme.colors.background,
-      border: `1px solid ${vscodeTheme.colors.error}`,
-      ':hover:not(:disabled)': {
-        opacity: 0.9
-      }
-    },
-    success: {
-      backgroundColor: vscodeTheme.colors.success,
-      color: vscodeTheme.colors.background,
-      border: `1px solid ${vscodeTheme.colors.success}`,
-      ':hover:not(:disabled)': {
-        opacity: 0.9
-      }
-    }
-  };
+    };
 
-  const baseStyles: React.CSSProperties = {
-    fontFamily: vscodeTheme.typography.fontFamily,
-    fontWeight: vscodeTheme.typography.fontWeight.normal,
-    borderRadius: vscodeTheme.borderRadius.md,
-    cursor: disabled || loading ? 'not-allowed' : 'pointer',
-    transition: 'all 0.2s ease',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: vscodeTheme.spacing.sm,
-    width: fullWidth ? '100%' : 'auto',
-    opacity: disabled ? 0.6 : 1,
-    ...sizeStyles[size],
-    ...variantStyles[variant]
-  };
+    return {
+      fontFamily: vscodeTheme.typography.fontFamily,
+      fontWeight: vscodeTheme.typography.fontWeight.normal,
+      borderRadius: vscodeTheme.borderRadius.md,
+      cursor: disabled || loading ? 'not-allowed' : 'pointer',
+      transition: 'all 0.2s ease',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: vscodeTheme.spacing.sm,
+      width: fullWidth ? '100%' : 'auto',
+      opacity: disabled ? 0.6 : 1,
+      ...sizeStyles[size],
+      ...variantStyles[variant]
+    } as React.CSSProperties;
+  }, [variant, size, disabled, loading, fullWidth]);
 
-  const handleClick = () => {
+  const handleClick = React.useCallback(() => {
     if (!disabled && !loading && onClick) {
       onClick();
     }
-  };
+  }, [disabled, loading, onClick]);
 
   return (
     <button
       type={type}
-      style={baseStyles}
+      style={buttonStyles}
       onClick={handleClick}
       disabled={disabled || loading}
       className={className}
@@ -109,7 +111,7 @@ export const Button: React.FC<ButtonProps> = ({
       {children}
     </button>
   );
-};
+});
 
 // Simple spinner component
 interface SpinnerProps {
