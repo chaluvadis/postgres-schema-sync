@@ -124,7 +124,10 @@ export class RealtimeMonitoringManager {
 	setupSQLFileWatcher(document: vscode.TextDocument): void {
 		// Check master monitoring switch first
 		if (!this.isMonitoringEnabled()) {
-			Logger.debug("Real-time monitoring disabled by master switch, skipping file watcher setup", "setupSQLFileWatcher");
+			Logger.debug(
+				"Real-time monitoring disabled by master switch, skipping file watcher setup",
+				"setupSQLFileWatcher",
+			);
 			return;
 		}
 

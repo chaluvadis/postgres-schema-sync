@@ -113,23 +113,42 @@ export class ModularSchemaManager {
 		queryService: QueryExecutionService,
 		validationFramework: ValidationFramework,
 	) {
+		Logger.debug("ModularSchemaManager constructor called", "ModularSchemaManager.constructor");
 		this.connectionManager = connectionManager;
 		this.dotNetService = PostgreSqlConnectionManager.getInstance();
 		this.queryService = queryService;
 		this.validationFramework = validationFramework;
 
+		Logger.debug("Initializing modular components", "ModularSchemaManager.constructor");
+
 		// Initialize all modular components
+		Logger.debug("Creating SchemaOperations instance", "ModularSchemaManager.constructor");
 		this.schemaOperations = new SchemaOperations(connectionManager);
+
+		Logger.debug("Creating MetadataManagement instance", "ModularSchemaManager.constructor");
 		this.metadataManagement = new MetadataManagement(this.schemaOperations, connectionManager, queryService);
+
+		Logger.debug("Creating SchemaComparison instance", "ModularSchemaManager.constructor");
 		this.schemaComparison = new SchemaComparison(this.schemaOperations);
+
+		Logger.debug("Creating DependencyAnalysis instance", "ModularSchemaManager.constructor");
 		this.dependencyAnalysis = new DependencyAnalysis(this.metadataManagement);
+
+		Logger.debug("Creating ImpactAnalysis instance", "ModularSchemaManager.constructor");
 		this.impactAnalysis = new ImpactAnalysis(this.schemaComparison, this.dependencyAnalysis);
-		// Initialize migration management
+
+		Logger.debug("Creating MigrationManagement instance", "ModularSchemaManager.constructor");
 		this.migrationManagement = new MigrationManagement(this.queryService, this.validationFramework);
+
+		Logger.debug("Creating ConflictResolutionService instance", "ModularSchemaManager.constructor");
 		this.conflictResolutionService = new ConflictResolutionService();
+
+		Logger.debug("Creating PerformanceAnalysis instance", "ModularSchemaManager.constructor");
 		this.performanceAnalysis = new PerformanceAnalysis(this.queryService);
 
-		Logger.info("ModularSchemaManager initialized with all components", "ModularSchemaManager");
+		Logger.info("ModularSchemaManager initialized with all components", "ModularSchemaManager", {
+			componentsCount: 8, // Count of all initialized components
+		});
 	}
 
 	// ========== DELEGATED METHODS FROM SCHEMA OPERATIONS ==========
@@ -138,7 +157,16 @@ export class ModularSchemaManager {
 	 * Get database objects for a connection
 	 */
 	async getDatabaseObjects(connectionId: string, schemaFilter?: string) {
-		return this.schemaOperations.getDatabaseObjects(connectionId, schemaFilter);
+		Logger.debug("Getting database objects", "getDatabaseObjects", {
+			connectionId,
+			schemaFilter,
+		});
+		const result = await this.schemaOperations.getDatabaseObjects(connectionId, schemaFilter);
+		Logger.debug("Database objects retrieved", "getDatabaseObjects", {
+			connectionId,
+			objectCount: result?.length || 0,
+		});
+		return result;
 	}
 
 	/**

@@ -116,6 +116,7 @@ export class PostgreSqlConnectionManager {
 	private healthCheckInterval: NodeJS.Timeout | null = null;
 
 	private constructor() {
+		Logger.debug("PostgreSqlConnectionManager constructor called", "PostgreSqlConnectionManager.constructor");
 		this.startHealthMonitoring();
 	}
 
@@ -238,36 +239,60 @@ export class PostgreSqlConnectionManager {
 	}
 
 	private startHealthMonitoring(): void {
-		// Check health every 2 minutes instead of 30 seconds
-		this.healthCheckInterval = setInterval(async () => {
-			try {
-				await this.performHealthChecks();
-			} catch (error) {
-				Logger.error("Error in health monitoring", error as Error);
-			}
-		}, 120000); // 2 minutes
+		Logger.debug("Starting health monitoring", "startHealthMonitoring");
+		// Check health every 5 minutes to reduce load
+		this.healthCheckInterval = setInterval(() => {
+			// Run health checks asynchronously without blocking
+			this.performHealthChecks().catch((error) => {
+				Logger.error("Error in health monitoring", error as Error, "startHealthMonitoring");
+			});
+		}, 300000); // 5 minutes
 
-		// Initial health check
-		this.performHealthChecks();
+		// Initial health check with timeout
+		setTimeout(() => {
+			this.performHealthChecks().catch((error) => {
+				Logger.error("Error in initial health check", error as Error, "startHealthMonitoring");
+			});
+		}, 5000); // Delay initial check by 5 seconds
 	}
 
 	private async performHealthChecks(): Promise<void> {
 		const connectionIds = Array.from(this.healthStatus.keys());
+		Logger.debug("Performing health checks", "performHealthChecks", {
+			connectionCount: connectionIds.length,
+		});
 
-		// Process health checks in batches to avoid overwhelming the system
-		const batchSize = 3;
+		// Process health checks in smaller batches with longer delays
+		const batchSize = 2;
 		for (let i = 0; i < connectionIds.length; i += batchSize) {
 			const batch = connectionIds.slice(i, i + batchSize);
+			Logger.debug("Processing health check batch", "performHealthChecks", {
+				batchIndex: Math.floor(i / batchSize),
+				batchSize: batch.length,
+			});
 
 			const batchPromises = batch.map(async (connectionId) => {
 				try {
 					const status = this.healthStatus.get(connectionId);
 					if (!status) {
+						Logger.debug("No status found for connection, skipping health check", "performHealthChecks", {
+							connectionId,
+						});
 						return;
 					}
 
 					const startTime = Date.now();
-					const isHealthy = await this.checkConnectionHealth(connectionId);
+					Logger.debug("Checking connection health", "performHealthChecks", {
+						connectionId,
+					});
+
+					// Add timeout to individual health checks
+					const healthCheckPromise = this.checkConnectionHealth(connectionId);
+					const timeoutPromise = new Promise<boolean>((_, reject) =>
+						setTimeout(() => reject(new Error("Health check timed out")), 10000),
+					);
+
+					const isHealthy = await Promise.race([healthCheckPromise, timeoutPromise]);
 					const responseTime = Date.now() - startTime;
 
 					this.healthStatus.set(connectionId, {
@@ -277,6 +302,12 @@ export class PostgreSqlConnectionManager {
 						responseTime,
 						errorMessage: isHealthy ? undefined : "Connection health check failed",
 						poolStats: this.getPoolStats()[status.connectionId],
+					});
+
+					Logger.debug("Health check completed for connection", "performHealthChecks", {
+						connectionId,
+						isHealthy,
+						responseTime,
 					});
 				} catch (error) {
 					Logger.warn("Health check failed for connection", "performHealthChecks", {
@@ -289,11 +320,13 @@ export class PostgreSqlConnectionManager {
 			// Wait for the current batch to complete before starting the next
 			await Promise.all(batchPromises);
 
-			// Small delay between batches to prevent overwhelming
+			// Longer delay between batches to prevent overwhelming
 			if (i + batchSize < connectionIds.length) {
-				await new Promise((resolve) => setTimeout(resolve, 100));
+				await new Promise((resolve) => setTimeout(resolve, 500));
 			}
 		}
+
+		Logger.debug("All health checks completed", "performHealthChecks");
 	}
 
 	private async checkConnectionHealth(connectionId: string): Promise<boolean> {

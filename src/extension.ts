@@ -23,50 +23,95 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	});
 
 	try {
-		Logger.info("Activating PostgreSQL Schema Compare & Sync extension");
+		Logger.info("Activating PostgreSQL Schema Compare & Sync extension", "activate", {
+			vscodeVersion: vscode.version,
+			nodeVersion: process.version,
+			platform: process.platform,
+			arch: process.arch,
+			timestamp: new Date().toISOString(),
+		});
 
-		// Initialize PostgreSQL connection manager
+		// Initialize PostgreSQL connection manager with timeout
+		Logger.debug("Initializing PostgreSQL connection manager", "activate");
 		const connectionManager = PostgreSqlConnectionManager.getInstance();
-		Logger.info("PostgreSQL connection manager initialized");
+		Logger.info("PostgreSQL connection manager initialized", "activate");
+
+		// Add a small delay to allow the extension host to remain responsive during initialization
+		await new Promise((resolve) => setTimeout(resolve, 100));
 
 		// Initialize core components
+		Logger.debug("Initializing core extension components", "activate");
 		const coreComponents = ExtensionInitializer.initializeCoreComponents(context);
+		Logger.info("Core extension components initialized", "activate", {
+			hasConnectionManager: !!coreComponents.connectionManager,
+			hasSchemaManager: !!coreComponents.schemaManager,
+			hasTreeProvider: !!coreComponents.treeProvider,
+		});
 
 		// Initialize optional UI components
+		Logger.debug("Initializing optional UI components", "activate");
 		components = ExtensionInitializer.initializeOptionalComponents(coreComponents, context);
+		Logger.info("Optional UI components initialized", "activate", {
+			totalComponents: Object.keys(components).length,
+			hasDashboardView: !!components.dashboardView,
+			hasNotificationManager: !!components.notificationManager,
+			hasQueryEditorView: !!components.queryEditorView,
+		});
 
 		// Initialize main extension
+		Logger.debug("Initializing main PostgreSqlExtension component", "activate");
 		extension = ExtensionInitializer.initializeComponent(
 			"PostgreSqlExtension",
 			() => new PostgreSqlExtension(context, components!.connectionManager, components!.treeProvider),
 			true,
 		) as PostgreSqlExtension;
+		Logger.info("Main PostgreSqlExtension component initialized", "activate");
 
 		// Initialize modular managers
+		Logger.debug("Initializing modular managers", "activate");
 		const commandManager = new CommandManager(context, extension, components!);
 		const eventHandlerManager = new EventHandlerManager(context, components!.treeProvider, components);
 		const realtimeMonitoringManager = new RealtimeMonitoringManager(components);
+		Logger.info("Modular managers initialized", "activate", {
+			hasCommandManager: !!commandManager,
+			hasEventHandlerManager: !!eventHandlerManager,
+			hasRealtimeMonitoringManager: !!realtimeMonitoringManager,
+		});
 
 		// Register tree view and update title with real-time info
+		Logger.debug("Registering tree view", "activate");
 		const treeView = ExtensionInitializer.registerTreeView(components.treeProvider, context);
 		components.treeView = treeView;
 		realtimeMonitoringManager.updateTreeViewTitle(treeView);
+		Logger.info("Tree view registered and configured", "activate");
 
 		// Register all commands using the modular command manager
+		Logger.debug("Registering commands", "activate");
 		const commandDisposables = commandManager.registerCommands();
+		Logger.info("Commands registered", "activate", {
+			commandCount: commandDisposables.length,
+		});
 
 		// Register all command disposables in the main extension context
 		commandDisposables.forEach((disposable) => {
 			context.subscriptions.push(disposable);
 		});
+		Logger.debug("Command disposables registered in context", "activate");
 
 		// Register critical commands directly to avoid dynamic import issues
+		Logger.debug("Registering critical commands", "activate");
 		registerCriticalCommands(context, components);
+		Logger.info("Critical commands registered", "activate");
 
 		// Register all event handlers using the modular event handler manager
+		Logger.debug("Registering event handlers", "activate");
 		eventHandlerManager.registerEventHandlers();
+		Logger.info("Event handlers registered", "activate");
 
-		Logger.info("PostgreSQL Schema Compare & Sync extension activated successfully");
+		Logger.info("PostgreSQL Schema Compare & Sync extension activated successfully", "activate", {
+			activationTime: Date.now() - new Date(activationContext.timestamp).getTime(),
+			totalComponents: Object.keys(components).length,
+		});
 
 		vscode.window
 			.showInformationMessage(

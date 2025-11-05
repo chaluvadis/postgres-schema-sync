@@ -18,6 +18,7 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
 		private connectionManager: ConnectionManager,
 		private schemaManager: ModularSchemaManager,
 	) {
+		Logger.debug("PostgreSqlTreeProvider constructor called", "PostgreSqlTreeProvider.constructor");
 		this.refresh();
 	}
 
@@ -25,7 +26,10 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
 		const operationId = `tree-refresh-${Date.now()}`;
 
 		try {
-			Logger.debug("Refreshing tree provider");
+			Logger.info("Starting tree provider refresh", "refresh", {
+				operationId,
+				timestamp: new Date().toISOString(),
+			});
 
 			// Start operation tracking for tree refresh
 			const statusBarProvider = ExtensionInitializer.getStatusBarProvider();
@@ -50,12 +54,19 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
 				estimatedDuration: 10000, // 10 seconds estimated
 			});
 
+			Logger.debug("Operation tracking started for tree refresh", "refresh", { operationId });
+
 			// Step 1: Load connections
+			Logger.debug("Loading connections from connection manager", "refresh");
 			statusBarProvider.updateOperationStep(operationId, 0, "running", {
 				message: "Loading connections...",
 			});
 
 			this.connections = this.connectionManager.getConnections();
+			Logger.info("Connections loaded", "refresh", {
+				connectionCount: this.connections.length,
+				connections: this.connections.map((c) => ({ id: c.id, name: c.name, status: c.status })),
+			});
 
 			// Step 2: Load schemas for all connections
 			statusBarProvider.updateOperationStep(operationId, 0, "completed");
@@ -63,14 +74,27 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
 				message: "Loading schemas...",
 			});
 
+			Logger.debug("Starting schema loading for all connections", "refresh", {
+				connectionCount: this.connections.length,
+			});
+
 			// Load schema objects for all connections (this could be long-running)
 			const loadPromises = this.connections.map(async (connection) => {
 				try {
+					Logger.debug("Loading schema objects for connection", "refresh", {
+						connectionId: connection.id,
+						connectionName: connection.name,
+					});
 					const objects = (await this.schemaManager.getDatabaseObjects(connection.id)) || [];
 					this.schemaObjects.set(connection.id, objects);
+					Logger.debug("Schema objects loaded for connection", "refresh", {
+						connectionId: connection.id,
+						objectCount: objects.length,
+					});
 				} catch (error) {
 					Logger.warn("Failed to load schema for connection", "refresh", {
 						connectionId: connection.id,
+						connectionName: connection.name,
 						error: (error as Error).message,
 					});
 				}
@@ -79,27 +103,40 @@ export class PostgreSqlTreeProvider implements vscode.TreeDataProvider<TreeItem>
 			// Wait for all schema loading to complete
 			Promise.all(loadPromises)
 				.then(() => {
+					Logger.debug("All schema loading promises resolved", "refresh");
 					// Step 3: Complete
 					statusBarProvider.updateOperationStep(operationId, 1, "completed");
 					statusBarProvider.updateOperationStep(operationId, 2, "running", {
 						message: "Completing refresh...",
 					});
 
+					Logger.debug("Firing tree data change event", "refresh");
 					this._onDidChangeTreeData.fire();
 
 					statusBarProvider.updateOperationStep(operationId, 2, "completed");
 					statusBarProvider.updateOperation(operationId, "completed", {
 						message: `Explorer refreshed (${this.connections.length} connections)`,
 					});
+
+					Logger.info("Tree provider refresh completed successfully", "refresh", {
+						operationId,
+						connectionCount: this.connections.length,
+						totalObjects: Array.from(this.schemaObjects.values()).reduce((sum, objs) => sum + objs.length, 0),
+					});
 				})
 				.catch((error) => {
+					Logger.error("Schema loading failed during tree refresh", error as Error, "refresh", {
+						operationId,
+					});
 					statusBarProvider.updateOperation(operationId, "failed", {
 						message: `Refresh failed: ${(error as Error).message}`,
 					});
 					throw error;
 				});
 		} catch (error) {
-			Logger.error("Failed to refresh tree provider", error as Error);
+			Logger.error("Failed to refresh tree provider", error as Error, "refresh", {
+				operationId,
+			});
 			this._onDidChangeTreeData.fire();
 			throw error;
 		}

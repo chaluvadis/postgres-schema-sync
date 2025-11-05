@@ -75,15 +75,28 @@ export class ExtensionInitializer {
 	}
 	static initializeCoreComponents(context: vscode.ExtensionContext): ExtensionComponents {
 		try {
-			Logger.info("Initializing core extension components");
+			Logger.info("Initializing core extension components", "initializeCoreComponents");
 
 			// Initialize core managers
+			Logger.debug("Creating ConnectionManager instance", "initializeCoreComponents");
 			const connectionManager = new ConnectionManager(context);
-			const queryExecutionService = new QueryExecutionService(connectionManager);
-			const validationFramework = new ValidationFramework();
-			const schemaManager = new ModularSchemaManager(connectionManager, queryExecutionService, validationFramework);
+			Logger.debug("ConnectionManager created", "initializeCoreComponents");
 
+			Logger.debug("Creating QueryExecutionService instance", "initializeCoreComponents");
+			const queryExecutionService = new QueryExecutionService(connectionManager);
+			Logger.debug("QueryExecutionService created", "initializeCoreComponents");
+
+			Logger.debug("Creating ValidationFramework instance", "initializeCoreComponents");
+			const validationFramework = new ValidationFramework();
+			Logger.debug("ValidationFramework created", "initializeCoreComponents");
+
+			Logger.debug("Creating ModularSchemaManager instance", "initializeCoreComponents");
+			const schemaManager = new ModularSchemaManager(connectionManager, queryExecutionService, validationFramework);
+			Logger.debug("ModularSchemaManager created", "initializeCoreComponents");
+
+			Logger.debug("Creating PostgreSqlTreeProvider instance", "initializeCoreComponents");
 			const treeProvider = new PostgreSqlTreeProvider(connectionManager, schemaManager);
+			Logger.debug("PostgreSqlTreeProvider created", "initializeCoreComponents");
 
 			const components: ExtensionComponents = {
 				connectionManager,
@@ -91,10 +104,12 @@ export class ExtensionInitializer {
 				treeProvider,
 			};
 
-			Logger.info("Core extension components initialized successfully");
+			Logger.info("Core extension components initialized successfully", "initializeCoreComponents", {
+				componentsCount: Object.keys(components).length,
+			});
 			return components;
 		} catch (error) {
-			Logger.error("Failed to initialize core extension components", error as Error);
+			Logger.error("Failed to initialize core extension components", error as Error, "initializeCoreComponents");
 			throw error;
 		}
 	}
@@ -103,32 +118,74 @@ export class ExtensionInitializer {
 		context: vscode.ExtensionContext,
 	): ExtensionComponents {
 		try {
-			Logger.info("Initializing optional UI components");
+			Logger.info("Initializing optional UI components", "initializeOptionalComponents");
 
 			// Initialize optional components
+			Logger.debug("Creating NotificationManager instance", "initializeOptionalComponents");
 			const notificationManager = NotificationManager.getInstance();
+
+			Logger.debug("Creating EnhancedStatusBarProvider instance", "initializeOptionalComponents");
 			const enhancedStatusBarProvider = EnhancedStatusBarProvider.getInstance(
 				coreComponents.connectionManager,
 				notificationManager,
 			);
+
+			Logger.debug("Creating DashboardView instance", "initializeOptionalComponents");
 			const dashboardView = new DashboardView(coreComponents.connectionManager, coreComponents.schemaManager);
+
+			Logger.debug("Creating ConnectionManagementView instance", "initializeOptionalComponents");
 			const connectionView = new ConnectionManagementView(coreComponents.connectionManager);
+
+			Logger.debug("Creating SchemaBrowserView instance", "initializeOptionalComponents");
 			const schemaBrowserView = new SchemaBrowserView(coreComponents.schemaManager, coreComponents.connectionManager);
+
+			Logger.debug("Creating SchemaComparisonView instance", "initializeOptionalComponents");
 			const schemaComparisonView = new SchemaComparisonView(coreComponents.connectionManager);
+
+			Logger.debug("Creating MigrationPreviewView instance", "initializeOptionalComponents");
 			const migrationPreviewView = new MigrationPreviewView();
+
+			Logger.debug("Creating SettingsView instance", "initializeOptionalComponents");
 			const settingsView = new SettingsView();
+
+			Logger.debug("Creating ErrorDisplayView instance", "initializeOptionalComponents");
 			const errorDisplayView = new ErrorDisplayView();
+
+			Logger.debug("Creating QueryExecutionService instance", "initializeOptionalComponents");
 			const queryExecutionService = new QueryExecutionService(coreComponents.connectionManager);
+
+			Logger.debug("Creating QueryEditorView instance", "initializeOptionalComponents");
 			const queryEditorView = new QueryEditorView(coreComponents.connectionManager, queryExecutionService);
+
+			Logger.debug("Creating PerformanceMonitorService instance", "initializeOptionalComponents");
 			const performanceMonitorService = PerformanceMonitorService.getInstance();
+
+			Logger.debug("Creating PerformanceAlertSystem instance", "initializeOptionalComponents");
 			const performanceAlertSystem = PerformanceAlertSystem.getInstance(context, performanceMonitorService);
+
+			Logger.debug("Creating DataImportService instance", "initializeOptionalComponents");
 			const dataImportService = new DataImportService(context, coreComponents.connectionManager);
+
+			Logger.debug("Creating QueryAnalyticsView instance", "initializeOptionalComponents");
 			const queryAnalyticsView = new QueryAnalyticsView(context, performanceMonitorService);
-			const importWizardView = coreComponents.dataImportService
-				? new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager)
-				: undefined;
+
+			Logger.debug("Creating ReportingService instance", "initializeOptionalComponents");
 			const reportingService = new ReportingService(context);
+
+			Logger.debug("Creating DriftReportView instance", "initializeOptionalComponents");
 			const driftReportView = new DriftReportView(context, reportingService);
+
+			// Create import wizard view conditionally
+			let importWizardView: ImportWizardView | undefined;
+			if (coreComponents.dataImportService) {
+				Logger.debug("Creating ImportWizardView instance", "initializeOptionalComponents");
+				importWizardView = new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager);
+			} else {
+				Logger.debug(
+					"Skipping ImportWizardView creation - no dataImportService available",
+					"initializeOptionalComponents",
+				);
+			}
 
 			// Add optional components to the core components
 			const components: ExtensionComponents = {
@@ -153,10 +210,13 @@ export class ExtensionInitializer {
 				driftReportView,
 			};
 
-			Logger.info("Optional UI components initialized successfully");
+			Logger.info("Optional UI components initialized successfully", "initializeOptionalComponents", {
+				totalComponents: Object.keys(components).length,
+				optionalComponentsCount: Object.keys(components).length - Object.keys(coreComponents).length,
+			});
 			return components;
 		} catch (error) {
-			Logger.error("Failed to initialize optional UI components", error as Error);
+			Logger.error("Failed to initialize optional UI components", error as Error, "initializeOptionalComponents");
 			// Return core components even if optional components fail
 			return coreComponents;
 		}

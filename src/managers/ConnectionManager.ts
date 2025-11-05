@@ -822,20 +822,38 @@ export class ConnectionManager {
 		}
 	}
 	private startHealthMonitoring(): void {
-		// Check connection health every 30 seconds
-		this.healthCheckInterval = setInterval(async () => {
-			await this.performHealthChecks();
-		}, 30000);
+		// Check connection health every 2 minutes to reduce load
+		this.healthCheckInterval = setInterval(() => {
+			// Run health checks asynchronously without blocking
+			this.performHealthChecks().catch((error) => {
+				Logger.error("Error in connection health monitoring", error as Error, "startHealthMonitoring");
+			});
+		}, 120000); // 2 minutes
 
 		Logger.info("Connection health monitoring started");
 	}
 	private async performHealthChecks(): Promise<void> {
 		try {
-			for (const [connectionId, connection] of this.connections) {
-				if (connection.status === "Connected") {
+			const connectedConnections = Array.from(this.connections.entries()).filter(
+				([_, connection]) => connection.status === "Connected",
+			);
+
+			// Process in smaller batches to prevent blocking
+			const batchSize = 2;
+			for (let i = 0; i < connectedConnections.length; i += batchSize) {
+				const batch = connectedConnections.slice(i, i + batchSize);
+
+				const batchPromises = batch.map(async ([connectionId, connection]) => {
 					try {
 						const startTime = Date.now();
-						const isHealthy = await this.testConnection(connectionId);
+
+						// Add timeout to individual connection tests
+						const testPromise = this.testConnection(connectionId);
+						const timeoutPromise = new Promise<boolean>((_, reject) =>
+							setTimeout(() => reject(new Error("Connection test timed out")), 15000),
+						);
+
+						const isHealthy = await Promise.race([testPromise, timeoutPromise]);
 						const responseTime = Date.now() - startTime;
 
 						// Update health status
@@ -860,12 +878,22 @@ export class ConnectionManager {
 						health.lastChecked = new Date();
 						this.connectionHealth.set(connectionId, health);
 					} catch (error) {
-						Logger.warn(`Health check failed for ${connectionId}`, "performHealthChecks");
+						Logger.warn(`Health check failed for ${connectionId}`, "performHealthChecks", {
+							error: (error as Error).message,
+						});
 					}
+				});
+
+				// Wait for batch to complete
+				await Promise.all(batchPromises);
+
+				// Add delay between batches
+				if (i + batchSize < connectedConnections.length) {
+					await new Promise((resolve) => setTimeout(resolve, 200));
 				}
 			}
 		} catch (error) {
-			Logger.error("Error during health checks", error as Error);
+			Logger.error("Error during health checks", error as Error, "performHealthChecks");
 		}
 	}
 	async closeConnection(connectionId: string, activeConnectionId?: string): Promise<void> {
