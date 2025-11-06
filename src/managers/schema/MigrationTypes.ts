@@ -1,6 +1,3 @@
-// MigrationTypes.ts - Consolidated migration type definitions
-// This file contains all interfaces and types used across migration modules
-
 export interface EnhancedMigrationScript {
 	id: string;
 	name: string;

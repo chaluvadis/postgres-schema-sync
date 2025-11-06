@@ -2,10 +2,6 @@ import { ConnectionInfo, PostgreSqlConnectionManager } from "@/core/PostgreSqlCo
 import { ExtensionInitializer } from "@/utils/ExtensionInitializer";
 import { Logger } from "@/utils/Logger";
 import { ConnectionManager } from "../ConnectionManager";
-// DatabaseObject and ObjectType are now defined locally in this file
-
-// Consolidated schema browser functionality from PostgreSqlSchemaBrowser
-
 export interface DatabaseObject {
 	id: string;
 	name: string;
@@ -265,37 +261,6 @@ export class SchemaOperations {
 		});
 
 		return objects;
-	}
-
-	/**
-	 * Clear the schema cache for a specific connection or all connections
-	 */
-	clearSchemaCache(connectionId?: string): void {
-		if (connectionId) {
-			// Clear cache for specific connection
-			for (const [key] of this.schemaCache) {
-				if (key.startsWith(connectionId + ":")) {
-					this.schemaCache.delete(key);
-				}
-			}
-			Logger.debug("Schema cache cleared for connection", "clearSchemaCache", {
-				connectionId,
-			});
-		} else {
-			// Clear all cache
-			this.schemaCache.clear();
-			Logger.debug("All schema cache cleared", "clearSchemaCache");
-		}
-	}
-
-	/**
-	 * Get cache statistics for monitoring
-	 */
-	getCacheStats(): { size: number; entries: string[] } {
-		return {
-			size: this.schemaCache.size,
-			entries: Array.from(this.schemaCache.keys()),
-		};
 	}
 
 	/**

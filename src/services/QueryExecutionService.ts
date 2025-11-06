@@ -41,9 +41,36 @@ export class QueryExecutionService {
 	private schemaOperations: SchemaOperations;
 
 	constructor(connectionManager: ConnectionManager) {
+		const startTime = Date.now();
+		console.log("[QueryExecutionService] Lightweight constructor - deferring heavy initialization...");
+
 		this.connectionManager = connectionManager;
+		// Defer heavy initialization - schema operations are created lazily
+		this.dotNetService = null as any; // Will be initialized lazily
+		this.schemaOperations = null as any; // Will be initialized lazily
+
+		const duration = Date.now() - startTime;
+		console.log(`[QueryExecutionService] Lightweight constructor completed in ${duration}ms`);
+	}
+
+	/**
+	 * Lazy initialization of heavy components
+	 */
+	private ensureInitialized(): void {
+		if (this.dotNetService && this.schemaOperations) {
+			return; // Already initialized
+		}
+
+		const startTime = Date.now();
+		console.log("[QueryExecutionService] Starting lazy initialization...");
+
 		this.dotNetService = PostgreSqlConnectionManager.getInstance();
-		this.schemaOperations = new SchemaOperations(connectionManager);
+
+		console.log("[QueryExecutionService] Creating SchemaOperations lazily...");
+		this.schemaOperations = new SchemaOperations(this.connectionManager);
+
+		const duration = Date.now() - startTime;
+		console.log(`[QueryExecutionService] Lazy initialization completed in ${duration}ms`);
 	}
 
 	async executeQuery(
@@ -55,6 +82,9 @@ export class QueryExecutionService {
 		const startTime = Date.now();
 
 		try {
+			// Lazy initialization
+			this.ensureInitialized();
+
 			Logger.info("Executing query", "executeQuery", {
 				connectionId,
 				queryLength: query.length,

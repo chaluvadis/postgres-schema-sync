@@ -16,11 +16,8 @@ interface ConnectionItem {
  */
 export class SQLFileHandlers {
 	private components: ExtensionComponents;
-	private errorHandler: CommandErrorHandler;
-
-	constructor(components: ExtensionComponents, errorHandler: CommandErrorHandler) {
+	constructor(components: ExtensionComponents) {
 		this.components = components;
-		this.errorHandler = errorHandler;
 	}
 
 	/**

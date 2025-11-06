@@ -96,8 +96,16 @@ export class PerformanceMonitorService {
 	private isMonitoring: boolean = false;
 	private monitoringInterval?: NodeJS.Timeout;
 	private readonly SLOW_QUERY_THRESHOLD = 5000; // 5 seconds
+	private initialized: boolean = false;
 	private constructor() {
-		this.loadPerformanceData();
+		const startTime = Date.now();
+		console.log("[PerformanceMonitorService] Lightweight constructor - deferring heavy initialization...");
+
+		// Lightweight constructor - defer heavy operations
+		this.initialized = false;
+
+		const duration = Date.now() - startTime;
+		console.log(`[PerformanceMonitorService] Lightweight constructor completed in ${duration}ms`);
 	}
 	static getInstance(): PerformanceMonitorService {
 		if (!PerformanceMonitorService.instance) {
@@ -105,12 +113,66 @@ export class PerformanceMonitorService {
 		}
 		return PerformanceMonitorService.instance;
 	}
+
+	/**
+	 * Lazy initialization - performs heavy operations only when needed
+	 */
+	private async ensureInitialized(): Promise<void> {
+		if (this.initialized) {
+			return;
+		}
+
+		const startTime = Date.now();
+		console.log("[PerformanceMonitorService] Starting lazy initialization...");
+
+		try {
+			await this.loadPerformanceData();
+			this.initialized = true;
+
+			const duration = Date.now() - startTime;
+			console.log(`[PerformanceMonitorService] Lazy initialization completed in ${duration}ms`);
+		} catch (error) {
+			const duration = Date.now() - startTime;
+			console.error(`[PerformanceMonitorService] Lazy initialization failed after ${duration}ms:`, error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Synchronous lazy initialization - performs heavy operations only when needed
+	 */
+	private ensureInitializedSync(): void {
+		if (this.initialized) {
+			return;
+		}
+
+		const startTime = Date.now();
+		console.log("[PerformanceMonitorService] Starting synchronous lazy initialization...");
+
+		try {
+			this.loadPerformanceData();
+			this.initialized = true;
+
+			const duration = Date.now() - startTime;
+			console.log(`[PerformanceMonitorService] Synchronous lazy initialization completed in ${duration}ms`);
+		} catch (error) {
+			const duration = Date.now() - startTime;
+			console.error(`[PerformanceMonitorService] Synchronous lazy initialization failed after ${duration}ms:`, error);
+			// Don't throw on sync initialization - just mark as not initialized
+			this.initialized = false;
+		}
+	}
 	getQueryMetrics(
 		connectionId?: string,
 		timeRange?: { start: Date; end: Date },
 		limit?: number,
 	): QueryPerformanceMetrics[] {
 		try {
+			// Synchronous lazy initialization
+			if (!this.initialized) {
+				this.ensureInitializedSync();
+			}
+
 			let allMetrics: QueryPerformanceMetrics[] = [];
 
 			if (connectionId) {

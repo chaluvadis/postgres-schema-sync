@@ -8128,42 +8128,6 @@ export class MigrationManagement {
 			};
 		}
 	}
-
-	/**
-	 * Combines ValidationFramework results with legacy validation results for compatibility
-	 * @param frameworkReport - Report from ValidationFramework
-	 * @param legacyResults - Legacy validation results array
-	 * @returns Combined array of validation results
-	 * @private
-	 */
-	private combineValidationResults(frameworkReport: any, legacyResults: ValidationResult[]): ValidationResult[] {
-		Logger.info("Combining validation results", "combineValidationResults", {
-			frameworkResults: frameworkReport.results.length,
-			legacyResults: legacyResults.length,
-		});
-
-		// Convert framework validation results to legacy format for compatibility
-		const frameworkResults: ValidationResult[] = frameworkReport.results.map((result: any) => ({
-			stepId: result.ruleId,
-			validationId: result.ruleId,
-			passed: result.passed,
-			actualResult: result.details?.actualResult,
-			expectedResult: result.details?.expectedResult,
-			executionTime: result.executionTime,
-			errorMessage: result.passed ? undefined : result.message,
-		}));
-
-		// Combine both result sets
-		const combinedResults = [...frameworkResults, ...legacyResults];
-
-		Logger.info("Validation results combined", "combineValidationResults", {
-			totalResults: combinedResults.length,
-			passedResults: combinedResults.filter((r) => r.passed).length,
-			failedResults: combinedResults.filter((r) => !r.passed).length,
-		});
-
-		return combinedResults;
-	}
 	/**
 	 * Generates a unique identifier for migration scripts and executions
 	 * @returns Unique UUID string

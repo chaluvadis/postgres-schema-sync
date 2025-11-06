@@ -2,8 +2,6 @@ import * as vscode from "vscode";
 import { ConnectionManager } from "@/managers/ConnectionManager";
 import { Logger } from "@/utils/Logger";
 import { NotificationManager } from "@/views/legacy/NotificationManager";
-// ProgressTracker functionality has been consolidated into other modules
-// Remove this import as it's no longer needed
 export interface StatusBarItem {
 	id: string;
 	text: string;

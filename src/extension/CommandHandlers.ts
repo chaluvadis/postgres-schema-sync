@@ -8,12 +8,6 @@ import { Logger } from "@/utils/Logger";
 import { PostgreSqlExtension } from "../PostgreSqlExtension";
 import { CommandErrorHandler } from "./CommandErrorHandler";
 
-interface ConnectionItem {
-	label: string;
-	detail: string;
-	connection: DatabaseConnection;
-}
-
 /**
  * Contains all command handler implementations for the PostgreSQL extension.
  * Each handler method corresponds to a specific VS Code command.
@@ -23,20 +17,17 @@ export class CommandHandlers {
 	private components: ExtensionComponents;
 	private migrationManager: MigrationManagement;
 	private schemaOperations: SchemaOperations;
-	private errorHandler: CommandErrorHandler;
 
 	constructor(
 		extension: PostgreSqlExtension,
 		components: ExtensionComponents,
 		migrationManager: MigrationManagement,
 		schemaOperations: SchemaOperations,
-		errorHandler: CommandErrorHandler,
 	) {
 		this.extension = extension;
 		this.components = components;
 		this.migrationManager = migrationManager;
 		this.schemaOperations = schemaOperations;
-		this.errorHandler = errorHandler;
 	}
 
 	// Connection Management Handlers
@@ -124,8 +115,6 @@ export class CommandHandlers {
 		}
 	}
 
-	// Explorer and Schema Handlers
-
 	/**
 	 * Handles refreshing the database explorer.
 	 */
@@ -173,8 +162,6 @@ export class CommandHandlers {
 			vscode.window.showErrorMessage(`Failed to browse schema: ${(error as Error).message}`);
 		}
 	}
-
-	// Schema Comparison Handlers
 
 	/**
 	 * Handles comparing database schemas.
@@ -378,8 +365,6 @@ export class CommandHandlers {
 		}
 	}
 
-	// Migration Handlers
-
 	/**
 	 * Handles generating a migration script from schema comparison.
 	 * @param comparison The schema comparison result.
@@ -439,13 +424,6 @@ export class CommandHandlers {
 			vscode.window.showErrorMessage(`Failed to preview migration: ${(error as Error).message}`);
 		}
 	}
-
-	// Object Details Handler
-
-	/**
-	 * Handles viewing details of a database object.
-	 * @param databaseObject The database object to view details for.
-	 */
 	async handleViewObjectDetails(databaseObject?: any): Promise<void> {
 		try {
 			if (!databaseObject) {
@@ -471,21 +449,5 @@ export class CommandHandlers {
 			Logger.error("Failed to view object details", error as Error, "CommandHandlers");
 			vscode.window.showErrorMessage(`Failed to view object details: ${(error as Error).message}`);
 		}
-	}
-
-	// Statistics Handler
-
-	/**
-	 * Shows command execution statistics.
-	 */
-	handleShowCommandStats(): void {
-		this.errorHandler.showCommandStats();
-	}
-
-	/**
-	 * Clears command error history.
-	 */
-	handleClearCommandErrors(): void {
-		this.errorHandler.clearCommandErrors();
 	}
 }

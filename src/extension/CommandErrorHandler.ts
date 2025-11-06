@@ -16,43 +16,6 @@ export class CommandErrorHandler {
 	private commandErrors: CommandError[] = [];
 	private totalExecutions: number = 0;
 	private monitoringInterval?: NodeJS.Timeout;
-
-	/**
-	 * Handles a command execution error.
-	 * @param command The command that failed.
-	 * @param error The error that occurred.
-	 * @param context Additional context for the error.
-	 */
-	handleCommandError(command: string, error: Error, context?: any[]): void {
-		const commandError: CommandError = {
-			command,
-			error: error.message,
-			timestamp: new Date(),
-			context,
-		};
-
-		// Limit error history to prevent memory bloat (keep last 100 errors)
-		if (this.commandErrors.length >= 100) {
-			this.commandErrors.shift(); // Remove oldest error
-		}
-		this.commandErrors.push(commandError);
-
-		Logger.error("Command execution failed", error, "CommandErrorHandler", {
-			command,
-			context,
-		});
-
-		// Show user-friendly error message
-		vscode.window.showErrorMessage(`Command "${command}" failed: ${error.message}`);
-	}
-
-	/**
-	 * Increments the total execution count.
-	 */
-	incrementExecutionCount(): void {
-		this.totalExecutions++;
-	}
-
 	/**
 	 * Gets command execution statistics.
 	 * @returns Statistics about command execution.

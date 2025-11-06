@@ -223,15 +223,6 @@ export class ConnectionService {
 			connectionTime: Date.now() - startTime,
 		};
 	}
-	getServiceStats(): {
-		options: Required<ConnectionServiceOptions>;
-		health: "healthy" | "degraded" | "unhealthy";
-	} {
-		return {
-			options: this.options,
-			health: "healthy", // Would be determined by connection success rates
-		};
-	}
 	private async performConnectionValidationFramework(connectionId: string) {
 		Logger.info("Performing ValidationFramework connection validation", "performConnectionValidationFramework", {
 			connectionId,
@@ -315,8 +306,5 @@ export class ConnectionService {
 	}
 	private delay(milliseconds: number): Promise<void> {
 		return new Promise((resolve) => setTimeout(resolve, milliseconds));
-	}
-	dispose(): void {
-		Logger.info("ConnectionService disposed", "ConnectionService.dispose");
 	}
 }

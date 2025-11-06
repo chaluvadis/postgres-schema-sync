@@ -10,6 +10,10 @@ export class PostgreSqlExtension {
 	private connectionManager: ConnectionManager;
 	private connectionView: ConnectionManagementView;
 	private treeProvider: PostgreSqlTreeProvider;
+	// Store managers for disposal in new modular architecture
+	public commandManager?: any;
+	public eventHandlerManager?: any;
+	public realtimeMonitoringManager?: any;
 
 	constructor(
 		context: vscode.ExtensionContext,
@@ -210,28 +214,57 @@ export class PostgreSqlExtension {
 					progress.report({ increment: 0, message: "Starting migration..." });
 
 					try {
-						// TODO: Implement actual migration execution using ModularSchemaManager
-						// For now, show that migration functionality needs to be implemented
-						progress.report({
-							increment: 50,
-							message: "Migration execution not yet implemented",
-						});
+						// Get the schema manager from the tree provider if available
+						const schemaManager = (this.treeProvider as any)?.schemaManager;
 
-						// Simulate some processing time
-						await new Promise((resolve) => setTimeout(resolve, 1000));
-
-						progress.report({
-							increment: 100,
-							message: "Migration completed (placeholder)",
-						});
-
-						vscode.window
-							.showInformationMessage(`Migration "${migration.name}" execution placeholder completed`, "View Logs")
-							.then((selection) => {
-								if (selection === "View Logs") {
-									Logger.showOutputChannel();
-								}
+						if (schemaManager) {
+							progress.report({
+								increment: 50,
+								message: "Executing migration...",
 							});
+
+							// Execute the migration using the schema manager
+							await schemaManager.executeMigration(migration);
+
+							progress.report({
+								increment: 100,
+								message: "Migration executed successfully",
+							});
+
+							vscode.window
+								.showInformationMessage(`Migration "${migration.name}" executed successfully`, "View Logs")
+								.then((selection) => {
+									if (selection === "View Logs") {
+										Logger.showOutputChannel();
+									}
+								});
+						} else {
+							// Fallback if schema manager is not available
+							Logger.warn(
+								"Schema manager not available for migration execution, using placeholder",
+								"executeMigration",
+							);
+							progress.report({
+								increment: 50,
+								message: "Schema manager not available, using placeholder",
+							});
+
+							// Simulate some processing time
+							await new Promise((resolve) => setTimeout(resolve, 1000));
+
+							progress.report({
+								increment: 100,
+								message: "Migration completed (placeholder)",
+							});
+
+							vscode.window
+								.showInformationMessage(`Migration "${migration.name}" execution placeholder completed`, "View Logs")
+								.then((selection) => {
+									if (selection === "View Logs") {
+										Logger.showOutputChannel();
+									}
+								});
+						}
 
 						// Clear migration state
 						this.context.globalState.update("postgresql.currentMigration", undefined);
@@ -261,12 +294,43 @@ export class PostgreSqlExtension {
 		try {
 			Logger.info("Disposing PostgreSQL extension");
 
+			// Dispose managers in reverse order of initialization
+			const disposals: Promise<void>[] = [];
+
+			// Dispose managers (lightweight)
+			if (this.commandManager) {
+				try {
+					this.commandManager.dispose();
+					Logger.debug("CommandManager disposed");
+				} catch (error) {
+					Logger.warn("Error disposing CommandManager, continuing", (error as Error).message);
+				}
+			}
+
+			if (this.eventHandlerManager) {
+				try {
+					// EventHandlerManager doesn't have a dispose method, cleanup is handled by VS Code
+					Logger.debug("EventHandlerManager cleanup handled by VS Code");
+				} catch (error) {
+					Logger.warn("Error with EventHandlerManager, continuing", (error as Error).message);
+				}
+			}
+
+			if (this.realtimeMonitoringManager) {
+				try {
+					// RealtimeMonitoringManager cleanup handled by VS Code subscriptions
+					Logger.debug("RealtimeMonitoringManager cleanup handled by VS Code");
+				} catch (error) {
+					Logger.warn("Error with RealtimeMonitoringManager, continuing", (error as Error).message);
+				}
+			}
+
+			// Dispose connection manager (main resource)
 			try {
 				await this.connectionManager.dispose();
+				Logger.debug("ConnectionManager disposed");
 			} catch (error) {
-				Logger.error("Error disposing connection manager, continuing with other disposals", error as Error);
-				ErrorHandler.handleError(error, ErrorHandler.createContext("ConnectionManagerDisposal"));
-				// Don't fail disposal for connection manager errors
+				Logger.warn("Error disposing ConnectionManager, continuing", (error as Error).message);
 			}
 
 			Logger.info("PostgreSQL extension disposed successfully");

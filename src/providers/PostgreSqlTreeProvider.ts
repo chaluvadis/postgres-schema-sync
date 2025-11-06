@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { ConnectionManager, DatabaseConnection } from "@/managers/ConnectionManager";
 import { ModularSchemaManager } from "@/managers/schema";
-// DatabaseObject and ObjectType are now defined in SchemaOperations
 import { DatabaseObject, ObjectType } from "@/managers/schema/SchemaOperations";
 import { ExtensionInitializer } from "@/utils/ExtensionInitializer";
 import { Logger } from "@/utils/Logger";

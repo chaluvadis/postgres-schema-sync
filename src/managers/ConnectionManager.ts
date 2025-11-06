@@ -71,17 +71,66 @@ export class ConnectionManager {
 	private connectionServiceOptions: Required<ConnectionServiceOptions>;
 
 	constructor(context: vscode.ExtensionContext) {
+		const constructorStart = Date.now();
+		console.log("[Connection Manager] Constructor starting...");
+
 		this.context = context;
+		console.log("[Connection Manager] Getting PostgreSqlConnectionManager instance...");
 		this.dotNetService = PostgreSqlConnectionManager.getInstance();
+		console.log(
+			`[Connection Manager] PostgreSqlConnectionManager instance obtained in ${Date.now() - constructorStart}ms`,
+		);
+
+		const validationStart = Date.now();
+		console.log("[Connection Manager] Creating ValidationFramework instance...");
 		this.validationFramework = new ValidationFramework();
+		console.log(`[Connection Manager] ValidationFramework created in ${Date.now() - validationStart}ms`);
+
 		this.connectionServiceOptions = {
 			retryAttempts: 3,
 			connectionTimeout: 30000,
 			validateOnGet: true,
 		};
-		this.loadConnections();
+
+		const loadConnectionsStart = Date.now();
+		console.log("[Connection Manager] Loading connections...");
+
+		// Load connections asynchronously without blocking constructor
+		setTimeout(() => {
+			this.loadConnections().catch((error) => {
+				console.error("[Connection Manager] ❌ Async connection loading failed:", error);
+				// Ensure connections are cleared on failure
+				this.connections.clear();
+			});
+		}, 0);
+
+		const loadConnectionsDuration = Date.now() - loadConnectionsStart;
+		console.log(`[Connection Manager] Connections loading initiated in ${loadConnectionsDuration}ms`);
+		console.log(`[Connection Manager] Connections loaded in ${loadConnectionsDuration}ms`);
+
 		this.secrets = context.secrets;
-		this.startHealthMonitoring();
+
+		const healthMonitorStart = Date.now();
+		console.log("[Connection Manager] Starting health monitoring...");
+
+		// Start health monitoring asynchronously to avoid blocking constructor
+		setTimeout(() => {
+			try {
+				this.startHealthMonitoring();
+			} catch (error: any) {
+				console.error("[Connection Manager] ❌ Health monitoring failed:", error);
+			}
+		}, 10); // Small delay to let other initialization complete
+
+		const healthMonitorDuration = Date.now() - healthMonitorStart;
+		console.log(`[Connection Manager] Health monitoring initiated in ${healthMonitorDuration}ms`);
+
+		const totalDuration = Date.now() - constructorStart;
+		console.log(`[Connection Manager] Constructor completed in ${totalDuration}ms`);
+
+		if (totalDuration > 3000) {
+			console.warn(`[Connection Manager] WARNING: Constructor took ${totalDuration}ms - this might be slow!`);
+		}
 	}
 
 	async addConnection(connectionInfo: Omit<DatabaseConnection, "id">): Promise<void> {
@@ -624,20 +673,48 @@ export class ConnectionManager {
 		return crypto.randomUUID();
 	}
 	private async loadConnections(): Promise<void> {
+		const loadStart = Date.now();
+		console.log("[Connection Manager] Starting to load connections from VSCode global state...");
+
 		try {
+			console.log("[Connection Manager] Reading connections data from VSCode global state...");
 			const connectionsData = this.context.globalState.get<string>("postgresql.connections", "[]");
+			console.log(
+				`[Connection Manager] Retrieved connections data (length: ${connectionsData.length}) in ${Date.now() - loadStart}ms`,
+			);
+
+			const parseStart = Date.now();
 			const connections = JSON.parse(connectionsData) as DatabaseConnection[];
+			console.log(`[Connection Manager] Parsed ${connections.length} connections in ${Date.now() - parseStart}ms`);
 
 			this.connections.clear();
+
+			const setConnectionsStart = Date.now();
 			for (const connection of connections) {
 				this.connections.set(connection.id, {
 					...connection,
 					password: "",
 				});
 			}
+			console.log(
+				`[Connection Manager] Set ${connections.length} connections in ${Date.now() - setConnectionsStart}ms`,
+			);
 
+			const totalDuration = Date.now() - loadStart;
+			console.log(
+				`[Connection Manager] ✅ Successfully loaded ${this.connections.size} connections in ${totalDuration}ms`,
+			);
 			Logger.info(`Loaded ${this.connections.size} connections`);
+
+			if (totalDuration > 2000) {
+				console.warn(`[Connection Manager] WARNING: Loading connections took ${totalDuration}ms - this might be slow!`);
+			}
 		} catch (error) {
+			const errorDuration = Date.now() - loadStart;
+			console.error(
+				`[Connection Manager] ❌ Failed to load connections in ${errorDuration}ms:`,
+				(error as Error).message,
+			);
 			Logger.error(`Failed to load connections: ${(error as Error).message}`);
 			this.connections.clear();
 		}

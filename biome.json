@@ -7,9 +7,14 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": [
-			"src/**/*"
-		]
+		"includes": ["src/**/*"]
+	},
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "off"
+			}
+		}
 	},
 	"formatter": {
 		"enabled": true,
@@ -17,9 +22,7 @@
 	},
 	"overrides": [
 		{
-			"includes": [
-				"src/views/templates/base.html"
-			],
+			"includes": ["src/views/templates/base.html"],
 			"linter": {
 				"enabled": false
 			},
@@ -28,9 +31,7 @@
 			}
 		},
 		{
-			"includes": [
-				"**/*.html"
-			],
+			"includes": ["**/*.html"],
 			"linter": {
 				"enabled": false
 			},
@@ -39,9 +40,7 @@
 			}
 		},
 		{
-			"includes": [
-				"**/*.ts"
-			]
+			"includes": ["**/*.ts"]
 		}
 	],
 	"linter": {

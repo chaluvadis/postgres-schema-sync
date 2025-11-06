@@ -59,7 +59,18 @@ export class ValidationFramework {
 	private validationRules: Map<string, ValidationRule> = new Map();
 	private activeValidations: Map<string, ValidationReport> = new Map();
 	constructor() {
+		const constructorStart = Date.now();
+		console.log("[ValidationFramework] Constructor starting...");
+
+		console.log("[ValidationFramework] Initializing default rules...");
 		this.initializeDefaultRules();
+		const constructorDuration = Date.now() - constructorStart;
+
+		console.log(`[ValidationFramework] Constructor completed in ${constructorDuration}ms`);
+
+		if (constructorDuration > 1000) {
+			console.warn(`[ValidationFramework] WARNING: Constructor took ${constructorDuration}ms - this might be slow!`);
+		}
 	}
 	registerRule(rule: ValidationRule): void {
 		this.validationRules.set(rule.id, rule);

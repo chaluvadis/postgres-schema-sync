@@ -52,27 +52,6 @@ export interface ExtensionComponents {
 }
 
 export class ExtensionInitializer {
-	private static dotNetService: PostgreSqlConnectionManager;
-	static async initializeDotNetService(): Promise<boolean> {
-		try {
-			Logger.info("Initializing .NET integration service");
-
-			this.dotNetService = PostgreSqlConnectionManager.getInstance();
-			// Native service doesn't need initialization
-			const initialized = true;
-
-			if (initialized) {
-				Logger.info(".NET integration service initialized successfully");
-				return true;
-			} else {
-				Logger.warn(".NET integration service initialization failed");
-				return false;
-			}
-		} catch (error) {
-			Logger.error("Failed to initialize .NET integration service", error as Error);
-			return false;
-		}
-	}
 	static initializeCoreComponents(context: vscode.ExtensionContext): ExtensionComponents {
 		try {
 			Logger.info("Initializing core extension components", "initializeCoreComponents");
@@ -113,79 +92,166 @@ export class ExtensionInitializer {
 			throw error;
 		}
 	}
-	static initializeOptionalComponents(
+	static async initializeOptionalComponents(
 		coreComponents: ExtensionComponents,
 		context: vscode.ExtensionContext,
-	): ExtensionComponents {
+	): Promise<ExtensionComponents> {
+		const startTime = Date.now();
+		const componentTimings: Record<string, number> = {};
+
 		try {
-			Logger.info("Initializing optional UI components", "initializeOptionalComponents");
+			Logger.info("Initializing optional UI components in parallel", "initializeOptionalComponents");
 
-			// Initialize optional components
-			Logger.debug("Creating NotificationManager instance", "initializeOptionalComponents");
-			const notificationManager = NotificationManager.getInstance();
-
-			Logger.debug("Creating EnhancedStatusBarProvider instance", "initializeOptionalComponents");
-			const enhancedStatusBarProvider = EnhancedStatusBarProvider.getInstance(
-				coreComponents.connectionManager,
+			// PHASE 1: Independent components that don't depend on other optional components
+			const phase1Start = Date.now();
+			const [
 				notificationManager,
-			);
+				performanceMonitorService,
+				reportingService,
+				migrationPreviewView,
+				settingsView,
+				errorDisplayView,
+			] = await Promise.all([
+				(async () => {
+					const t0 = Date.now();
+					const comp = NotificationManager.getInstance();
+					componentTimings.NotificationManager = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = PerformanceMonitorService.getInstance();
+					componentTimings.PerformanceMonitorService = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new ReportingService(context);
+					componentTimings.ReportingService = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new MigrationPreviewView();
+					componentTimings.MigrationPreviewView = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new SettingsView();
+					componentTimings.SettingsView = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new ErrorDisplayView();
+					componentTimings.ErrorDisplayView = Date.now() - t0;
+					return comp;
+				})(),
+			]);
+			componentTimings.Phase1 = Date.now() - phase1Start;
 
-			Logger.debug("Creating DashboardView instance", "initializeOptionalComponents");
-			const dashboardView = new DashboardView(coreComponents.connectionManager, coreComponents.schemaManager);
+			// PHASE 2: Components that depend on Phase 1 components
+			const phase2Start = Date.now();
+			const [
+				enhancedStatusBarProvider,
+				connectionView,
+				schemaComparisonView,
+				queryExecutionService,
+				dataImportService,
+				driftReportView,
+			] = await Promise.all([
+				(async () => {
+					const t0 = Date.now();
+					const comp = EnhancedStatusBarProvider.getInstance(coreComponents.connectionManager, notificationManager);
+					componentTimings.EnhancedStatusBarProvider = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new ConnectionManagementView(coreComponents.connectionManager);
+					componentTimings.ConnectionManagementView = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new SchemaComparisonView(coreComponents.connectionManager);
+					componentTimings.SchemaComparisonView = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new QueryExecutionService(coreComponents.connectionManager);
+					componentTimings.QueryExecutionService = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new DataImportService(context, coreComponents.connectionManager);
+					componentTimings.DataImportService = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new DriftReportView(context, reportingService);
+					componentTimings.DriftReportView = Date.now() - t0;
+					return comp;
+				})(),
+			]);
+			componentTimings.Phase2 = Date.now() - phase2Start;
 
-			Logger.debug("Creating ConnectionManagementView instance", "initializeOptionalComponents");
-			const connectionView = new ConnectionManagementView(coreComponents.connectionManager);
+			// PHASE 3: Components that depend on QueryExecutionService (lazy-loaded)
+			const phase3Start = Date.now();
+			const [queryEditorView, performanceAlertSystem, queryAnalyticsView] = await Promise.all([
+				(async () => {
+					const t0 = Date.now();
+					const comp = new QueryEditorView(coreComponents.connectionManager, queryExecutionService);
+					componentTimings.QueryEditorView = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = PerformanceAlertSystem.getInstance(context, performanceMonitorService);
+					componentTimings.PerformanceAlertSystem = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new QueryAnalyticsView(context, performanceMonitorService);
+					componentTimings.QueryAnalyticsView = Date.now() - t0;
+					return comp;
+				})(),
+			]);
+			componentTimings.Phase3 = Date.now() - phase3Start;
 
-			Logger.debug("Creating SchemaBrowserView instance", "initializeOptionalComponents");
-			const schemaBrowserView = new SchemaBrowserView(coreComponents.schemaManager, coreComponents.connectionManager);
+			// PHASE 4: Components that depend on other Phase 2/3 components (lazy-loaded)
+			const phase4Start = Date.now();
+			const [dashboardView, schemaBrowserView, importWizardViewInstance] = await Promise.all([
+				(async () => {
+					const t0 = Date.now();
+					const comp = new DashboardView(coreComponents.connectionManager, coreComponents.schemaManager);
+					componentTimings.DashboardView = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = new SchemaBrowserView(coreComponents.schemaManager, coreComponents.connectionManager);
+					componentTimings.SchemaBrowserView = Date.now() - t0;
+					return comp;
+				})(),
+				(async () => {
+					const t0 = Date.now();
+					const comp = dataImportService
+						? new ImportWizardView(dataImportService, coreComponents.connectionManager)
+						: undefined;
+					componentTimings.ImportWizardView = Date.now() - t0;
+					return comp;
+				})(),
+			]);
+			componentTimings.Phase4 = Date.now() - phase4Start;
 
-			Logger.debug("Creating SchemaComparisonView instance", "initializeOptionalComponents");
-			const schemaComparisonView = new SchemaComparisonView(coreComponents.connectionManager);
-
-			Logger.debug("Creating MigrationPreviewView instance", "initializeOptionalComponents");
-			const migrationPreviewView = new MigrationPreviewView();
-
-			Logger.debug("Creating SettingsView instance", "initializeOptionalComponents");
-			const settingsView = new SettingsView();
-
-			Logger.debug("Creating ErrorDisplayView instance", "initializeOptionalComponents");
-			const errorDisplayView = new ErrorDisplayView();
-
-			Logger.debug("Creating QueryExecutionService instance", "initializeOptionalComponents");
-			const queryExecutionService = new QueryExecutionService(coreComponents.connectionManager);
-
-			Logger.debug("Creating QueryEditorView instance", "initializeOptionalComponents");
-			const queryEditorView = new QueryEditorView(coreComponents.connectionManager, queryExecutionService);
-
-			Logger.debug("Creating PerformanceMonitorService instance", "initializeOptionalComponents");
-			const performanceMonitorService = PerformanceMonitorService.getInstance();
-
-			Logger.debug("Creating PerformanceAlertSystem instance", "initializeOptionalComponents");
-			const performanceAlertSystem = PerformanceAlertSystem.getInstance(context, performanceMonitorService);
-
-			Logger.debug("Creating DataImportService instance", "initializeOptionalComponents");
-			const dataImportService = new DataImportService(context, coreComponents.connectionManager);
-
-			Logger.debug("Creating QueryAnalyticsView instance", "initializeOptionalComponents");
-			const queryAnalyticsView = new QueryAnalyticsView(context, performanceMonitorService);
-
-			Logger.debug("Creating ReportingService instance", "initializeOptionalComponents");
-			const reportingService = new ReportingService(context);
-
-			Logger.debug("Creating DriftReportView instance", "initializeOptionalComponents");
-			const driftReportView = new DriftReportView(context, reportingService);
-
-			// Create import wizard view conditionally
-			let importWizardView: ImportWizardView | undefined;
-			if (coreComponents.dataImportService) {
-				Logger.debug("Creating ImportWizardView instance", "initializeOptionalComponents");
-				importWizardView = new ImportWizardView(coreComponents.dataImportService, coreComponents.connectionManager);
-			} else {
-				Logger.debug(
-					"Skipping ImportWizardView creation - no dataImportService available",
-					"initializeOptionalComponents",
-				);
-			}
+			// Use the lazy-loaded import wizard view
+			let importWizardView: ImportWizardView | undefined = importWizardViewInstance;
 
 			// Add optional components to the core components
 			const components: ExtensionComponents = {
@@ -210,13 +276,40 @@ export class ExtensionInitializer {
 				driftReportView,
 			};
 
+			const totalDuration = Date.now() - startTime;
+
+			// Log timing summary for performance analysis
+			const slowComponents = Object.entries(componentTimings)
+				.filter(([, duration]) => duration > 1000)
+				.sort(([, a], [, b]) => b - a);
+
+			Logger.info("Optional UI components initialization performance summary", "initializeOptionalComponents", {
+				totalDuration: `${totalDuration}ms`,
+				componentCount: Object.keys(componentTimings).length,
+				slowComponents: slowComponents.map(([name, duration]) => `${name}: ${duration}ms`),
+				averageComponentTime: `${Math.round(Object.values(componentTimings).reduce((a, b) => a + b, 0) / Object.keys(componentTimings).length)}ms`,
+			});
+
+			// Warn about slow components
+			if (slowComponents.length > 0) {
+				Logger.warn("Slow component initialization detected", "initializeOptionalComponents", {
+					slowComponents: slowComponents.map(([name, duration]) => `${name} took ${duration}ms`),
+					totalSlowTime: slowComponents.reduce((sum, [, duration]) => sum + duration, 0),
+				});
+			}
+
 			Logger.info("Optional UI components initialized successfully", "initializeOptionalComponents", {
+				totalDuration: `${totalDuration}ms`,
 				totalComponents: Object.keys(components).length,
 				optionalComponentsCount: Object.keys(components).length - Object.keys(coreComponents).length,
 			});
 			return components;
 		} catch (error) {
-			Logger.error("Failed to initialize optional UI components", error as Error, "initializeOptionalComponents");
+			const totalDuration = Date.now() - startTime;
+			Logger.error("Failed to initialize optional UI components", error as Error, "initializeOptionalComponents", {
+				failedAfterDuration: `${totalDuration}ms`,
+				partialComponentTimings: componentTimings,
+			});
 			// Return core components even if optional components fail
 			return coreComponents;
 		}
@@ -259,12 +352,6 @@ export class ExtensionInitializer {
 				return undefined;
 			}
 		}
-	}
-	static getDotNetService(): PostgreSqlConnectionManager {
-		if (!this.dotNetService) {
-			throw new Error(".NET integration service not initialized");
-		}
-		return this.dotNetService;
 	}
 	static getStatusBarProvider(): EnhancedStatusBarProvider {
 		return EnhancedStatusBarProvider.getCurrentInstance();

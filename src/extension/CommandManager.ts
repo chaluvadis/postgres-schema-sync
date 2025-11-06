@@ -5,6 +5,7 @@ import { MigrationManagement } from "@/managers/schema/MigrationManagement";
 import { SchemaOperations } from "@/managers/schema/SchemaOperations";
 import { ExtensionComponents } from "@/utils/ExtensionInitializer";
 import { Logger } from "@/utils/Logger";
+import { DiagnosticLogger } from "@/utils/DiagnosticLogger";
 import { PostgreSqlExtension } from "../PostgreSqlExtension";
 import { AdditionalCommandHandlers } from "./AdditionalCommandHandlers";
 import { CommandErrorHandler } from "./CommandErrorHandler";
@@ -13,6 +14,7 @@ import { CommandRegistry } from "./CommandRegistry";
 import { QueryCommandHandlers } from "./QueryCommandHandlers";
 import { SQLFileHandlers } from "./SQLFileHandlers";
 import { UICommandHandlers } from "./UICommandHandlers";
+
 /**
  * Manages VS Code commands for the PostgreSQL extension.
  * Orchestrates command registration, error handling, and delegates to specialized handlers.
@@ -41,14 +43,8 @@ export class CommandManager {
 		// Initialize specialized handlers
 		this.commandRegistry = new CommandRegistry();
 		this.errorHandler = new CommandErrorHandler();
-		this.commandHandlers = new CommandHandlers(
-			extension,
-			components,
-			migrationManager,
-			schemaOperations,
-			this.errorHandler,
-		);
-		this.sqlFileHandlers = new SQLFileHandlers(components, this.errorHandler);
+		this.commandHandlers = new CommandHandlers(extension, components, migrationManager, schemaOperations);
+		this.sqlFileHandlers = new SQLFileHandlers(components);
 		this.uiCommandHandlers = new UICommandHandlers(components);
 		this.queryCommandHandlers = new QueryCommandHandlers(components);
 		this.additionalCommandHandlers = new AdditionalCommandHandlers(components);
@@ -58,40 +54,101 @@ export class CommandManager {
 	 * @returns Array of disposables for cleanup.
 	 */
 	registerCommands(): vscode.Disposable[] {
+		const startTime = Date.now();
+		const commandRegistrationTimes: Record<string, number> = {};
+		const diagnosticLogger = DiagnosticLogger.getInstance();
+
+		// Start command registration monitoring
+		const commandRegistrationOperationId = diagnosticLogger.startOperation("CommandRegistration", {
+			architecture: "modular",
+		});
+
 		try {
 			Logger.info("Registering PostgreSQL extension commands", "CommandManager");
 
 			const disposables: vscode.Disposable[] = [];
 
+			const coreStart = Date.now();
 			this.registerCoreCommands(disposables);
+			commandRegistrationTimes.registerCoreCommands = Date.now() - coreStart;
+
+			const queryStart = Date.now();
 			this.registerQueryCommands(disposables);
+			commandRegistrationTimes.registerQueryCommands = Date.now() - queryStart;
+
+			const sqlStart = Date.now();
 			this.registerSQLFileCommands(disposables);
+			commandRegistrationTimes.registerSQLFileCommands = Date.now() - sqlStart;
 
 			// Start command health monitoring
+			const monitoringStart = Date.now();
 			this.errorHandler.startCommandMonitoring();
+			commandRegistrationTimes.startCommandMonitoring = Date.now() - monitoringStart;
+
+			const totalDuration = Date.now() - startTime;
+
+			// Complete command registration monitoring
+			diagnosticLogger.endOperation(commandRegistrationOperationId, {
+				totalDuration,
+				registeredCommands: this.commandRegistry.getRegisteredCommandCount(),
+				commandRegistrationTimes,
+				disposablesCount: disposables.length,
+			});
 
 			Logger.info("All PostgreSQL extension commands registered successfully", "CommandManager", {
+				totalDuration: `${totalDuration}ms`,
 				registeredCommands: this.commandRegistry.getRegisteredCommandCount(),
+				commandRegistrationTimes,
 			});
+
+			// Warn about slow command registration
+			const slowRegistrations = Object.entries(commandRegistrationTimes)
+				.filter(([, duration]) => duration > 1000)
+				.map(([name, duration]) => `${name}: ${duration}ms`);
+
+			if (slowRegistrations.length > 0) {
+				Logger.warn("Slow command registration detected", "CommandManager", {
+					slowRegistrations,
+					totalDuration,
+				});
+			}
 
 			return disposables;
 		} catch (error) {
-			Logger.error("Failed to register commands", error as Error, "CommandManager");
+			const totalDuration = Date.now() - startTime;
+			diagnosticLogger.failOperation(commandRegistrationOperationId, error as Error, {
+				totalDuration,
+				partialRegistrationTimes: commandRegistrationTimes,
+			});
+
+			Logger.error("Failed to register commands", error as Error, "CommandManager", {
+				failedAfterDuration: `${totalDuration}ms`,
+				partialRegistrationTimes: commandRegistrationTimes,
+			});
 			throw error;
 		}
 	}
-	/**
-	 * Stops command health monitoring.
-	 */
-	stopCommandMonitoring(): void {
-		this.errorHandler.stopCommandMonitoring();
-	}
+
 	/**
 	 * Registers core commands for database operations.
 	 * @param disposables Array to collect disposables for cleanup.
 	 */
 	private registerCoreCommands(disposables: vscode.Disposable[]): void {
 		const coreCommands = [
+			{
+				command: "postgresql.addConnection",
+				handler: async () => {
+					if (this.components.connectionManager) {
+						// Use connection management view for adding connections
+						const { ConnectionManagementView } = await import("@/views/legacy/ConnectionManagementView");
+						const connectionView = new ConnectionManagementView(this.components.connectionManager);
+						await connectionView.showConnectionDialog();
+					} else {
+						vscode.window.showErrorMessage("Connection manager not available");
+					}
+				},
+				description: "Add a new database connection",
+			},
 			{
 				command: "postgresql.editConnection",
 				handler: (connection?: DatabaseConnection) => this.commandHandlers.handleEditConnection(connection),
@@ -157,11 +214,6 @@ export class CommandManager {
 		];
 
 		coreCommands.forEach(({ command, handler, description }) => {
-			// Skip postgresql.addConnection as it's registered separately in extension.ts
-			if (command === "postgresql.addConnection") {
-				return;
-			}
-
 			this.commandRegistry.registerCommand(command, handler, description);
 		});
 
@@ -240,9 +292,6 @@ export class CommandManager {
 			this.sqlFileHandlers.formatCurrentSQLFile(),
 		);
 	}
-
-	// All handler methods have been moved to specialized handler classes
-
 	/**
 	 * Disposes of the CommandManager and cleans up resources.
 	 */

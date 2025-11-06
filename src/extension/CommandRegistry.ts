@@ -1,13 +1,6 @@
 import * as vscode from "vscode";
 import { Logger } from "@/utils/Logger";
 
-interface CommandDefinition {
-	command: string;
-	handler: (...args: any[]) => any;
-	description?: string;
-	category?: string;
-}
-
 /**
  * Manages the registration of VS Code commands.
  * Handles command registration, disposal, and provides a clean interface for command management.
@@ -54,40 +47,12 @@ export class CommandRegistry {
 	}
 
 	/**
-	 * Registers multiple commands from an array of command definitions.
-	 * @param commands Array of command definitions to register.
-	 */
-	registerCommands(commands: CommandDefinition[]): void {
-		commands.forEach(({ command, handler, description }) => {
-			this.registerCommand(command, handler, description);
-		});
-	}
-
-	/**
 	 * Gets the number of registered commands.
 	 * @returns The count of registered commands.
 	 */
 	getRegisteredCommandCount(): number {
 		return this.registeredCommands.size;
 	}
-
-	/**
-	 * Checks if a command is registered.
-	 * @param command The command to check.
-	 * @returns True if the command is registered.
-	 */
-	isCommandRegistered(command: string): boolean {
-		return this.registeredCommands.has(command);
-	}
-
-	/**
-	 * Gets all registered command names.
-	 * @returns Array of registered command names.
-	 */
-	getRegisteredCommands(): string[] {
-		return Array.from(this.registeredCommands);
-	}
-
 	/**
 	 * Disposes all registered commands and clears the registry.
 	 */

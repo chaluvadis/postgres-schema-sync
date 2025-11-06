@@ -116,8 +116,29 @@ export class PostgreSqlConnectionManager {
 	private healthCheckInterval: NodeJS.Timeout | null = null;
 
 	private constructor() {
+		const constructorStart = Date.now();
+		console.log("[PostgreSQL Connection Manager] Constructor starting...");
 		Logger.debug("PostgreSqlConnectionManager constructor called", "PostgreSqlConnectionManager.constructor");
-		this.startHealthMonitoring();
+
+		console.log("[PostgreSQL Connection Manager] Scheduling health monitoring...");
+
+		// CRITICAL: Start health monitoring asynchronously to prevent blocking
+		setTimeout(() => {
+			try {
+				this.startHealthMonitoring();
+			} catch (error: any) {
+				console.error("[PostgreSQL Connection Manager] ❌ Health monitoring failed:", error);
+			}
+		}, 50); // Small delay to allow constructor to complete
+
+		const constructorDuration = Date.now() - constructorStart;
+		console.log(`[PostgreSQL Connection Manager] Constructor completed in ${constructorDuration}ms`);
+
+		if (constructorDuration > 1000) {
+			console.warn(
+				`[PostgreSQL Connection Manager] WARNING: Constructor took ${constructorDuration}ms - this might be slow!`,
+			);
+		}
 	}
 
 	static getInstance(): PostgreSqlConnectionManager {
@@ -364,25 +385,6 @@ export class PostgreSqlConnectionManager {
 			return false;
 		}
 	}
-
-	getConnectionHealth(connectionId: string): ConnectionHealthStatus | undefined {
-		return this.healthStatus.get(connectionId);
-	}
-
-	getAllConnectionHealth(): ConnectionHealthStatus[] {
-		return Array.from(this.healthStatus.values());
-	}
-
-	registerConnectionForHealthMonitoring(connectionInfo: ConnectionInfo): void {
-		this.healthStatus.set(connectionInfo.id, {
-			connectionId: connectionInfo.id,
-			isHealthy: false,
-			lastChecked: new Date(),
-			responseTime: 0,
-			poolStats: this.getPoolStats()[`${connectionInfo.host}:${connectionInfo.port}:${connectionInfo.database}`],
-		});
-	}
-
 	getPoolStats(): {
 		[key: string]: {
 			totalCount: number;

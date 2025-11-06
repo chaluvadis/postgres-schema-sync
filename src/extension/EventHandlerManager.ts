@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ExtensionComponents } from "@/utils/ExtensionInitializer";
 import { Logger } from "@/utils/Logger";
+import { DiagnosticLogger } from "@/utils/DiagnosticLogger";
 
 interface RealtimeState {
 	fileWatchers: Map<string, vscode.FileSystemWatcher>;
@@ -65,15 +66,101 @@ export class EventHandlerManager {
 	 * Register all event handlers
 	 */
 	registerEventHandlers(): void {
-		this.registerTextEditorEvents();
-		this.registerConfigurationEvents();
-		this.registerWorkspaceEvents();
-		this.registerTreeViewEvents();
-		this.registerGlobalMonitoringEvents();
-		this.registerCleanupHandlers();
+		const startTime = Date.now();
+		const handlerTimings: Record<string, number> = {};
+		const diagnosticLogger = DiagnosticLogger.getInstance();
 
+		// Start overall event handler registration monitoring
+		const eventHandlerRegistrationOperationId = diagnosticLogger.startOperation("EventHandlerRegistration", {
+			eventTypes: [
+				"textEditor",
+				"configuration",
+				"workspace",
+				"treeView",
+				"globalMonitoring",
+				"cleanup",
+				"cacheManagement",
+			],
+		});
+
+		const textEditorStart = Date.now();
+		this.registerTextEditorEvents();
+		handlerTimings.registerTextEditorEvents = Date.now() - textEditorStart;
+
+		const configStart = Date.now();
+		this.registerConfigurationEvents();
+		handlerTimings.registerConfigurationEvents = Date.now() - configStart;
+
+		const workspaceStart = Date.now();
+		this.registerWorkspaceEvents();
+		handlerTimings.registerWorkspaceEvents = Date.now() - workspaceStart;
+
+		const treeViewStart = Date.now();
+		this.registerTreeViewEvents();
+		handlerTimings.registerTreeViewEvents = Date.now() - treeViewStart;
+
+		const monitoringStart = Date.now();
+		this.registerGlobalMonitoringEvents();
+		handlerTimings.registerGlobalMonitoringEvents = Date.now() - monitoringStart;
+
+		const cleanupStart = Date.now();
+		this.registerCleanupHandlers();
+		handlerTimings.registerCleanupHandlers = Date.now() - cleanupStart;
+
+		const cacheStart = Date.now();
 		// Register cache management commands
 		this.registerCacheManagementCommands();
+		handlerTimings.registerCacheManagementCommands = Date.now() - cacheStart;
+
+		const totalDuration = Date.now() - startTime;
+
+		console.log(`[EventHandlerManager] All event handlers registered in ${totalDuration}ms`);
+
+		// Log memory usage for diagnostics
+		const memUsage = process.memoryUsage();
+		console.log(`[EventHandlerManager] Memory usage after registration:`, {
+			rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+			heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+			heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
+			external: `${Math.round(memUsage.external / 1024 / 1024)}MB`,
+		});
+
+		// Complete event handler registration monitoring
+		diagnosticLogger.endOperation(eventHandlerRegistrationOperationId, {
+			totalDuration,
+			handlerTimings,
+			memoryUsage: {
+				heapUsed: memUsage.heapUsed,
+				heapTotal: memUsage.heapTotal,
+				rss: memUsage.rss,
+			},
+			slowHandlers: Object.entries(handlerTimings).filter(([, duration]) => duration > 500),
+		});
+
+		// Warn about slow handler registration or high memory usage
+		const slowHandlers = Object.entries(handlerTimings)
+			.filter(([, duration]) => duration > 500)
+			.map(([name, duration]) => `${name}: ${duration}ms`);
+
+		if (slowHandlers.length > 0) {
+			console.warn(`[EventHandlerManager] Slow event handler registration: ${slowHandlers.join(", ")}`);
+		}
+
+		if (memUsage.heapUsed > 100 * 1024 * 1024) {
+			// 100MB
+			console.warn(
+				`[EventHandlerManager] High memory usage detected: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+			);
+		}
+
+		Logger.info("All event handlers registered successfully", "EventHandlerManager", {
+			totalDuration: `${totalDuration}ms`,
+			handlerTimings,
+			memoryUsage: {
+				heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+				heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
+			},
+		});
 	}
 	private registerTextEditorEvents(): void {
 		// Handle active text editor changes
@@ -1480,13 +1567,6 @@ export class EventHandlerManager {
 	}
 
 	/**
-	 * Get current performance metrics
-	 */
-	getPerformanceMetrics(): PerformanceMetrics {
-		return { ...performanceMetrics };
-	}
-
-	/**
 	 * Register cache management commands
 	 */
 	registerCacheManagementCommands(): void {
@@ -1503,6 +1583,11 @@ export class EventHandlerManager {
 		// Command to cleanup expired caches
 		vscode.commands.registerCommand("postgresql.cleanupExpiredCaches", () => {
 			this.cleanupExpiredCaches();
+		});
+
+		// Command to show performance diagnostics
+		vscode.commands.registerCommand("postgresql.showPerformanceDiagnostics", () => {
+			this.showPerformanceDiagnostics();
 		});
 
 		Logger.info("Cache management commands registered", "registerCacheManagementCommands");
@@ -1619,6 +1704,64 @@ Generated at: ${new Date().toLocaleString()}
 		} catch (error) {
 			Logger.error("Error during cache cleanup", error as Error, "cleanupExpiredCaches");
 			vscode.window.showErrorMessage(`Cache cleanup failed: ${(error as Error).message}`);
+		}
+	}
+
+	/**
+	 * Show performance diagnostics report
+	 */
+	private showPerformanceDiagnostics(): void {
+		try {
+			const diagnosticLogger = DiagnosticLogger.getInstance();
+			const performanceSummary = diagnosticLogger.getPerformanceSummary();
+			const cacheStats = this.getSchemaCacheStats();
+			const realtimeStats = this.getRealtimeState();
+
+			const diagnosticsMessage = `
+			PostgreSQL Extension - Performance Diagnostics
+			==============================================
+			
+			${performanceSummary}
+			
+			Real-time Monitoring Status:
+			- Active File Watchers: ${realtimeStats.fileWatchers.size}
+			- Connection Monitors: ${realtimeStats.connectionMonitors.size}
+			- Schema Monitors: ${realtimeStats.schemaMonitors.size}
+			- Active SQL File: ${realtimeStats.activeSQLFile ? "Yes" : "No"}
+			
+			Schema Cache Status:
+			- Health: ${cacheStats.cacheHealth.toUpperCase()}
+			- In-Memory Entries: ${cacheStats.inMemoryCache.count}
+			- Persistent Keys: ${cacheStats.persistentCache.keys.length}
+			
+			Generated at: ${new Date().toLocaleString()}
+						`.trim();
+
+			// Show in output channel
+			const channel = vscode.window.createOutputChannel("PostgreSQL Performance Diagnostics");
+			channel.clear();
+			channel.appendLine(diagnosticsMessage);
+			channel.show();
+
+			// Show summary in info message
+			const diagnosticReport = diagnosticLogger.getDiagnosticReport();
+			vscode.window
+				.showInformationMessage(
+					`Performance: ${diagnosticReport.slowOperations.length} slow ops, ${diagnosticReport.memorySpikes.length} memory spikes`,
+					"View Details",
+					"Clear Metrics",
+				)
+				.then((selection) => {
+					if (selection === "View Details") {
+						channel.show();
+					} else if (selection === "Clear Metrics") {
+						diagnosticLogger.clearMetrics();
+						vscode.window.showInformationMessage("Performance metrics cleared");
+					}
+				});
+		} catch (error) {
+			Logger.error("Error showing performance diagnostics", error as Error);
+			vscode.window.showErrorMessage(`Failed to show performance diagnostics: ${(error as Error).message}`);
 		}
 	}
 }

@@ -190,12 +190,24 @@
         "icon": "$(question)"
       },
       {
-        "command": "postgresql.openSettings",
-        "title": "Open Settings",
-        "category": "PostgreSQL",
-        "icon": "$(settings-gear)"
-      }
-    ],
+              "command": "postgresql.openSettings",
+              "title": "Open Settings",
+              "category": "PostgreSQL",
+              "icon": "$(settings-gear)"
+            },
+            {
+              "command": "postgresql.showPerformanceDiagnostics",
+              "title": "Show Performance Diagnostics",
+              "category": "PostgreSQL",
+              "icon": "$(graph)"
+            },
+            {
+              "command": "postgresql.clearPerformanceMetrics",
+              "title": "Clear Performance Metrics",
+              "category": "PostgreSQL",
+              "icon": "$(clear-all)"
+            }
+          ],
     "menus": {
       "view/title": [
         {
@@ -703,18 +715,23 @@
     "compile": "tsc -p ./",
     "build:views": "webpack --mode=production",
     "build:dev": "webpack --mode=development --watch",
-    "build": "pnpm run format && pnpm run compile && pnpm run build:views",
-    "package": "rm -rf *.vsix && pnpm run build && vsce package --no-dependencies",
-    "dev": "concurrently \"pnpm run build:dev\" \"pnpm run compile -- --watch\"",
-    "watch": "tsc -watch -p ./",
+    "build": "pnpm run compile && pnpm run build:views && pnpm run format",
+    "build:clean": "pnpm run clean && pnpm run build",
+    "package": "pnpm run build:clean && vsce package --no-dependencies",
+    "dev": "concurrently \"pnpm run compile -- --watch\" \"pnpm run build:dev\"",
+    "watch": "concurrently \"tsc -watch -p ./\" \"pnpm run build:dev\"",
     "lint": "biome check src",
     "lint:fix": "biome check --write src",
     "format": "biome format --write src",
-    "check": "biome check src",
+    "check": "biome check src && pnpm run type-check",
+    "type-check": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "clean": "rimraf bin"
+    "clean": "pnpm clean:build && pnpm clean:vsix",
+    "clean:build": "rimraf dist",
+    "clean:vsix": "rimraf postgresql-schema-sync-0.1.0.vsix",
+    "postinstall": "echo 'Run pnpm run build:clean after installing dependencies'"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.4",
@@ -726,15 +743,15 @@
     "@types/react-dom": "^19.2.2",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.105.0",
-    "@typescript/native-preview": "^7.0.0-dev.20251105.1",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.6.2",
     "concurrently": "^9.2.1",
     "css-loader": "^7.1.2",
-    "esbuild": "^0.25.12",
     "html-webpack-plugin": "^5.6.4",
     "npm-run-all": "^4.1.5",
+    "postcss": "^8.5.3",
+    "postcss-loader": "^8.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "rimraf": "^6.1.0",
@@ -743,6 +760,7 @@
     "ts-jest": "^29.4.5",
     "ts-loader": "^9.5.4",
     "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
     "webpack": "^5.102.1",
     "webpack-cli": "^6.0.1"
   },
