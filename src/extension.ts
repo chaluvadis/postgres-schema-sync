@@ -34,7 +34,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	});
 
 	try {
-		Logger.info("Activating PostgreSQL Schema Compare & Sync extension", "activate", {
+		Logger.info("🔄 STARTING EXTENSION ACTIVATION", "activate", {
 			vscodeVersion: vscode.version,
 			nodeVersion: process.version,
 			platform: process.platform,
@@ -42,36 +42,49 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			timestamp: new Date().toISOString(),
 		});
 
+		// Add immediate diagnostic checkpoint
+		Logger.info("✅ Checkpoint 1: Basic logging initialized", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
+
 		Logger.debug("PostgreSqlConnectionManager initialization skipped - handled by ExtensionInitializer", "activate");
 
-		// Initialize core components
+		// Initialize core components synchronously
 		const coreComponentsStart = Date.now();
+		Logger.info("🔄 Checkpoint 2: Starting core components initialization", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
 		Logger.debug("Initializing core extension components", "activate");
 		const coreComponents = ExtensionInitializer.initializeCoreComponents(context);
 		const coreComponentsDuration = Date.now() - coreComponentsStart;
-		Logger.info("Core extension components initialized", "activate", {
+		Logger.info("✅ Checkpoint 3: Core extension components initialized", "activate", {
 			duration: coreComponentsDuration,
 			hasConnectionManager: !!coreComponents.connectionManager,
 			hasSchemaManager: !!coreComponents.schemaManager,
 			hasTreeProvider: !!coreComponents.treeProvider,
+			elapsedMs: Date.now() - activationStartTime,
 		});
 
 		if (coreComponentsDuration > 10000) {
 			Logger.warn(`Core components initialization took ${coreComponentsDuration}ms - this might be slow!`, "activate");
 		}
 
-		// Initialize optional UI components
+		// Initialize optional UI components with proper async/await
 		const optionalComponentsStart = Date.now();
+		Logger.info("🔄 Checkpoint 4: Starting optional UI components initialization", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
 		Logger.debug("Initializing optional UI components", "activate");
 		components = await ExtensionInitializer.initializeOptionalComponents(coreComponents, context);
 		const optionalComponentsDuration = Date.now() - optionalComponentsStart;
 		const componentsLength = components ? Object.keys(components).length : 0;
-		Logger.info("Optional UI components initialized", "activate", {
+		Logger.info("✅ Checkpoint 5: Optional UI components initialized", "activate", {
 			duration: optionalComponentsDuration,
 			totalComponents: componentsLength,
 			hasDashboardView: !!components?.dashboardView,
 			hasNotificationManager: !!components?.notificationManager,
 			hasQueryEditorView: !!components?.queryEditorView,
+			elapsedMs: Date.now() - activationStartTime,
 		});
 
 		if (optionalComponentsDuration > 15000) {
@@ -81,8 +94,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			);
 		}
 
-		// Initialize main extension
+		// Initialize main extension synchronously
 		const mainExtensionStart = Date.now();
+		Logger.info("🔄 Checkpoint 6: Starting main PostgreSqlExtension initialization", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
 		Logger.debug("Initializing main PostgreSqlExtension component", "activate");
 		extension = ExtensionInitializer.initializeComponent(
 			"PostgreSqlExtension",
@@ -90,34 +106,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			true,
 		) as PostgreSqlExtension;
 		const mainExtensionDuration = Date.now() - mainExtensionStart;
-		Logger.info("Main PostgreSqlExtension component initialized", "activate", {
+		Logger.info("✅ Checkpoint 7: Main PostgreSqlExtension component initialized", "activate", {
 			duration: mainExtensionDuration,
+			elapsedMs: Date.now() - activationStartTime,
 		});
 
 		if (mainExtensionDuration > 5000) {
 			Logger.warn(`Main extension initialization took ${mainExtensionDuration}ms - this might be slow!`, "activate");
 		}
 
-		// Initialize modular managers
+		// Initialize modular managers synchronously
 		const managersStart = Date.now();
+		Logger.info("🔄 Checkpoint 8: Starting modular managers initialization", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
 		Logger.debug("Initializing modular managers", "activate");
 		const commandManager = new CommandManager(context, extension, components!);
 		const eventHandlerManager = new EventHandlerManager(context, components!.treeProvider, components);
 		const realtimeMonitoringManager = new RealtimeMonitoringManager(components);
 		const managersDuration = Date.now() - managersStart;
-		Logger.info("Modular managers initialized", "activate", {
+		Logger.info("✅ Checkpoint 9: Modular managers initialized", "activate", {
 			duration: managersDuration,
 			hasCommandManager: !!commandManager,
 			hasEventHandlerManager: !!eventHandlerManager,
 			hasRealtimeMonitoringManager: !!realtimeMonitoringManager,
+			elapsedMs: Date.now() - activationStartTime,
 		});
 
 		if (managersDuration > 10000) {
 			Logger.warn(`Modular managers initialization took ${managersDuration}ms - this might be slow!`, "activate");
 		}
 
-		// Register tree view and update title with real-time info
+		// Register tree view synchronously
 		const treeViewStart = Date.now();
+		Logger.info("🔄 Checkpoint 10: Starting tree view registration", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
 		Logger.debug("Registering tree view", "activate");
 		if (components?.treeProvider) {
 			const treeView = ExtensionInitializer.registerTreeView(components.treeProvider, context);
@@ -125,29 +149,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			realtimeMonitoringManager.updateTreeViewTitle(treeView);
 		}
 		const treeViewDuration = Date.now() - treeViewStart;
-		Logger.info("Tree view registered and configured", "activate", {
+		Logger.info("✅ Checkpoint 11: Tree view registered and configured", "activate", {
 			duration: treeViewDuration,
+			elapsedMs: Date.now() - activationStartTime,
 		});
 
 		if (treeViewDuration > 5000) {
 			Logger.warn(`Tree view registration took ${treeViewDuration}ms - this might be slow!`, "activate");
 		}
 
-		// Register all commands using the modular command manager
+		// Register commands synchronously
 		const commandsStart = Date.now();
+		Logger.info("🔄 Checkpoint 12: Starting command registration", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
 		Logger.debug("Registering commands", "activate");
 		const commandDisposables = commandManager.registerCommands();
 		const commandsDuration = Date.now() - commandsStart;
-		Logger.info("Commands registered", "activate", {
+		Logger.info("✅ Checkpoint 13: Commands registered", "activate", {
 			duration: commandsDuration,
 			commandCount: commandDisposables.length,
+			elapsedMs: Date.now() - activationStartTime,
 		});
 
 		if (commandsDuration > 8000) {
 			Logger.warn(`Command registration took ${commandsDuration}ms - this might be slow!`, "activate");
 		}
 
-		// Register all command disposables in the main extension context
+		// Register command disposables synchronously
 		const disposablesStart = Date.now();
 		commandDisposables.forEach((disposable) => {
 			context.subscriptions.push(disposable);
@@ -157,21 +186,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			duration: disposablesDuration,
 		});
 
-		// Register all event handlers using the modular event handler manager
+		// Register event handlers synchronously
 		const eventHandlersStart = Date.now();
+		Logger.info("🔄 Checkpoint 14: Starting event handlers registration", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
 		Logger.debug("Registering event handlers", "activate");
 		eventHandlerManager.registerEventHandlers();
 		const eventHandlersDuration = Date.now() - eventHandlersStart;
-		Logger.info("Event handlers registered", "activate", {
+		Logger.info("✅ Checkpoint 15: Event handlers registered", "activate", {
 			duration: eventHandlersDuration,
+			elapsedMs: Date.now() - activationStartTime,
 		});
 
 		if (eventHandlersDuration > 5000) {
 			Logger.warn(`Event handlers registration took ${eventHandlersDuration}ms - this might be slow!`, "activate");
 		}
 
-		// Initialize optimizers
+		// Initialize optimizers synchronously
 		const optimizationStart = Date.now();
+		Logger.info("🔄 Checkpoint 16: Starting optimizers initialization", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
 		Logger.debug("Initializing optimizers", "activate");
 
 		// Initialize event handler optimization
@@ -181,14 +217,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		resourceCleanupManager.initialize();
 
 		const optimizationDuration = Date.now() - optimizationStart;
-		Logger.info("Optimizers initialized", "activate", {
+		Logger.info("✅ Checkpoint 17: Optimizers initialized", "activate", {
 			duration: optimizationDuration,
 			hasEventHandlerOptimizer: !!eventHandlerOptimizer,
 			hasResourceCleanupManager: !!resourceCleanupManager,
+			elapsedMs: Date.now() - activationStartTime,
 		});
 
 		const totalActivationTime = Date.now() - activationStartTime;
-		Logger.info("PostgreSQL Schema Compare & Sync extension activated successfully", "activate", {
+		Logger.info("🎉 EXTENSION ACTIVATION COMPLETE", "activate", {
 			totalActivationTime,
 			totalComponents: components ? Object.keys(components).length : 0,
 		});
@@ -197,6 +234,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		const performanceSummary = diagnosticLogger.getPerformanceSummary();
 		Logger.info("Extension Activation Performance Summary", "activate", { performanceSummary });
 
+		Logger.info("🔄 Checkpoint 18: Showing activation success message", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
+
+		// Show success message asynchronously (non-blocking)
 		vscode.window
 			.showInformationMessage(
 				"PostgreSQL Schema Compare & Sync extension activated successfully!",
@@ -210,8 +252,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 					vscode.commands.executeCommand("postgresql.openSettings");
 				}
 			});
+
+		Logger.info("✅ Checkpoint 19: Activation success message shown", "activate", {
+			elapsedMs: Date.now() - activationStartTime,
+		});
 	} catch (error) {
-		Logger.error("Failed to activate PostgreSQL Schema Compare & Sync extension", error as Error);
+		Logger.error("❌ EXTENSION ACTIVATION FAILED", error as Error, "activate", {
+			failurePoint: "Unknown - check checkpoints above",
+			elapsedMs: Date.now() - activationStartTime,
+		});
 
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		const severity =
@@ -223,6 +272,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 		ErrorHandler.handleErrorWithSeverity(error, activationContext, severity);
 
+		// Show error message asynchronously (non-blocking)
 		vscode.window
 			.showErrorMessage(
 				"PostgreSQL Schema Compare & Sync extension failed to activate. Please check the logs for details.",

@@ -54,28 +54,28 @@ export interface ExtensionComponents {
 export class ExtensionInitializer {
 	static initializeCoreComponents(context: vscode.ExtensionContext): ExtensionComponents {
 		try {
-			Logger.info("Initializing core extension components", "initializeCoreComponents");
+			Logger.info("🔄 Initializing core extension components", "initializeCoreComponents");
 
 			// Initialize core managers
 			Logger.debug("Creating ConnectionManager instance", "initializeCoreComponents");
 			const connectionManager = new ConnectionManager(context);
-			Logger.debug("ConnectionManager created", "initializeCoreComponents");
+			Logger.debug("✅ ConnectionManager created", "initializeCoreComponents");
 
 			Logger.debug("Creating QueryExecutionService instance", "initializeCoreComponents");
 			const queryExecutionService = new QueryExecutionService(connectionManager);
-			Logger.debug("QueryExecutionService created", "initializeCoreComponents");
+			Logger.debug("✅ QueryExecutionService created", "initializeCoreComponents");
 
 			Logger.debug("Creating ValidationFramework instance", "initializeCoreComponents");
 			const validationFramework = new ValidationFramework();
-			Logger.debug("ValidationFramework created", "initializeCoreComponents");
+			Logger.debug("✅ ValidationFramework created", "initializeCoreComponents");
 
 			Logger.debug("Creating ModularSchemaManager instance", "initializeCoreComponents");
 			const schemaManager = new ModularSchemaManager(connectionManager, queryExecutionService, validationFramework);
-			Logger.debug("ModularSchemaManager created", "initializeCoreComponents");
+			Logger.debug("✅ ModularSchemaManager created", "initializeCoreComponents");
 
 			Logger.debug("Creating PostgreSqlTreeProvider instance", "initializeCoreComponents");
 			const treeProvider = new PostgreSqlTreeProvider(connectionManager, schemaManager);
-			Logger.debug("PostgreSqlTreeProvider created", "initializeCoreComponents");
+			Logger.debug("✅ PostgreSqlTreeProvider created", "initializeCoreComponents");
 
 			const components: ExtensionComponents = {
 				connectionManager,
@@ -83,12 +83,12 @@ export class ExtensionInitializer {
 				treeProvider,
 			};
 
-			Logger.info("Core extension components initialized successfully", "initializeCoreComponents", {
+			Logger.info("✅ Core extension components initialized successfully", "initializeCoreComponents", {
 				componentsCount: Object.keys(components).length,
 			});
 			return components;
 		} catch (error) {
-			Logger.error("Failed to initialize core extension components", error as Error, "initializeCoreComponents");
+			Logger.error("❌ Failed to initialize core extension components", error as Error, "initializeCoreComponents");
 			throw error;
 		}
 	}
@@ -100,7 +100,7 @@ export class ExtensionInitializer {
 		const componentTimings: Record<string, number> = {};
 
 		try {
-			Logger.info("Initializing optional UI components in parallel", "initializeOptionalComponents");
+			Logger.info("🔄 Initializing optional UI components in parallel", "initializeOptionalComponents");
 
 			// PHASE 1: Independent components that don't depend on other optional components
 			const phase1Start = Date.now();
@@ -298,7 +298,7 @@ export class ExtensionInitializer {
 				});
 			}
 
-			Logger.info("Optional UI components initialized successfully", "initializeOptionalComponents", {
+			Logger.info("✅ Optional UI components initialized successfully", "initializeOptionalComponents", {
 				totalDuration: `${totalDuration}ms`,
 				totalComponents: Object.keys(components).length,
 				optionalComponentsCount: Object.keys(components).length - Object.keys(coreComponents).length,
@@ -306,7 +306,7 @@ export class ExtensionInitializer {
 			return components;
 		} catch (error) {
 			const totalDuration = Date.now() - startTime;
-			Logger.error("Failed to initialize optional UI components", error as Error, "initializeOptionalComponents", {
+			Logger.error("❌ Failed to initialize optional UI components", error as Error, "initializeOptionalComponents", {
 				failedAfterDuration: `${totalDuration}ms`,
 				partialComponentTimings: componentTimings,
 			});

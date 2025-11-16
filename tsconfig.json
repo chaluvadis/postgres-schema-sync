@@ -24,8 +24,9 @@
       "@/views/*": ["views/*"],
       "@/extension/*": ["extension/*"]
     },
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
   },
-  "include": ["src/**/*", "test/**/*", "scripts/**/*"],
+  "include": ["src/**/*", "test/**/*", "scripts/**/*", "src/types/**/*"],
   "exclude": ["node_modules", ".vscode-test", "out"]
 }

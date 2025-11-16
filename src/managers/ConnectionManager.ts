@@ -78,7 +78,7 @@ export class ConnectionManager {
 		console.log("[Connection Manager] Getting PostgreSqlConnectionManager instance...");
 		this.dotNetService = PostgreSqlConnectionManager.getInstance();
 		console.log(
-			`[Connection Manager] PostgreSqlConnectionManager instance obtained in ${Date.now() - constructorStart}ms`,
+			`[Connection Manager] ✅ PostgreSqlConnectionManager instance obtained in ${Date.now() - constructorStart}ms`,
 		);
 
 		const validationStart = Date.now();
@@ -92,44 +92,37 @@ export class ConnectionManager {
 			validateOnGet: true,
 		};
 
-		const loadConnectionsStart = Date.now();
-		console.log("[Connection Manager] Loading connections...");
-
-		// Load connections asynchronously without blocking constructor
-		setTimeout(() => {
-			this.loadConnections().catch((error) => {
-				console.error("[Connection Manager] ❌ Async connection loading failed:", error);
-				// Ensure connections are cleared on failure
-				this.connections.clear();
-			});
-		}, 0);
-
-		const loadConnectionsDuration = Date.now() - loadConnectionsStart;
-		console.log(`[Connection Manager] Connections loading initiated in ${loadConnectionsDuration}ms`);
-		console.log(`[Connection Manager] Connections loaded in ${loadConnectionsDuration}ms`);
-
 		this.secrets = context.secrets;
 
-		const healthMonitorStart = Date.now();
-		console.log("[Connection Manager] Starting health monitoring...");
-
-		// Start health monitoring asynchronously to avoid blocking constructor
-		setTimeout(() => {
-			try {
-				this.startHealthMonitoring();
-			} catch (error: any) {
-				console.error("[Connection Manager] ❌ Health monitoring failed:", error);
-			}
-		}, 10); // Small delay to let other initialization complete
-
-		const healthMonitorDuration = Date.now() - healthMonitorStart;
-		console.log(`[Connection Manager] Health monitoring initiated in ${healthMonitorDuration}ms`);
-
 		const totalDuration = Date.now() - constructorStart;
-		console.log(`[Connection Manager] Constructor completed in ${totalDuration}ms`);
+		console.log(`[Connection Manager] ✅ Constructor completed in ${totalDuration}ms`);
 
 		if (totalDuration > 3000) {
-			console.warn(`[Connection Manager] WARNING: Constructor took ${totalDuration}ms - this might be slow!`);
+			console.warn(`[Connection Manager] ⚠️ WARNING: Constructor took ${totalDuration}ms - this might be slow!`);
+		}
+
+		// Initialize connections and health monitoring asynchronously after constructor completes
+		// This prevents blocking the extension activation while still allowing proper initialization
+		this.initializeAsyncComponents();
+	}
+
+	private async initializeAsyncComponents(): Promise<void> {
+		try {
+			console.log("[Connection Manager] Loading connections asynchronously...");
+			await this.loadConnections();
+			console.log("[Connection Manager] ✅ Connections loaded successfully");
+		} catch (error) {
+			console.error("[Connection Manager] ❌ Connection loading failed:", error);
+			// Ensure connections are cleared on failure
+			this.connections.clear();
+		}
+
+		try {
+			console.log("[Connection Manager] Starting health monitoring asynchronously...");
+			this.startHealthMonitoring();
+			console.log("[Connection Manager] ✅ Health monitoring started successfully");
+		} catch (error: any) {
+			console.error("[Connection Manager] ❌ Health monitoring failed:", error);
 		}
 	}
 
@@ -704,7 +697,7 @@ export class ConnectionManager {
 			console.log(
 				`[Connection Manager] ✅ Successfully loaded ${this.connections.size} connections in ${totalDuration}ms`,
 			);
-			Logger.info(`Loaded ${this.connections.size} connections`);
+			Logger.info(`✅ Loaded ${this.connections.size} connections`);
 
 			if (totalDuration > 2000) {
 				console.warn(`[Connection Manager] WARNING: Loading connections took ${totalDuration}ms - this might be slow!`);
@@ -715,7 +708,7 @@ export class ConnectionManager {
 				`[Connection Manager] ❌ Failed to load connections in ${errorDuration}ms:`,
 				(error as Error).message,
 			);
-			Logger.error(`Failed to load connections: ${(error as Error).message}`);
+			Logger.error(`❌ Failed to load connections: ${(error as Error).message}`);
 			this.connections.clear();
 		}
 	}

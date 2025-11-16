@@ -24,6 +24,7 @@ export class Logger {
 	private static maxLogs: number = 10000;
 
 	static initializeOutputChannel(): void {
+		console.log(`initializeOutputChannel - contructor call}`);
 		if (!this.outputChannel) {
 			this.outputChannel = vscode.window.createOutputChannel("PostgreSQL Schema Sync");
 		}

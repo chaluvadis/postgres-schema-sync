@@ -120,17 +120,6 @@ export class PostgreSqlConnectionManager {
 		console.log("[PostgreSQL Connection Manager] Constructor starting...");
 		Logger.debug("PostgreSqlConnectionManager constructor called", "PostgreSqlConnectionManager.constructor");
 
-		console.log("[PostgreSQL Connection Manager] Scheduling health monitoring...");
-
-		// CRITICAL: Start health monitoring asynchronously to prevent blocking
-		setTimeout(() => {
-			try {
-				this.startHealthMonitoring();
-			} catch (error: any) {
-				console.error("[PostgreSQL Connection Manager] ❌ Health monitoring failed:", error);
-			}
-		}, 50); // Small delay to allow constructor to complete
-
 		const constructorDuration = Date.now() - constructorStart;
 		console.log(`[PostgreSQL Connection Manager] Constructor completed in ${constructorDuration}ms`);
 
@@ -139,6 +128,10 @@ export class PostgreSqlConnectionManager {
 				`[PostgreSQL Connection Manager] WARNING: Constructor took ${constructorDuration}ms - this might be slow!`,
 			);
 		}
+
+		// Health monitoring will be started by ConnectionManager after extension activation
+		// This prevents blocking the constructor and allows proper async initialization
+		console.log("[PostgreSQL Connection Manager] Health monitoring will be started externally");
 	}
 
 	static getInstance(): PostgreSqlConnectionManager {
