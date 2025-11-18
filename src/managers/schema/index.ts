@@ -1,35 +1,5 @@
 // Export the main schema manager
 
-export type {
-	DependencyAnalysisReport,
-	DependencyCluster,
-	DependencyGraphNode,
-	DependencyGraphVisualization,
-	DependencyRecommendation,
-	DependencyRiskAssessment,
-	DependencySummary,
-	GraphLayout,
-	GraphMetadata,
-	LineageChain,
-	ObjectLineage,
-	OptimizationOpportunity,
-	RelationshipMetrics,
-	RichDependencyEdge,
-	RichDependencyGraph,
-	RichDependencyNode,
-	RiskFactor,
-} from "./DependencyAnalysis";
-export type {
-	AdvancedImpactAnalysis,
-	BasicImpactAnalysis,
-	BusinessImpactAssessment,
-	MigrationPath,
-	RiskMitigation,
-	RollbackPlan,
-	StakeholderImpact,
-	TechnicalImpactAssessment,
-} from "./ImpactAnalysis";
-
 // Export additional interfaces from other modules
 export type {
 	CacheAnalytics,
@@ -58,8 +28,6 @@ export type {
 // Migration types are now defined inline in their respective modules
 // to reduce complexity and improve maintainability
 
-export { DependencyAnalysis } from "./DependencyAnalysis";
-export { ImpactAnalysis } from "./ImpactAnalysis";
 export { MetadataManagement } from "./MetadataManagement";
 export { MigrationManagement } from "./MigrationManagement";
 export { SchemaComparison } from "./SchemaComparison";

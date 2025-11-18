@@ -3,35 +3,6 @@ import { ValidationFramework } from "../../core/ValidationFramework";
 import { ConnectionManager } from "../ConnectionManager";
 import { SchemaComparison } from "./SchemaComparison";
 import { SchemaOperations } from "./SchemaOperations";
-export {
-	DependencyAnalysisReport,
-	DependencyCluster,
-	DependencyGraphNode,
-	DependencyGraphVisualization,
-	DependencyRecommendation,
-	DependencyRiskAssessment,
-	DependencySummary,
-	GraphLayout,
-	GraphMetadata,
-	LineageChain,
-	ObjectLineage,
-	OptimizationOpportunity,
-	RelationshipMetrics,
-	RichDependencyEdge,
-	RichDependencyGraph,
-	RichDependencyNode,
-	RiskFactor,
-} from "./DependencyAnalysis";
-export {
-	AdvancedImpactAnalysis,
-	BasicImpactAnalysis,
-	BusinessImpactAssessment,
-	MigrationPath,
-	RiskMitigation,
-	RollbackPlan,
-	StakeholderImpact,
-	TechnicalImpactAssessment,
-} from "./ImpactAnalysis";
 export * from "./MetadataManagement";
 export {
 	EnhancedMigrationScript,
