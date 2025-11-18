@@ -142,7 +142,7 @@ export interface CacheRecommendation {
 	implementationEffort: "low" | "medium" | "high";
 }
 
-export class MetadataManagement {
+class MetadataManagement {
 	private schemaOperations: SchemaOperations;
 	private dotNetService: PostgreSqlConnectionManager;
 	private connectionManager: ConnectionManager;

@@ -21,14 +21,11 @@ export enum ObjectType {
 	Table = "table",
 	View = "view",
 	Function = "function",
-	Procedure = "procedure",
 	Sequence = "sequence",
 	Type = "type",
-	Domain = "domain",
 	Index = "index",
 	Trigger = "trigger",
 	Constraint = "constraint",
-	Column = "column",
 	Schema = "schema",
 }
 

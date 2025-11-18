@@ -128,7 +128,6 @@ export interface CertificateInfo {
 export enum DataClassification {
 	PUBLIC = "public",
 	INTERNAL = "internal",
-	CONFIDENTIAL = "confidential",
 	RESTRICTED = "restricted",
 }
 enum ComplianceFramework {

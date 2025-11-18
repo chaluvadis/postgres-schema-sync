@@ -1,7 +1,7 @@
 import { getUUId } from "@/utils/helper";
 import { Logger } from "@/utils/Logger";
 
-export interface ValidationRule {
+interface ValidationRule {
 	id: string;
 	name: string;
 	description: string;
@@ -13,7 +13,7 @@ export interface ValidationRule {
 	lastModified: Date;
 }
 
-export interface ValidationRuleDefinition {
+interface ValidationRuleDefinition {
 	type: "sql_query" | "pattern_match" | "threshold_check" | "custom_logic";
 	expression: string;
 	parameters: Record<string, any>;
@@ -22,7 +22,7 @@ export interface ValidationRuleDefinition {
 	retryAttempts?: number;
 }
 
-export interface ValidationResult {
+interface ValidationResult {
 	ruleId: string;
 	ruleName: string;
 	passed: boolean;
@@ -34,7 +34,7 @@ export interface ValidationResult {
 	retryCount?: number;
 }
 
-export interface ValidationRequest {
+interface ValidationRequest {
 	connectionId: string;
 	rules?: string[]; // Specific rule IDs to run, if empty runs all enabled rules
 	failOnWarnings?: boolean;
@@ -42,7 +42,7 @@ export interface ValidationRequest {
 	context?: Record<string, any>; // Additional context for validation
 }
 
-export interface ValidationReport {
+interface ValidationReport {
 	requestId: string;
 	validationTimestamp: Date;
 	totalRules: number;

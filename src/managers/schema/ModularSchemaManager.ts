@@ -4,20 +4,6 @@ import { ConnectionManager } from "../ConnectionManager";
 import { SchemaComparison } from "./SchemaComparison";
 import { SchemaOperations } from "./SchemaOperations";
 export * from "./MetadataManagement";
-export {
-	EnhancedMigrationScript,
-	ExecutionLogEntry,
-	MigrationDependency,
-	MigrationExecutionResult,
-	MigrationStep,
-	PostCondition,
-	PreCondition,
-	RollbackScript,
-	SchemaSnapshot,
-	ValidationResult,
-	ValidationStep,
-} from "./MigrationTypes";
-
 export * from "./SchemaComparison";
 export class ModularSchemaManager {
 	private connectionManager: ConnectionManager;

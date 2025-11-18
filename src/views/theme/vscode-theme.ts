@@ -57,7 +57,7 @@ export const vscodeTheme = {
 };
 
 // Utility function to get theme-aware styles
-export const getThemeStyles = (component: string, variant?: string) => {
+const getThemeStyles = (component: string, variant?: string) => {
 	const baseStyles = {
 		fontFamily: vscodeTheme.typography.fontFamily,
 		fontSize: vscodeTheme.typography.fontSize.md,
