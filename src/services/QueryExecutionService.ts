@@ -1,279 +1,294 @@
-import { ConnectionManager } from "@/managers/ConnectionManager";
-import { Logger } from "@/utils/Logger";
 import { PostgreSqlConnectionManager } from "@/core/PostgreSqlConnectionManager";
+import { ConnectionManager } from "@/managers/ConnectionManager";
 import { SchemaOperations } from "@/managers/schema/SchemaOperations";
 import { getUUId } from "@/utils/helper";
+import { Logger } from "@/utils/Logger";
 
-export interface QueryResult {
-  id: string;
-  query: string;
-  executionTime: number;
-  rowCount: number;
-  columns: QueryColumn[];
-  rows: any[][];
-  error?: string;
-  executionPlan?: string;
-  timestamp: Date;
+interface QueryResult {
+	id: string;
+	query: string;
+	executionTime: number;
+	rowCount: number;
+	columns: QueryColumn[];
+	rows: any[][];
+	error?: string;
+	executionPlan?: string;
+	timestamp: Date;
 }
 
-export interface QueryColumn {
-  name: string;
-  type: string;
-  nullable: boolean;
+interface QueryColumn {
+	name: string;
+	type: string;
+	nullable: boolean;
 }
 
-export interface QueryOptions {
-  timeout?: number;
-  maxRows?: number;
-  includeExecutionPlan?: boolean;
+interface QueryOptions {
+	timeout?: number;
+	maxRows?: number;
+	includeExecutionPlan?: boolean;
 }
 
-export interface IntelliSenseSuggestion {
-  label: string;
-  kind: "table" | "column" | "function" | "keyword" | "schema";
-  detail?: string;
-  documentation?: string;
+interface IntelliSenseSuggestion {
+	label: string;
+	kind: "table" | "column" | "function" | "keyword" | "schema";
+	detail?: string;
+	documentation?: string;
 }
 
 export class QueryExecutionService {
-  private connectionManager: ConnectionManager;
-  private dotNetService: PostgreSqlConnectionManager;
-  private schemaOperations: SchemaOperations;
+	private connectionManager: ConnectionManager;
+	private dotNetService: PostgreSqlConnectionManager;
+	private schemaOperations: SchemaOperations;
 
-  constructor(connectionManager: ConnectionManager) {
-    this.connectionManager = connectionManager;
-    this.dotNetService = PostgreSqlConnectionManager.getInstance();
-    this.schemaOperations = new SchemaOperations(connectionManager);
-  }
+	constructor(connectionManager: ConnectionManager) {
+		const startTime = Date.now();
+		console.log("[QueryExecutionService] Lightweight constructor - deferring heavy initialization...");
 
-  async executeQuery(
-    connectionId: string,
-    query: string,
-    options: QueryOptions = {},
-    _cancellationToken?: any
-  ): Promise<QueryResult> {
-    const startTime = Date.now();
+		this.connectionManager = connectionManager;
+		// Defer heavy initialization - schema operations are created lazily
+		this.dotNetService = null as any; // Will be initialized lazily
+		this.schemaOperations = null as any; // Will be initialized lazily
 
-    try {
-      Logger.info("Executing query", "executeQuery", {
-        connectionId,
-        queryLength: query.length,
-        options,
-      });
+		const duration = Date.now() - startTime;
+		console.log(`[QueryExecutionService] Lightweight constructor completed in ${duration}ms`);
+	}
 
-      // Use ConnectionManager directly
-      const connectionService = this.connectionManager;
-      const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
-      if (!dotNetConnection) {
-        throw new Error("Failed to create connection info");
-      }
+	/**
+	 * Lazy initialization of heavy components
+	 */
+	private ensureInitialized(): void {
+		if (this.dotNetService && this.schemaOperations) {
+			return; // Already initialized
+		}
 
-      // Execute query via native service using pooled connection
-      const dotNetResult = await this.dotNetService.createConnection(dotNetConnection).then(async (handle) => {
-        try {
-          const queryResult = await handle.connection.query(query);
-          return {
-            rowCount: queryResult.rowCount,
-            columns: queryResult.fields.map(field => ({
-              name: field.name,
-              type: field.dataTypeID.toString(),
-              nullable: true // Simplified
-            })),
-            rows: queryResult.rows,
-            error: undefined,
-            executionPlan: undefined
-          };
-        } finally {
-          handle.release();
-        }
-      });
+		const startTime = Date.now();
+		console.log("[QueryExecutionService] Starting lazy initialization...");
 
-      const executionTime = Date.now() - startTime;
+		this.dotNetService = PostgreSqlConnectionManager.getInstance();
 
-      // Convert .NET result to local format
-      const result: QueryResult = {
-        id: `query_${getUUId()}`,
-        query,
-        executionTime,
-        rowCount: dotNetResult.rowCount || 0,
-        columns: dotNetResult.columns.map((col) => ({
-          name: col.name,
-          type: col.type,
-          nullable: col.nullable,
-        })),
-        rows: dotNetResult.rows,
-        error: dotNetResult.error,
-        executionPlan: dotNetResult.executionPlan,
-        timestamp: new Date(),
-      };
+		console.log("[QueryExecutionService] Creating SchemaOperations lazily...");
+		this.schemaOperations = new SchemaOperations(this.connectionManager);
 
-      Logger.info("Query executed successfully", "executeQuery", {
-        connectionId,
-        rowCount: result.rowCount,
-        executionTime: result.executionTime,
-      });
+		const duration = Date.now() - startTime;
+		console.log(`[QueryExecutionService] Lazy initialization completed in ${duration}ms`);
+	}
 
-      return result;
-    } catch (error) {
-      const executionTime = Date.now() - startTime;
+	async executeQuery(
+		connectionId: string,
+		query: string,
+		options: QueryOptions = {},
+		_cancellationToken?: any,
+	): Promise<QueryResult> {
+		const startTime = Date.now();
 
-      Logger.error("Query execution failed", error as Error);
+		try {
+			// Lazy initialization
+			this.ensureInitialized();
 
-      // Return error result
-      return {
-        id: `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        query,
-        executionTime,
-        rowCount: 0,
-        columns: [],
-        rows: [],
-        error: (error as Error).message,
-        timestamp: new Date(),
-      };
-    }
-  }
+			Logger.info("Executing query", "executeQuery", {
+				connectionId,
+				queryLength: query.length,
+				options,
+			});
 
-  async getIntelliSense(
-    connectionId: string,
-    _query: string,
-    position: { line: number; column: number }
-  ): Promise<IntelliSenseSuggestion[]> {
-    try {
-      Logger.debug("Getting IntelliSense suggestions", "getIntelliSense", {
-        connectionId,
-        position,
-      });
-      // For now, return basic SQL keywords and common suggestions
-      // In a full implementation, this would query the database schema
-      const basicKeywords: IntelliSenseSuggestion[] = [
-        { label: "SELECT", kind: "keyword", detail: "Select data from tables" },
-        { label: "INSERT", kind: "keyword", detail: "Insert new data" },
-        { label: "UPDATE", kind: "keyword", detail: "Update existing data" },
-        { label: "DELETE", kind: "keyword", detail: "Delete data" },
-        { label: "CREATE", kind: "keyword", detail: "Create database objects" },
-        { label: "DROP", kind: "keyword", detail: "Drop database objects" },
-        { label: "ALTER", kind: "keyword", detail: "Modify database objects" },
-        { label: "FROM", kind: "keyword", detail: "Specify source table" },
-        { label: "WHERE", kind: "keyword", detail: "Filter results" },
-        { label: "JOIN", kind: "keyword", detail: "Join tables" },
-        { label: "ORDER BY", kind: "keyword", detail: "Sort results" },
-        { label: "GROUP BY", kind: "keyword", detail: "Group results" },
-        { label: "HAVING", kind: "keyword", detail: "Filter grouped results" },
-        { label: "LIMIT", kind: "keyword", detail: "Limit result count" },
-        { label: "DISTINCT", kind: "keyword", detail: "Remove duplicates" },
-      ];
+			// Use ConnectionManager directly
+			const connectionService = this.connectionManager;
+			const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
+			if (!dotNetConnection) {
+				throw new Error("Failed to create connection info");
+			}
 
-      // Use ConnectionManager directly
-      const connectionService = this.connectionManager;
-      const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
-      if (!dotNetConnection) {
-        return basicKeywords;
-      }
+			// Execute query via native service using pooled connection
+			const dotNetResult = await this.dotNetService.createConnection(dotNetConnection).then(async (handle) => {
+				try {
+					const queryResult = await handle.connection.query(query);
+					return {
+						rowCount: queryResult.rowCount,
+						columns: queryResult.fields.map((field) => ({
+							name: field.name,
+							type: field.dataTypeID.toString(),
+							nullable: true, // Simplified
+						})),
+						rows: queryResult.rows,
+						error: undefined,
+						executionPlan: undefined,
+					};
+				} finally {
+					handle.release();
+				}
+			});
 
-      // Try to get schema objects for more specific suggestions
-      try {
-        const schemaObjects = await this.schemaOperations.getDatabaseObjects(connectionId);
+			const executionTime = Date.now() - startTime;
 
-        // Add table and view suggestions
-        const objectSuggestions: IntelliSenseSuggestion[] = schemaObjects.map(
-          (obj: any) => ({
-            label: obj.name,
-            kind:
-              obj.type === "table"
-                ? "table"
-                : obj.type === "view"
-                ? "table"
-                : "column",
-            detail: `${obj.type} in ${obj.schema}`,
-            documentation: obj.definition,
-          })
-        );
+			// Convert .NET result to local format
+			const result: QueryResult = {
+				id: `query_${getUUId()}`,
+				query,
+				executionTime,
+				rowCount: dotNetResult.rowCount || 0,
+				columns: dotNetResult.columns.map((col) => ({
+					name: col.name,
+					type: col.type,
+					nullable: col.nullable,
+				})),
+				rows: dotNetResult.rows,
+				error: dotNetResult.error,
+				executionPlan: dotNetResult.executionPlan,
+				timestamp: new Date(),
+			};
 
-        return [...basicKeywords, ...objectSuggestions];
-      } catch (error) {
-        Logger.warn("Failed to get schema objects for IntelliSense");
-        return basicKeywords;
-      }
-    } catch (error) {
-      Logger.error("Failed to get IntelliSense", error as Error);
-      return [];
-    }
-  }
+			Logger.info("Query executed successfully", "executeQuery", {
+				connectionId,
+				rowCount: result.rowCount,
+				executionTime: result.executionTime,
+			});
 
-  async exportResults(
-    result: QueryResult,
-    format: "csv" | "json" | "excel",
-    filePath: string
-  ): Promise<void> {
-    try {
-      Logger.info("Exporting query results", "exportResults", {
-        format,
-        filePath,
-        rowCount: result.rowCount,
-      });
+			return result;
+		} catch (error) {
+			const executionTime = Date.now() - startTime;
 
-      let content: string;
+			Logger.error("Query execution failed", error as Error);
 
-      switch (format) {
-        case "csv":
-          content = this.generateCSV(result);
-          break;
-        case "json":
-          content = this.generateJSON(result);
-          break;
-        case "excel":
-          // For now, export as CSV with Excel-friendly formatting
-          content = this.generateCSV(result, "\t");
-          break;
-        default:
-          throw new Error(`Unsupported export format: ${format}`);
-      }
+			// Return error result
+			return {
+				id: `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+				query,
+				executionTime,
+				rowCount: 0,
+				columns: [],
+				rows: [],
+				error: (error as Error).message,
+				timestamp: new Date(),
+			};
+		}
+	}
 
-      const fs = require("fs").promises;
-      await fs.writeFile(filePath, content, "utf8");
+	async getIntelliSense(
+		connectionId: string,
+		_query: string,
+		position: { line: number; column: number },
+	): Promise<IntelliSenseSuggestion[]> {
+		try {
+			Logger.debug("Getting IntelliSense suggestions", "getIntelliSense", {
+				connectionId,
+				position,
+			});
+			// For now, return basic SQL keywords and common suggestions
+			// In a full implementation, this would query the database schema
+			const basicKeywords: IntelliSenseSuggestion[] = [
+				{ label: "SELECT", kind: "keyword", detail: "Select data from tables" },
+				{ label: "INSERT", kind: "keyword", detail: "Insert new data" },
+				{ label: "UPDATE", kind: "keyword", detail: "Update existing data" },
+				{ label: "DELETE", kind: "keyword", detail: "Delete data" },
+				{ label: "CREATE", kind: "keyword", detail: "Create database objects" },
+				{ label: "DROP", kind: "keyword", detail: "Drop database objects" },
+				{ label: "ALTER", kind: "keyword", detail: "Modify database objects" },
+				{ label: "FROM", kind: "keyword", detail: "Specify source table" },
+				{ label: "WHERE", kind: "keyword", detail: "Filter results" },
+				{ label: "JOIN", kind: "keyword", detail: "Join tables" },
+				{ label: "ORDER BY", kind: "keyword", detail: "Sort results" },
+				{ label: "GROUP BY", kind: "keyword", detail: "Group results" },
+				{ label: "HAVING", kind: "keyword", detail: "Filter grouped results" },
+				{ label: "LIMIT", kind: "keyword", detail: "Limit result count" },
+				{ label: "DISTINCT", kind: "keyword", detail: "Remove duplicates" },
+			];
 
-      Logger.info("Results exported successfully", "exportResults", {
-        filePath,
-      });
-    } catch (error) {
-      Logger.error("Failed to export results", error as Error);
-      throw error;
-    }
-  }
+			// Use ConnectionManager directly
+			const connectionService = this.connectionManager;
+			const dotNetConnection = await connectionService.toDotNetConnection(connectionId);
+			if (!dotNetConnection) {
+				return basicKeywords;
+			}
 
-  private generateCSV(result: QueryResult, delimiter: string = ","): string {
-    const lines: string[] = [];
+			// Try to get schema objects for more specific suggestions
+			try {
+				const schemaObjects = await this.schemaOperations.getDatabaseObjects(connectionId);
 
-    // Add headers
-    const headers = result.columns
-      .map((col) => `"${col.name}"`)
-      .join(delimiter);
-    lines.push(headers);
+				// Add table and view suggestions
+				const objectSuggestions: IntelliSenseSuggestion[] = schemaObjects.map((obj: any) => ({
+					label: obj.name,
+					kind: obj.type === "table" ? "table" : obj.type === "view" ? "table" : "column",
+					detail: `${obj.type} in ${obj.schema}`,
+					documentation: obj.definition,
+				}));
 
-    // Add data rows
-    result.rows.forEach((row) => {
-      const values = row.map((cell) => {
-        const cellStr = cell !== null ? String(cell) : "";
-        // Escape quotes and wrap in quotes if contains delimiter or quotes
-        return cellStr.includes(delimiter) || cellStr.includes('"')
-          ? `"${cellStr.replace(/"/g, '""')}"`
-          : cellStr;
-      });
-      lines.push(values.join(delimiter));
-    });
+				return [...basicKeywords, ...objectSuggestions];
+			} catch (error) {
+				Logger.warn("Failed to get schema objects for IntelliSense");
+				return basicKeywords;
+			}
+		} catch (error) {
+			Logger.error("Failed to get IntelliSense", error as Error);
+			return [];
+		}
+	}
 
-    return lines.join("\n");
-  }
+	async exportResults(result: QueryResult, format: "csv" | "json" | "excel", filePath: string): Promise<void> {
+		try {
+			Logger.info("Exporting query results", "exportResults", {
+				format,
+				filePath,
+				rowCount: result.rowCount,
+			});
 
-  private generateJSON(result: QueryResult): string {
-    const data = result.rows.map((row) => {
-      const obj: any = {};
-      result.columns.forEach((col, index) => {
-        obj[col.name] = row[index];
-      });
-      return obj;
-    });
+			let content: string;
 
-    return JSON.stringify(data, null, 2);
-  }
+			switch (format) {
+				case "csv":
+					content = this.generateCSV(result);
+					break;
+				case "json":
+					content = this.generateJSON(result);
+					break;
+				case "excel":
+					// For now, export as CSV with Excel-friendly formatting
+					content = this.generateCSV(result, "\t");
+					break;
+				default:
+					throw new Error(`Unsupported export format: ${format}`);
+			}
+
+			const fs = require("fs").promises;
+			await fs.writeFile(filePath, content, "utf8");
+
+			Logger.info("Results exported successfully", "exportResults", {
+				filePath,
+			});
+		} catch (error) {
+			Logger.error("Failed to export results", error as Error);
+			throw error;
+		}
+	}
+
+	private generateCSV(result: QueryResult, delimiter: string = ","): string {
+		const lines: string[] = [];
+
+		// Add headers
+		const headers = result.columns.map((col) => `"${col.name}"`).join(delimiter);
+		lines.push(headers);
+
+		// Add data rows
+		result.rows.forEach((row) => {
+			const values = row.map((cell) => {
+				const cellStr = cell !== null ? String(cell) : "";
+				// Escape quotes and wrap in quotes if contains delimiter or quotes
+				return cellStr.includes(delimiter) || cellStr.includes('"') ? `"${cellStr.replace(/"/g, '""')}"` : cellStr;
+			});
+			lines.push(values.join(delimiter));
+		});
+
+		return lines.join("\n");
+	}
+
+	private generateJSON(result: QueryResult): string {
+		const data = result.rows.map((row) => {
+			const obj: any = {};
+			result.columns.forEach((col, index) => {
+				obj[col.name] = row[index];
+			});
+			return obj;
+		});
+
+		return JSON.stringify(data, null, 2);
+	}
 }

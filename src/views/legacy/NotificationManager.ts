@@ -1,487 +1,497 @@
-import * as vscode from 'vscode';
-import { Logger } from '@/utils/Logger';
+import * as vscode from "vscode";
+import { Logger } from "@/utils/Logger";
 
 export interface NotificationConfig {
-    enabled: boolean;
-    soundEnabled: boolean;
-    showProgress: boolean;
-    groupSimilar: boolean;
-    maxNotifications: number;
-    autoHideDelay: number;
-    position: 'top' | 'bottom' | 'center';
+	enabled: boolean;
+	soundEnabled: boolean;
+	showProgress: boolean;
+	groupSimilar: boolean;
+	maxNotifications: number;
+	autoHideDelay: number;
+	position: "top" | "bottom" | "center";
 }
 
 export interface NotificationItem {
-    id: string;
-    type: 'info' | 'success' | 'warning' | 'error';
-    title: string;
-    message: string;
-    details?: string | undefined;
-    actions?: NotificationAction[] | undefined;
-    timestamp: number;
-    source: string;
-    category: string;
-    priority: 'low' | 'normal' | 'high' | 'urgent';
-    persistent: boolean;
-    read: boolean;
-    groupId?: string | undefined;
-    metadata?: Record<string, any> | undefined;
+	id: string;
+	type: "info" | "success" | "warning" | "error";
+	title: string;
+	message: string;
+	details?: string | undefined;
+	actions?: NotificationAction[] | undefined;
+	timestamp: number;
+	source: string;
+	category: string;
+	priority: "low" | "normal" | "high" | "urgent";
+	persistent: boolean;
+	read: boolean;
+	groupId?: string | undefined;
+	metadata?: Record<string, any> | undefined;
 }
 
 export interface NotificationAction {
-    id: string;
-    label: string;
-    action: () => Promise<void> | void;
-    primary?: boolean;
+	id: string;
+	label: string;
+	action: () => Promise<void> | void;
+	primary?: boolean;
 }
 
-
 export class NotificationManager {
-    private static instance: NotificationManager;
-    private config: NotificationConfig;
-    private notifications: Map<string, NotificationItem> = new Map();
-    private outputChannel: vscode.OutputChannel;
-    private statusBarItem: vscode.StatusBarItem;
-    private webviewPanel: vscode.WebviewPanel | undefined;
-    private notificationHistory: NotificationItem[] = [];
-    private maxHistorySize: number = 1000;
+	private static instance: NotificationManager;
+	private config: NotificationConfig;
+	private notifications: Map<string, NotificationItem> = new Map();
+	private outputChannel: vscode.OutputChannel;
+	private statusBarItem: vscode.StatusBarItem;
+	private webviewPanel: vscode.WebviewPanel | undefined;
+	private notificationHistory: NotificationItem[] = [];
+	private maxHistorySize: number = 1000;
 
-    private constructor() {
-        this.config = this.loadConfig();
-        this.outputChannel = vscode.window.createOutputChannel('PostgreSQL Notifications');
-        this.statusBarItem = vscode.window.createStatusBarItem(
-            vscode.StatusBarAlignment.Left,
-            90
-        );
-        this.statusBarItem.command = 'postgresql.showNotifications';
+	private constructor() {
+		this.config = this.loadConfig();
+		this.outputChannel = vscode.window.createOutputChannel("PostgreSQL Notifications");
+		this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 90);
+		this.statusBarItem.command = "postgresql.showNotifications";
 
-        this.setupEventListeners();
-        this.updateStatusBar();
-    }
+		this.setupEventListeners();
+		this.updateStatusBar();
+	}
 
-    static getInstance(): NotificationManager {
-        if (!NotificationManager.instance) {
-            NotificationManager.instance = new NotificationManager();
-        }
-        return NotificationManager.instance;
-    }
+	static getInstance(): NotificationManager {
+		if (!NotificationManager.instance) {
+			NotificationManager.instance = new NotificationManager();
+		}
+		return NotificationManager.instance;
+	}
 
-    private loadConfig(): NotificationConfig {
-        const vscodeConfig = vscode.workspace.getConfiguration('postgresql.notifications');
-        return {
-            enabled: vscodeConfig.get('enabled', true),
-            soundEnabled: vscodeConfig.get('soundEnabled', false),
-            showProgress: vscodeConfig.get('showProgress', true),
-            groupSimilar: vscodeConfig.get('groupSimilar', true),
-            maxNotifications: vscodeConfig.get('maxNotifications', 100),
-            autoHideDelay: vscodeConfig.get('autoHideDelay', 5000),
-            position: vscodeConfig.get('position', 'bottom')
-        };
-    }
+	private loadConfig(): NotificationConfig {
+		const vscodeConfig = vscode.workspace.getConfiguration("postgresql-schema-sync.notifications");
+		return {
+			enabled: vscodeConfig.get("enabled", true),
+			soundEnabled: vscodeConfig.get("soundEnabled", false),
+			showProgress: vscodeConfig.get("showProgress", true),
+			groupSimilar: vscodeConfig.get("groupSimilar", true),
+			maxNotifications: vscodeConfig.get("maxNotifications", 100),
+			autoHideDelay: vscodeConfig.get("autoHideDelay", 5000),
+			position: vscodeConfig.get("position", "bottom"),
+		};
+	}
 
-    private setupEventListeners(): void {
-        // Listen for configuration changes
-        vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('postgresql.notifications')) {
-                this.config = this.loadConfig();
-            }
-        });
-    }
+	private setupEventListeners(): void {
+		// Listen for configuration changes
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration("postgresql-schema-sync.notifications")) {
+				this.config = this.loadConfig();
+			}
+		});
+	}
 
-    private updateStatusBar(): void {
-        const unreadCount = Array.from(this.notifications.values()).filter(n => !n.read).length;
-        const errorCount = Array.from(this.notifications.values()).filter(n => n.type === 'error').length;
-        const warningCount = Array.from(this.notifications.values()).filter(n => n.type === 'warning').length;
-        const urgentCount = Array.from(this.notifications.values()).filter(n => n.priority === 'urgent').length;
+	private updateStatusBar(): void {
+		const unreadCount = Array.from(this.notifications.values()).filter((n) => !n.read).length;
+		const errorCount = Array.from(this.notifications.values()).filter((n) => n.type === "error").length;
+		const warningCount = Array.from(this.notifications.values()).filter((n) => n.type === "warning").length;
+		const urgentCount = Array.from(this.notifications.values()).filter((n) => n.priority === "urgent").length;
 
-        let statusText = '$(bell)';
-        let tooltip = 'PostgreSQL Notifications';
-        let color: vscode.ThemeColor | undefined;
+		let statusText = "$(bell)";
+		let tooltip = "PostgreSQL Notifications";
+		let color: vscode.ThemeColor | undefined;
 
-        if (urgentCount > 0) {
-            statusText = `$(bell-dot) ${urgentCount} urgent`;
-            tooltip = `🚨 ${urgentCount} urgent notification${urgentCount > 1 ? 's' : ''} requiring immediate attention`;
-            color = new vscode.ThemeColor('statusBarItem.errorBackground');
-        } else if (errorCount > 0) {
-            statusText = `$(error) ${errorCount} error${errorCount > 1 ? 's' : ''}`;
-            tooltip = `❌ ${errorCount} error notification${errorCount > 1 ? 's' : ''}\n⚠️ ${warningCount} warning${warningCount > 1 ? 's' : ''}`;
-            color = new vscode.ThemeColor('statusBarItem.errorBackground');
-        } else if (warningCount > 0) {
-            statusText = `$(warning) ${warningCount} warning${warningCount > 1 ? 's' : ''}`;
-            tooltip = `⚠️ ${warningCount} warning notification${warningCount > 1 ? 's' : ''}`;
-            color = new vscode.ThemeColor('statusBarItem.warningBackground');
-        } else if (unreadCount > 0) {
-            statusText = `$(bell-dot) ${unreadCount} unread`;
-            tooltip = `📬 ${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}\nClick to view details`;
-        } else {
-            statusText = '$(bell)';
-            tooltip = '✅ No unread notifications\nAll caught up!';
-        }
+		if (urgentCount > 0) {
+			statusText = `$(bell-dot) ${urgentCount} urgent`;
+			tooltip = `🚨 ${urgentCount} urgent notification${urgentCount > 1 ? "s" : ""} requiring immediate attention`;
+			color = new vscode.ThemeColor("statusBarItem.errorBackground");
+		} else if (errorCount > 0) {
+			statusText = `$(error) ${errorCount} error${errorCount > 1 ? "s" : ""}`;
+			tooltip = `❌ ${errorCount} error notification${errorCount > 1 ? "s" : ""}\n⚠️ ${warningCount} warning${warningCount > 1 ? "s" : ""}`;
+			color = new vscode.ThemeColor("statusBarItem.errorBackground");
+		} else if (warningCount > 0) {
+			statusText = `$(warning) ${warningCount} warning${warningCount > 1 ? "s" : ""}`;
+			tooltip = `⚠️ ${warningCount} warning notification${warningCount > 1 ? "s" : ""}`;
+			color = new vscode.ThemeColor("statusBarItem.warningBackground");
+		} else if (unreadCount > 0) {
+			statusText = `$(bell-dot) ${unreadCount} unread`;
+			tooltip = `📬 ${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}\nClick to view details`;
+		} else {
+			statusText = "$(bell)";
+			tooltip = "✅ No unread notifications\nAll caught up!";
+		}
 
-        // Add detailed breakdown to tooltip
-        if (unreadCount > 0) {
-            const stats = this.getStatistics();
-            tooltip += '\n\n📊 Breakdown:';
-            if (stats.byType.error > 0) {tooltip += `\n  ❌ Errors: ${stats.byType.error}`;}
-            if (stats.byType.warning > 0) {tooltip += `\n  ⚠️ Warnings: ${stats.byType.warning}`;}
-            if (stats.byType.success > 0) {tooltip += `\n  ✅ Success: ${stats.byType.success}`;}
-            if (stats.byType.info > 0) {tooltip += `\n  ℹ️ Info: ${stats.byType.info}`;}
+		// Add detailed breakdown to tooltip
+		if (unreadCount > 0) {
+			const stats = this.getStatistics();
+			tooltip += "\n\n📊 Breakdown:";
+			if (stats.byType.error > 0) {
+				tooltip += `\n  ❌ Errors: ${stats.byType.error}`;
+			}
+			if (stats.byType.warning > 0) {
+				tooltip += `\n  ⚠️ Warnings: ${stats.byType.warning}`;
+			}
+			if (stats.byType.success > 0) {
+				tooltip += `\n  ✅ Success: ${stats.byType.success}`;
+			}
+			if (stats.byType.info > 0) {
+				tooltip += `\n  ℹ️ Info: ${stats.byType.info}`;
+			}
 
-            // Show top categories
-            const topCategories = Object.entries(stats.byCategory)
-                .sort(([,a], [,b]) => b - a)
-                .slice(0, 3);
-            if (topCategories.length > 0) {
-                tooltip += '\n\n📂 Top Categories:';
-                topCategories.forEach(([category, count]) => {
-                    tooltip += `\n  📁 ${category}: ${count}`;
-                });
-            }
-        }
+			// Show top categories
+			const topCategories = Object.entries(stats.byCategory)
+				.sort(([, a], [, b]) => b - a)
+				.slice(0, 3);
+			if (topCategories.length > 0) {
+				tooltip += "\n\n📂 Top Categories:";
+				topCategories.forEach(([category, count]) => {
+					tooltip += `\n  📁 ${category}: ${count}`;
+				});
+			}
+		}
 
-        this.statusBarItem.text = statusText;
-        this.statusBarItem.tooltip = tooltip;
-        if (color) {
-            this.statusBarItem.backgroundColor = color;
-        }
-        this.statusBarItem.show();
-    }
+		this.statusBarItem.text = statusText;
+		this.statusBarItem.tooltip = tooltip;
+		if (color) {
+			this.statusBarItem.backgroundColor = color;
+		}
+		this.statusBarItem.show();
+	}
 
-    /**
-     * Show an informational notification
-     */
-    showInformation(
-        title: string,
-        message: string,
-        source: string = 'system',
-        options?: {
-            details?: string;
-            actions?: NotificationAction[];
-            category?: string;
-            priority?: 'low' | 'normal' | 'high' | 'urgent';
-            persistent?: boolean;
-            groupId?: string;
-        }
-    ): string {
-        return this.showNotification({
-            type: 'info',
-            title,
-            message,
-            source,
-            ...options
-        });
-    }
+	/**
+	 * Show an informational notification
+	 */
+	showInformation(
+		title: string,
+		message: string,
+		source: string = "system",
+		options?: {
+			details?: string;
+			actions?: NotificationAction[];
+			category?: string;
+			priority?: "low" | "normal" | "high" | "urgent";
+			persistent?: boolean;
+			groupId?: string;
+		},
+	): string {
+		return this.showNotification({
+			type: "info",
+			title,
+			message,
+			source,
+			...options,
+		});
+	}
 
-    /**
-     * Show a success notification
-     */
-    showSuccess(
-        title: string,
-        message: string,
-        source: string = 'system',
-        options?: {
-            details?: string;
-            actions?: NotificationAction[];
-            category?: string;
-            persistent?: boolean;
-            groupId?: string;
-        }
-    ): string {
-        return this.showNotification({
-            type: 'success',
-            title,
-            message,
-            source,
-            priority: 'normal',
-            ...options
-        });
-    }
+	/**
+	 * Show a success notification
+	 */
+	showSuccess(
+		title: string,
+		message: string,
+		source: string = "system",
+		options?: {
+			details?: string;
+			actions?: NotificationAction[];
+			category?: string;
+			persistent?: boolean;
+			groupId?: string;
+		},
+	): string {
+		return this.showNotification({
+			type: "success",
+			title,
+			message,
+			source,
+			priority: "normal",
+			...options,
+		});
+	}
 
-    /**
-     * Show a warning notification
-     */
-    showWarning(
-        title: string,
-        message: string,
-        source: string = 'system',
-        options?: {
-            details?: string;
-            actions?: NotificationAction[];
-            category?: string;
-            priority?: 'low' | 'normal' | 'high' | 'urgent';
-            persistent?: boolean;
-            groupId?: string;
-        }
-    ): string {
-        return this.showNotification({
-            type: 'warning',
-            title,
-            message,
-            source,
-            priority: options?.priority || 'normal',
-            ...options
-        });
-    }
+	/**
+	 * Show a warning notification
+	 */
+	showWarning(
+		title: string,
+		message: string,
+		source: string = "system",
+		options?: {
+			details?: string;
+			actions?: NotificationAction[];
+			category?: string;
+			priority?: "low" | "normal" | "high" | "urgent";
+			persistent?: boolean;
+			groupId?: string;
+		},
+	): string {
+		return this.showNotification({
+			type: "warning",
+			title,
+			message,
+			source,
+			priority: options?.priority || "normal",
+			...options,
+		});
+	}
 
-    /**
-     * Show an error notification
-     */
-    showError(
-        title: string,
-        message: string,
-        source: string = 'system',
-        options?: {
-            details?: string;
-            actions?: NotificationAction[];
-            category?: string;
-            priority?: 'low' | 'normal' | 'high' | 'urgent';
-            persistent?: boolean;
-            groupId?: string;
-        }
-    ): string {
-        return this.showNotification({
-            type: 'error',
-            title,
-            message,
-            source,
-            priority: options?.priority || 'high',
-            persistent: options?.persistent !== false,
-            ...options
-        });
-    }
-    private showNotification(options: {
-        type: 'info' | 'success' | 'warning' | 'error';
-        title: string;
-        message: string;
-        source: string;
-        details?: string;
-        actions?: NotificationAction[];
-        category?: string;
-        priority?: 'low' | 'normal' | 'high' | 'urgent';
-        persistent?: boolean;
-        groupId?: string;
-    }): string {
-        if (!this.config.enabled) {
-            return '';
-        }
+	/**
+	 * Show an error notification
+	 */
+	showError(
+		title: string,
+		message: string,
+		source: string = "system",
+		options?: {
+			details?: string;
+			actions?: NotificationAction[];
+			category?: string;
+			priority?: "low" | "normal" | "high" | "urgent";
+			persistent?: boolean;
+			groupId?: string;
+		},
+	): string {
+		return this.showNotification({
+			type: "error",
+			title,
+			message,
+			source,
+			priority: options?.priority || "high",
+			persistent: options?.persistent !== false,
+			...options,
+		});
+	}
+	private showNotification(options: {
+		type: "info" | "success" | "warning" | "error";
+		title: string;
+		message: string;
+		source: string;
+		details?: string;
+		actions?: NotificationAction[];
+		category?: string;
+		priority?: "low" | "normal" | "high" | "urgent";
+		persistent?: boolean;
+		groupId?: string;
+	}): string {
+		if (!this.config.enabled) {
+			return "";
+		}
 
-        const id = `notification_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+		const id = `notification_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        const notification: NotificationItem = {
-            id,
-            type: options.type,
-            title: options.title,
-            message: options.message,
-            details: options.details || undefined,
-            actions: options.actions || undefined,
-            timestamp: Date.now(),
-            source: options.source,
-            category: options.category || 'general',
-            priority: options.priority || 'normal',
-            persistent: options.persistent || false,
-            read: false,
-            groupId: options.groupId || undefined,
-            metadata: {}
-        };
+		const notification: NotificationItem = {
+			id,
+			type: options.type,
+			title: options.title,
+			message: options.message,
+			details: options.details || undefined,
+			actions: options.actions || undefined,
+			timestamp: Date.now(),
+			source: options.source,
+			category: options.category || "general",
+			priority: options.priority || "normal",
+			persistent: options.persistent || false,
+			read: false,
+			groupId: options.groupId || undefined,
+			metadata: {},
+		};
 
-        this.notifications.set(id, notification);
-        this.addToHistory(notification);
+		this.notifications.set(id, notification);
+		this.addToHistory(notification);
 
-        // Show VSCode notification for high priority items
-        if (options.priority === 'urgent' || options.priority === 'high') {
-            this.showVSCodeNotification(notification);
-        }
+		// Show VSCode notification for high priority items
+		if (options.priority === "urgent" || options.priority === "high") {
+			this.showVSCodeNotification(notification);
+		}
 
-        // Play sound if enabled
-        if (this.config.soundEnabled) {
-            this.playNotificationSound(options.type);
-        }
+		// Play sound if enabled
+		if (this.config.soundEnabled) {
+			this.playNotificationSound(options.type);
+		}
 
-        // Auto-hide after delay if not persistent
-        if (!options.persistent && this.config.autoHideDelay > 0) {
-            setTimeout(() => {
-                this.markAsRead(id);
-            }, this.config.autoHideDelay);
-        }
+		// Auto-hide after delay if not persistent
+		if (!options.persistent && this.config.autoHideDelay > 0) {
+			setTimeout(() => {
+				this.markAsRead(id);
+			}, this.config.autoHideDelay);
+		}
 
-        this.updateStatusBar();
+		this.updateStatusBar();
 
-        // Log to output channel
-        this.logToOutputChannel(notification);
+		// Log to output channel
+		this.logToOutputChannel(notification);
 
-        return id;
-    }
+		return id;
+	}
 
-    private showVSCodeNotification(notification: NotificationItem): void {
-        const message = `${notification.title}: ${notification.message}`;
+	private showVSCodeNotification(notification: NotificationItem): void {
+		const message = `${notification.title}: ${notification.message}`;
 
-        switch (notification.type) {
-            case 'error':
-                vscode.window.showErrorMessage(message, ...(notification.actions?.map(a => a.label) || []))
-                    .then(selection => {
-                        if (selection && notification.actions) {
-                            const action = notification.actions.find(a => a.label === selection);
-                            if (action) {
-                                action.action();
-                            }
-                        }
-                    });
-                break;
-            case 'warning':
-                vscode.window.showWarningMessage(message, ...(notification.actions?.map(a => a.label) || []))
-                    .then(selection => {
-                        if (selection && notification.actions) {
-                            const action = notification.actions.find(a => a.label === selection);
-                            if (action) {
-                                action.action();
-                            }
-                        }
-                    });
-                break;
-            case 'success':
-                vscode.window.showInformationMessage(message, ...(notification.actions?.map(a => a.label) || []))
-                    .then(selection => {
-                        if (selection && notification.actions) {
-                            const action = notification.actions.find(a => a.label === selection);
-                            if (action) {
-                                action.action();
-                            }
-                        }
-                    });
-                break;
-            default:
-                vscode.window.showInformationMessage(message, ...(notification.actions?.map(a => a.label) || []))
-                    .then(selection => {
-                        if (selection && notification.actions) {
-                            const action = notification.actions.find(a => a.label === selection);
-                            if (action) {
-                                action.action();
-                            }
-                        }
-                    });
-        }
-    }
+		switch (notification.type) {
+			case "error":
+				vscode.window
+					.showErrorMessage(message, ...(notification.actions?.map((a) => a.label) || []))
+					.then((selection) => {
+						if (selection && notification.actions) {
+							const action = notification.actions.find((a) => a.label === selection);
+							if (action) {
+								action.action();
+							}
+						}
+					});
+				break;
+			case "warning":
+				vscode.window
+					.showWarningMessage(message, ...(notification.actions?.map((a) => a.label) || []))
+					.then((selection) => {
+						if (selection && notification.actions) {
+							const action = notification.actions.find((a) => a.label === selection);
+							if (action) {
+								action.action();
+							}
+						}
+					});
+				break;
+			case "success":
+				vscode.window
+					.showInformationMessage(message, ...(notification.actions?.map((a) => a.label) || []))
+					.then((selection) => {
+						if (selection && notification.actions) {
+							const action = notification.actions.find((a) => a.label === selection);
+							if (action) {
+								action.action();
+							}
+						}
+					});
+				break;
+			default:
+				vscode.window
+					.showInformationMessage(message, ...(notification.actions?.map((a) => a.label) || []))
+					.then((selection) => {
+						if (selection && notification.actions) {
+							const action = notification.actions.find((a) => a.label === selection);
+							if (action) {
+								action.action();
+							}
+						}
+					});
+		}
+	}
 
-    /**
-     * Mark a notification as read
-     */
-    private markAsRead(id: string): void {
-        const notification = this.notifications.get(id);
-        if (notification) {
-            notification.read = true;
-            this.updateStatusBar();
-        }
-    }
+	/**
+	 * Mark a notification as read
+	 */
+	private markAsRead(id: string): void {
+		const notification = this.notifications.get(id);
+		if (notification) {
+			notification.read = true;
+			this.updateStatusBar();
+		}
+	}
 
-    /**
-     * Mark all notifications as read
-     */
-    private markAllAsRead(): void {
-        this.notifications.forEach(notification => {
-            notification.read = true;
-        });
-        this.updateStatusBar();
-    }
+	/**
+	 * Mark all notifications as read
+	 */
+	private markAllAsRead(): void {
+		this.notifications.forEach((notification) => {
+			notification.read = true;
+		});
+		this.updateStatusBar();
+	}
 
-    /**
-     * Clear all notifications
-     */
-    private clearAll(): void {
-        this.notifications.clear();
-        this.updateStatusBar();
-    }
+	/**
+	 * Clear all notifications
+	 */
+	private clearAll(): void {
+		this.notifications.clear();
+		this.updateStatusBar();
+	}
 
-    /**
-     * Get all notifications
-     */
-    private getNotifications(filter?: {
-        type?: 'info' | 'success' | 'warning' | 'error';
-        category?: string;
-        unreadOnly?: boolean;
-        source?: string;
-    }): NotificationItem[] {
-        let notifications = Array.from(this.notifications.values());
+	/**
+	 * Get all notifications
+	 */
+	private getNotifications(filter?: {
+		type?: "info" | "success" | "warning" | "error";
+		category?: string;
+		unreadOnly?: boolean;
+		source?: string;
+	}): NotificationItem[] {
+		let notifications = Array.from(this.notifications.values());
 
-        if (filter) {
-            if (filter.type) {
-                notifications = notifications.filter(n => n.type === filter.type);
-            }
-            if (filter.category) {
-                notifications = notifications.filter(n => n.category === filter.category);
-            }
-            if (filter.unreadOnly) {
-                notifications = notifications.filter(n => !n.read);
-            }
-            if (filter.source) {
-                notifications = notifications.filter(n => n.source === filter.source);
-            }
-        }
+		if (filter) {
+			if (filter.type) {
+				notifications = notifications.filter((n) => n.type === filter.type);
+			}
+			if (filter.category) {
+				notifications = notifications.filter((n) => n.category === filter.category);
+			}
+			if (filter.unreadOnly) {
+				notifications = notifications.filter((n) => !n.read);
+			}
+			if (filter.source) {
+				notifications = notifications.filter((n) => n.source === filter.source);
+			}
+		}
 
-        return notifications.sort((a, b) => b.timestamp - a.timestamp);
-    }
+		return notifications.sort((a, b) => b.timestamp - a.timestamp);
+	}
 
+	private playNotificationSound(type: string): void {
+		if (!this.config.soundEnabled) {
+			return;
+		}
 
-    private playNotificationSound(type: string): void {
-        if (!this.config.soundEnabled) {
-            return;
-        }
+		try {
+			// Try to play system notification sound using VS Code's built-in capabilities
+			switch (type) {
+				case "error":
+					// For error sounds, we can use VS Code's error sound if available
+					vscode.commands.executeCommand("notifications.clearAll");
+					break;
+				case "warning":
+					// For warnings, show a warning message that makes a sound
+					vscode.window.showWarningMessage(`Notification sound: ${type}`);
+					break;
+				case "success":
+				case "info":
+				default:
+					// For success and info, show an info message that makes a sound
+					vscode.window.showInformationMessage(`Notification sound: ${type}`);
+					break;
+			}
 
-        try {
-            // Try to play system notification sound using VS Code's built-in capabilities
-            switch (type) {
-                case 'error':
-                    // For error sounds, we can use VS Code's error sound if available
-                    vscode.commands.executeCommand('notifications.clearAll');
-                    break;
-                case 'warning':
-                    // For warnings, show a warning message that makes a sound
-                    vscode.window.showWarningMessage(`Notification sound: ${type}`);
-                    break;
-                case 'success':
-                case 'info':
-                default:
-                    // For success and info, show an info message that makes a sound
-                    vscode.window.showInformationMessage(`Notification sound: ${type}`);
-                    break;
-            }
+			Logger.debug(`Notification sound played for type: ${type}`, "playNotificationSound");
+		} catch (error) {
+			// Fallback: just log if sound playback fails
+			Logger.debug(
+				`Notification sound requested for type: ${type} (sound playback not available)`,
+				"playNotificationSound",
+			);
+		}
+	}
+	async showNotificationCenter(): Promise<void> {
+		if (this.webviewPanel) {
+			this.webviewPanel.reveal();
+			return;
+		}
 
-            Logger.debug(`Notification sound played for type: ${type}`, 'playNotificationSound');
-        } catch (error) {
-            // Fallback: just log if sound playback fails
-            Logger.debug(`Notification sound requested for type: ${type} (sound playback not available)`, 'playNotificationSound');
-        }
-    }
-    async showNotificationCenter(): Promise<void> {
-        if (this.webviewPanel) {
-            this.webviewPanel.reveal();
-            return;
-        }
+		this.webviewPanel = vscode.window.createWebviewPanel(
+			"notificationCenter",
+			"PostgreSQL Notifications",
+			vscode.ViewColumn.One,
+			{ enableScripts: true, retainContextWhenHidden: true },
+		);
 
-        this.webviewPanel = vscode.window.createWebviewPanel(
-            'notificationCenter',
-            'PostgreSQL Notifications',
-            vscode.ViewColumn.One,
-            { enableScripts: true, retainContextWhenHidden: true }
-        );
+		this.webviewPanel.onDidDispose(() => {
+			this.webviewPanel = undefined;
+		});
 
-        this.webviewPanel.onDidDispose(() => {
-            this.webviewPanel = undefined;
-        });
+		const htmlContent = await this.generateNotificationCenterHtml();
+		this.webviewPanel.webview.html = htmlContent;
 
-        const htmlContent = await this.generateNotificationCenterHtml();
-        this.webviewPanel.webview.html = htmlContent;
+		this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
+			await this.handleNotificationCenterMessage(message);
+		});
+	}
 
-        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
-            await this.handleNotificationCenterMessage(message);
-        });
-    }
+	private async generateNotificationCenterHtml(): Promise<string> {
+		const notifications = this.getNotifications();
+		// const groups = this.getGroups(); // Used in HTML generation below
+		const unreadCount = notifications.filter((n) => !n.read).length;
 
-    private async generateNotificationCenterHtml(): Promise<string> {
-        const notifications = this.getNotifications();
-        // const groups = this.getGroups(); // Used in HTML generation below
-        const unreadCount = notifications.filter(n => !n.read).length;
-
-        return `
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -738,19 +748,19 @@ export class NotificationManager {
                 <div class="content-area">
                     <div class="stats-bar">
                         <div class="stat-card">
-                            <div class="stat-value">${notifications.filter(n => n.type === 'error').length}</div>
+                            <div class="stat-value">${notifications.filter((n) => n.type === "error").length}</div>
                             <div class="stat-label">Errors</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">${notifications.filter(n => n.type === 'warning').length}</div>
+                            <div class="stat-value">${notifications.filter((n) => n.type === "warning").length}</div>
                             <div class="stat-label">Warnings</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">${notifications.filter(n => n.type === 'success').length}</div>
+                            <div class="stat-value">${notifications.filter((n) => n.type === "success").length}</div>
                             <div class="stat-label">Success</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">${notifications.filter(n => n.type === 'info').length}</div>
+                            <div class="stat-value">${notifications.filter((n) => n.type === "info").length}</div>
                             <div class="stat-label">Info</div>
                         </div>
                     </div>
@@ -766,9 +776,9 @@ export class NotificationManager {
 
                         <select class="filter-select" id="sourceFilter" onchange="filterNotifications()">
                             <option value="">All Sources</option>
-                            ${Array.from(new Set(notifications.map(n => n.source))).map(source =>
-            `<option value="${source}">${source}</option>`
-        ).join('')}
+                            ${Array.from(new Set(notifications.map((n) => n.source)))
+															.map((source) => `<option value="${source}">${source}</option>`)
+															.join("")}
                         </select>
 
                         <label>
@@ -778,35 +788,51 @@ export class NotificationManager {
                     </div>
 
                     <div class="notifications-container" id="notificationsContainer">
-                        ${notifications.length > 0 ? notifications.map(notification => `
-                            <div class="notification-item ${notification.read ? '' : 'unread'}" data-id="${notification.id}">
+                        ${
+													notifications.length > 0
+														? notifications
+																.map(
+																	(notification) => `
+                            <div class="notification-item ${notification.read ? "" : "unread"}" data-id="${notification.id}">
                                 <div class="notification-header">
                                     <div class="notification-title">${notification.title}</div>
                                     <div class="notification-time">${new Date(notification.timestamp).toLocaleString()}</div>
                                 </div>
                                 <div class="notification-message">${notification.message}</div>
-                                ${notification.details ? `<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">${notification.details}</div>` : ''}
+                                ${notification.details ? `<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">${notification.details}</div>` : ""}
                                 <div class="notification-meta">
                                     <span class="notification-type type-${notification.type}">${notification.type}</span>
                                     <span>${notification.source}</span>
                                     <span>${notification.category}</span>
                                     <span class="priority-${notification.priority}">${notification.priority}</span>
                                 </div>
-                                ${notification.actions && notification.actions.length > 0 ? `
+                                ${
+																	notification.actions && notification.actions.length > 0
+																		? `
                                     <div class="notification-actions">
-                                        ${notification.actions.map(action => `
+                                        ${notification.actions
+																					.map(
+																						(action) => `
                                             <button class="action-btn" onclick="executeAction('${notification.id}', '${action.id}')">
                                                 ${action.label}
                                             </button>
-                                        `).join('')}
+                                        `,
+																					)
+																					.join("")}
                                     </div>
-                                ` : ''}
+                                `
+																		: ""
+																}
                             </div>
-                        `).join('') : `
+                        `,
+																)
+																.join("")
+														: `
                             <div class="empty-state">
                                 No notifications to display
                             </div>
-                        `}
+                        `
+												}
                     </div>
                 </div>
 
@@ -851,186 +877,198 @@ export class NotificationManager {
             </body>
             </html>
         `;
-    }
+	}
 
-    private async handleNotificationCenterMessage(message: any): Promise<void> {
-        switch (message.command) {
-            case 'markAllAsRead':
-                this.markAllAsRead();
-                await this.refreshNotificationCenter();
-                break;
+	private async handleNotificationCenterMessage(message: any): Promise<void> {
+		switch (message.command) {
+			case "markAllAsRead":
+				this.markAllAsRead();
+				await this.refreshNotificationCenter();
+				break;
 
-            case 'clearAll':
-                this.clearAll();
-                await this.refreshNotificationCenter();
-                break;
+			case "clearAll":
+				this.clearAll();
+				await this.refreshNotificationCenter();
+				break;
 
-            case 'filterNotifications':
-                await this.refreshNotificationCenter();
-                break;
+			case "filterNotifications":
+				await this.refreshNotificationCenter();
+				break;
 
-            case 'executeAction':
-                await this.executeNotificationAction(message.notificationId, message.actionId);
-                break;
+			case "executeAction":
+				await this.executeNotificationAction(message.notificationId, message.actionId);
+				break;
 
-            default:
-                Logger.warn(`Unknown notification center command: ${message.command}`);
-                break;
-        }
-    }
+			default:
+				Logger.warn(`Unknown notification center command: ${message.command}`);
+				break;
+		}
+	}
 
-    private async refreshNotificationCenter(): Promise<void> {
-        if (this.webviewPanel) {
-            const htmlContent = await this.generateNotificationCenterHtml();
-            this.webviewPanel.webview.html = htmlContent;
-        }
-    }
+	private async refreshNotificationCenter(): Promise<void> {
+		if (this.webviewPanel) {
+			const htmlContent = await this.generateNotificationCenterHtml();
+			this.webviewPanel.webview.html = htmlContent;
+		}
+	}
 
-    private async executeNotificationAction(notificationId: string, actionId: string): Promise<void> {
-        if (!notificationId || !actionId) {
-            Logger.warn(`Invalid notification action parameters: ${notificationId}, ${actionId}`);
-            return;
-        }
+	private async executeNotificationAction(notificationId: string, actionId: string): Promise<void> {
+		if (!notificationId || !actionId) {
+			Logger.warn(`Invalid notification action parameters: ${notificationId}, ${actionId}`);
+			return;
+		}
 
-        const notification = this.notifications.get(notificationId);
-        if (!notification) {
-            Logger.warn(`Notification not found for action execution: ${notificationId}`);
-            return;
-        }
+		const notification = this.notifications.get(notificationId);
+		if (!notification) {
+			Logger.warn(`Notification not found for action execution: ${notificationId}`);
+			return;
+		}
 
-        if (!notification.actions || notification.actions.length === 0) {
-            Logger.warn(`Notification has no actions: ${notificationId}`);
-            return;
-        }
+		if (!notification.actions || notification.actions.length === 0) {
+			Logger.warn(`Notification has no actions: ${notificationId}`);
+			return;
+		}
 
-        const action = notification.actions.find(a => a.id === actionId);
-        if (!action) {
-            Logger.warn(`Action not found in notification: ${notificationId}, ${actionId}`);
-            return;
-        }
+		const action = notification.actions.find((a) => a.id === actionId);
+		if (!action) {
+			Logger.warn(`Action not found in notification: ${notificationId}, ${actionId}`);
+			return;
+		}
 
-        try {
-            await action.action();
-            this.markAsRead(notificationId);
-        } catch (error) {
-            Logger.error('Failed to execute notification action', error as Error, 'executeNotificationAction', { notificationId, actionId });
-            vscode.window.showErrorMessage(`Failed to execute action: ${(error as Error).message}`);
-        }
-    }
+		try {
+			await action.action();
+			this.markAsRead(notificationId);
+		} catch (error) {
+			Logger.error("Failed to execute notification action", error as Error, "executeNotificationAction", {
+				notificationId,
+				actionId,
+			});
+			vscode.window.showErrorMessage(`Failed to execute action: ${(error as Error).message}`);
+		}
+	}
 
-    private addToHistory(notification: NotificationItem): void {
-        this.notificationHistory.unshift(notification);
+	private addToHistory(notification: NotificationItem): void {
+		this.notificationHistory.unshift(notification);
 
-        // Trim history if it gets too large
-        if (this.notificationHistory.length > this.maxHistorySize) {
-            this.notificationHistory = this.notificationHistory.slice(0, this.maxHistorySize);
-        }
-    }
+		// Trim history if it gets too large
+		if (this.notificationHistory.length > this.maxHistorySize) {
+			this.notificationHistory = this.notificationHistory.slice(0, this.maxHistorySize);
+		}
+	}
 
-    private logToOutputChannel(notification: NotificationItem): void {
-        const timestamp = new Date(notification.timestamp).toISOString();
-        const logEntry = `[${timestamp}] [${notification.type.toUpperCase()}] ${notification.title}: ${notification.message}`;
+	private logToOutputChannel(notification: NotificationItem): void {
+		const timestamp = new Date(notification.timestamp).toISOString();
+		const logEntry = `[${timestamp}] [${notification.type.toUpperCase()}] ${notification.title}: ${notification.message}`;
 
-        this.outputChannel.appendLine(logEntry);
+		this.outputChannel.appendLine(logEntry);
 
-        if (notification.details) {
-            this.outputChannel.appendLine(`  Details: ${notification.details}`);
-        }
+		if (notification.details) {
+			this.outputChannel.appendLine(`  Details: ${notification.details}`);
+		}
 
-        if (notification.actions && notification.actions.length > 0) {
-            this.outputChannel.appendLine(`  Actions: ${notification.actions.map(a => a.label).join(', ')}`);
-        }
-    }
+		if (notification.actions && notification.actions.length > 0) {
+			this.outputChannel.appendLine(`  Actions: ${notification.actions.map((a) => a.label).join(", ")}`);
+		}
+	}
 
-    /**
-     * Get notification statistics
-     */
-    getStatistics(): {
-        total: number;
-        unread: number;
-        byType: Record<string, number>;
-        bySource: Record<string, number>;
-        byCategory: Record<string, number>;
-    } {
-        const notifications = Array.from(this.notifications.values());
-        const unread = notifications.filter(n => !n.read).length;
+	/**
+	 * Get notification statistics
+	 */
+	getStatistics(): {
+		total: number;
+		unread: number;
+		byType: Record<string, number>;
+		bySource: Record<string, number>;
+		byCategory: Record<string, number>;
+	} {
+		const notifications = Array.from(this.notifications.values());
+		const unread = notifications.filter((n) => !n.read).length;
 
-        const byType = notifications.reduce((acc, n) => {
-            acc[n.type] = (acc[n.type] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
+		const byType = notifications.reduce(
+			(acc, n) => {
+				acc[n.type] = (acc[n.type] || 0) + 1;
+				return acc;
+			},
+			{} as Record<string, number>,
+		);
 
-        const bySource = notifications.reduce((acc, n) => {
-            acc[n.source] = (acc[n.source] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
+		const bySource = notifications.reduce(
+			(acc, n) => {
+				acc[n.source] = (acc[n.source] || 0) + 1;
+				return acc;
+			},
+			{} as Record<string, number>,
+		);
 
-        const byCategory = notifications.reduce((acc, n) => {
-            acc[n.category] = (acc[n.category] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
+		const byCategory = notifications.reduce(
+			(acc, n) => {
+				acc[n.category] = (acc[n.category] || 0) + 1;
+				return acc;
+			},
+			{} as Record<string, number>,
+		);
 
-        return {
-            total: notifications.length,
-            unread,
-            byType,
-            bySource,
-            byCategory
-        };
-    }
+		return {
+			total: notifications.length,
+			unread,
+			byType,
+			bySource,
+			byCategory,
+		};
+	}
 
-    /**
-     * Export notifications to file
-     */
-    async exportNotifications(): Promise<void> {
-        try {
-            const notifications = this.getNotifications();
-            const exportData = {
-                exportedAt: new Date().toISOString(),
-                statistics: this.getStatistics(),
-                notifications: notifications.map(n => ({
-                    id: n.id,
-                    type: n.type,
-                    title: n.title,
-                    message: n.message,
-                    timestamp: new Date(n.timestamp).toISOString(),
-                    source: n.source,
-                    category: n.category,
-                    priority: n.priority,
-                    read: n.read
-                }))
-            };
+	/**
+	 * Export notifications to file
+	 */
+	async exportNotifications(): Promise<void> {
+		try {
+			const notifications = this.getNotifications();
+			const exportData = {
+				exportedAt: new Date().toISOString(),
+				statistics: this.getStatistics(),
+				notifications: notifications.map((n) => ({
+					id: n.id,
+					type: n.type,
+					title: n.title,
+					message: n.message,
+					timestamp: new Date(n.timestamp).toISOString(),
+					source: n.source,
+					category: n.category,
+					priority: n.priority,
+					read: n.read,
+				})),
+			};
 
-            const uri = await vscode.window.showSaveDialog({
-                filters: {
-                    'JSON Files': ['json'],
-                    'All Files': ['*']
-                },
-                defaultUri: vscode.Uri.file(`postgresql-notifications-${new Date().toISOString().split('T')[0]}.json`)
-            });
+			const uri = await vscode.window.showSaveDialog({
+				filters: {
+					"JSON Files": ["json"],
+					"All Files": ["*"],
+				},
+				defaultUri: vscode.Uri.file(`postgresql-notifications-${new Date().toISOString().split("T")[0]}.json`),
+			});
 
-            if (uri) {
-                await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify(exportData, null, 2), 'utf8'));
-                vscode.window.showInformationMessage('Notifications exported successfully');
-            }
-        } catch (error) {
-            Logger.error('Failed to export notifications', error as Error);
-            vscode.window.showErrorMessage('Failed to export notifications');
-        }
-    }
+			if (uri) {
+				await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify(exportData, null, 2), "utf8"));
+				vscode.window.showInformationMessage("Notifications exported successfully");
+			}
+		} catch (error) {
+			Logger.error("Failed to export notifications", error as Error);
+			vscode.window.showErrorMessage("Failed to export notifications");
+		}
+	}
 
-    /**
-     * Dispose of the notification manager
-     */
-    dispose(): void {
-        this.notifications.clear();
-        this.notificationHistory.length = 0;
-        this.outputChannel.dispose();
-        this.statusBarItem.dispose();
+	/**
+	 * Dispose of the notification manager
+	 */
+	dispose(): void {
+		this.notifications.clear();
+		this.notificationHistory.length = 0;
+		this.outputChannel.dispose();
+		this.statusBarItem.dispose();
 
-        if (this.webviewPanel) {
-            this.webviewPanel.dispose();
-            this.webviewPanel = undefined;
-        }
-    }
+		if (this.webviewPanel) {
+			this.webviewPanel.dispose();
+			this.webviewPanel = undefined;
+		}
+	}
 }

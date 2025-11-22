@@ -161,9 +161,14 @@ flowchart TD
 ```bash
 git clone https://github.com/yourusername/postgres-schema-sync.git
 cd postgres-schema-sync
-npm install
-npm run compile
+pnpm install
+pnpm run build
 ```
+
+**Code Quality:**
+- **Linting & Formatting:** Uses Biome.js for fast, comprehensive code quality checks
+- **TypeScript:** Strict type checking with JSX support
+- **Build Process:** Integrated linting and formatting in CI/CD pipeline
 
 **Project Structure:** VSCode extension (TypeScript) with comprehensive testing
 

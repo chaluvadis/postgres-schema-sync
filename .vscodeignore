@@ -5,7 +5,7 @@ src/**/*.ts
 tsconfig.json
 vsc-extension-quickstart.md
 **/tsconfig.json
-**/.eslintrc.json
+**/.biome.json
 **/*.map
 **/*.ts
 test/
@@ -13,7 +13,7 @@ node_modules/**
 .gitignore
 esbuild.js
 **/tsconfig.json
-**/eslint.config.mjs
+**/biome.json
 **/*.map
 **/*.ts
 **/.vscode-test.*
@@ -28,7 +28,7 @@ readme.md
 pnpm-lock.yaml
 pg-drive
 jest.config.js
-eslint.config.mjs
+biome.json
 scripts/
 docs/
 bin/

@@ -1,344 +1,418 @@
-import { Pool, PoolClient } from 'pg';
-import { Logger } from '@/utils/Logger';
+import { Pool, PoolClient } from "pg";
+import { Logger } from "@/utils/Logger";
 
 export interface ConnectionInfo {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  database: string;
-  username: string;
-  password: string;
-  ssl?: boolean;
-  connectionTimeoutMillis?: number;
-  query_timeout?: number;
-  createdDate?: string;
+	id: string;
+	name: string;
+	host: string;
+	port: number;
+	database: string;
+	username: string;
+	password: string;
+	ssl?: boolean;
+	connectionTimeoutMillis?: number;
+	query_timeout?: number;
+	createdDate?: string;
 }
 
 export interface ConnectionHandle {
-  connection: PoolClient;
-  release: () => void;
+	connection: PoolClient;
+	release: () => void;
 }
 
 // Native metadata interfaces to replace DotNet types
 export interface NativeColumnMetadata {
-  name: string;
-  dataType: string;
-  isNullable: boolean;
-  defaultValue?: string;
-  constraints: NativeConstraintMetadata[];
-  statistics?: ColumnStatistics;
+	name: string;
+	dataType: string;
+	isNullable: boolean;
+	defaultValue?: string;
+	constraints: NativeConstraintMetadata[];
+	statistics?: ColumnStatistics;
 }
 
 export interface NativeIndexMetadata {
-  name: string;
-  columnNames: string[];
-  isUnique: boolean;
-  statistics?: IndexStatistics;
+	name: string;
+	columnNames: string[];
+	isUnique: boolean;
+	statistics?: IndexStatistics;
 }
 
 export interface NativeConstraintMetadata {
-  name: string;
-  type: string;
-  definition?: string;
-  isEnabled: boolean;
-  referencedTable?: string;
-  referencedColumns?: string[];
+	name: string;
+	type: string;
+	definition?: string;
+	isEnabled: boolean;
+	referencedTable?: string;
+	referencedColumns?: string[];
 }
 
 export interface NativeViewMetadata {
-  name: string;
-  schema: string;
-  definition: string;
-  columns: ViewColumn[];
-  dependencies: ViewDependency[];
-  isMaterialized: boolean;
+	name: string;
+	schema: string;
+	definition: string;
+	columns: ViewColumn[];
+	dependencies: ViewDependency[];
+	isMaterialized: boolean;
 }
 
 export interface ViewColumn {
-  name: string;
-  dataType: string;
+	name: string;
+	dataType: string;
 }
 
 export interface ViewDependency {
-  type: "table" | "view" | "function";
-  name: string;
-  schema: string;
+	type: "table" | "view" | "function";
+	name: string;
+	schema: string;
 }
 
 export interface NativeFunctionMetadata {
-  name: string;
-  schema: string;
-  definition: string;
-  language: string;
-  returnType: string;
-  parameters: FunctionParameter[];
+	name: string;
+	schema: string;
+	definition: string;
+	language: string;
+	returnType: string;
+	parameters: FunctionParameter[];
 }
 
 export interface FunctionParameter {
-  name: string;
-  dataType: string;
-  mode: "IN" | "OUT" | "INOUT";
+	name: string;
+	dataType: string;
+	mode: "IN" | "OUT" | "INOUT";
 }
 
 export interface ColumnStatistics {
-  distinctValues: number;
-  nullCount: number;
-  avgLength?: number;
-  minValue?: any;
-  maxValue?: any;
+	distinctValues: number;
+	nullCount: number;
+	avgLength?: number;
+	minValue?: any;
+	maxValue?: any;
 }
 
 export interface IndexStatistics {
-  sizeInBytes: number;
-  indexScans: number;
-  tuplesRead: number;
-  tuplesFetched: number;
+	sizeInBytes: number;
+	indexScans: number;
+	tuplesRead: number;
+	tuplesFetched: number;
 }
 
 export interface ConnectionHealthStatus {
-  connectionId: string;
-  isHealthy: boolean;
-  lastChecked: Date;
-  responseTime: number;
-  errorMessage?: string;
-  poolStats?: {
-    totalCount: number;
-    idleCount: number;
-    waitingCount: number;
-  };
+	connectionId: string;
+	isHealthy: boolean;
+	lastChecked: Date;
+	responseTime: number;
+	errorMessage?: string;
+	poolStats?: {
+		totalCount: number;
+		idleCount: number;
+		waitingCount: number;
+	};
 }
 
 export class PostgreSqlConnectionManager {
-  private static instance: PostgreSqlConnectionManager;
-  private pools: Map<string, Pool> = new Map();
-  private healthStatus: Map<string, ConnectionHealthStatus> = new Map();
-  private healthCheckInterval: NodeJS.Timeout | null = null;
+	private static instance: PostgreSqlConnectionManager;
+	private pools: Map<string, Pool> = new Map();
+	private healthStatus: Map<string, ConnectionHealthStatus> = new Map();
+	private healthCheckInterval: NodeJS.Timeout | null = null;
 
-  private constructor() {
-    this.startHealthMonitoring();
-  }
+	private constructor() {
+		const constructorStart = Date.now();
+		console.log("[PostgreSQL Connection Manager] Constructor starting...");
+		Logger.debug("PostgreSqlConnectionManager constructor called", "PostgreSqlConnectionManager.constructor");
 
-  static getInstance(): PostgreSqlConnectionManager {
-    if (!PostgreSqlConnectionManager.instance) {
-      PostgreSqlConnectionManager.instance = new PostgreSqlConnectionManager();
-    }
-    return PostgreSqlConnectionManager.instance;
-  }
+		const constructorDuration = Date.now() - constructorStart;
+		console.log(`[PostgreSQL Connection Manager] Constructor completed in ${constructorDuration}ms`);
 
-  async createConnection(connectionInfo: ConnectionInfo, cancellationToken?: AbortSignal): Promise<ConnectionHandle> {
-    try {
-      const pool = this.getOrCreatePool(connectionInfo);
+		if (constructorDuration > 1000) {
+			console.warn(
+				`[PostgreSQL Connection Manager] WARNING: Constructor took ${constructorDuration}ms - this might be slow!`,
+			);
+		}
 
-      if (cancellationToken?.aborted) {
-        throw new Error('Connection creation cancelled');
-      }
+		// Health monitoring will be started by ConnectionManager after extension activation
+		// This prevents blocking the constructor and allows proper async initialization
+		console.log("[PostgreSQL Connection Manager] Health monitoring will be started externally");
+	}
 
-      const client = await pool.connect();
+	static getInstance(): PostgreSqlConnectionManager {
+		if (!PostgreSqlConnectionManager.instance) {
+			PostgreSqlConnectionManager.instance = new PostgreSqlConnectionManager();
+		}
+		return PostgreSqlConnectionManager.instance;
+	}
 
-      // Test the connection
-      await client.query('SELECT 1');
+	async createConnection(connectionInfo: ConnectionInfo, cancellationToken?: AbortSignal): Promise<ConnectionHandle> {
+		try {
+			const pool = this.getOrCreatePool(connectionInfo);
 
-      Logger.debug('Database connection established', 'createConnection', {
-        connectionId: connectionInfo.id,
-        database: connectionInfo.database
-      });
+			if (cancellationToken?.aborted) {
+				throw new Error("Connection creation cancelled");
+			}
 
-      return {
-        connection: client,
-        release: () => {
-          client.release();
-          Logger.debug('Database connection released', 'createConnection', {
-            connectionId: connectionInfo.id
-          });
-        }
-      };
-    } catch (error) {
-      Logger.error('Failed to create database connection', error as Error, 'createConnection', {
-        connectionId: connectionInfo.id,
-        database: connectionInfo.database
-      });
-      throw error;
-    }
-  }
+			const client = await pool.connect();
 
-  async testConnection(connectionInfo: ConnectionInfo): Promise<boolean> {
-    try {
-      const handle = await this.createConnection(connectionInfo);
-      handle.release();
-      Logger.info('Connection test successful', 'testConnection', {
-        connectionId: connectionInfo.id,
-        database: connectionInfo.database
-      });
-      return true;
-    } catch (error) {
-      Logger.error('Connection test failed', error as Error, 'testConnection', {
-        connectionId: connectionInfo.id,
-        database: connectionInfo.database
-      });
-      return false;
-    }
-  }
+			// Test the connection
+			await client.query("SELECT 1");
 
-  private getOrCreatePool(connectionInfo: ConnectionInfo): Pool {
-    const poolKey = `${connectionInfo.host}:${connectionInfo.port}:${connectionInfo.database}`;
+			Logger.debug("Database connection established", "createConnection", {
+				connectionId: connectionInfo.id,
+				database: connectionInfo.database,
+			});
 
-    if (this.pools.has(poolKey)) {
-      return this.pools.get(poolKey)!;
-    }
+			return {
+				connection: client,
+				release: () => {
+					client.release();
+					Logger.debug("Database connection released", "createConnection", {
+						connectionId: connectionInfo.id,
+					});
+				},
+			};
+		} catch (error) {
+			Logger.error("Failed to create database connection", error as Error, "createConnection", {
+				connectionId: connectionInfo.id,
+				database: connectionInfo.database,
+			});
+			throw error;
+		}
+	}
 
-    const pool = new Pool({
-      host: connectionInfo.host,
-      port: connectionInfo.port,
-      database: connectionInfo.database,
-      user: connectionInfo.username,
-      password: connectionInfo.password,
-      ssl: connectionInfo.ssl ?? false,
-      connectionTimeoutMillis: connectionInfo.connectionTimeoutMillis ?? 10000,
-      query_timeout: connectionInfo.query_timeout ?? 30000,
-      max: 10, // Maximum number of clients in the pool
-      idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-    });
+	async testConnection(connectionInfo: ConnectionInfo): Promise<boolean> {
+		try {
+			const handle = await this.createConnection(connectionInfo);
+			handle.release();
+			Logger.info("Connection test successful", "testConnection", {
+				connectionId: connectionInfo.id,
+				database: connectionInfo.database,
+			});
+			return true;
+		} catch (error) {
+			Logger.error("Connection test failed", error as Error, "testConnection", {
+				connectionId: connectionInfo.id,
+				database: connectionInfo.database,
+			});
+			return false;
+		}
+	}
 
-    // Handle pool events
-    pool.on('connect', (client) => {
-      Logger.debug('New client connected to pool', 'pool', { poolKey });
-    });
+	private getOrCreatePool(connectionInfo: ConnectionInfo): Pool {
+		const poolKey = `${connectionInfo.host}:${connectionInfo.port}:${connectionInfo.database}`;
 
-    pool.on('error', (err, client) => {
-      Logger.error('Unexpected error on idle client', err, 'pool', { poolKey });
-    });
+		if (this.pools.has(poolKey)) {
+			return this.pools.get(poolKey)!;
+		}
 
-    this.pools.set(poolKey, pool);
-    Logger.info('Created new connection pool', 'pool', { poolKey });
+		const pool = new Pool({
+			host: connectionInfo.host,
+			port: connectionInfo.port,
+			database: connectionInfo.database,
+			user: connectionInfo.username,
+			password: connectionInfo.password,
+			ssl: connectionInfo.ssl ?? false,
+			connectionTimeoutMillis: connectionInfo.connectionTimeoutMillis ?? 10000,
+			query_timeout: connectionInfo.query_timeout ?? 30000,
+			max: 10, // Maximum number of clients in the pool
+			idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+		});
 
-    return pool;
-  }
+		// Handle pool events
+		pool.on("connect", (client) => {
+			Logger.debug("New client connected to pool", "pool", { poolKey });
+		});
 
-  async closeAllPools(): Promise<void> {
-    Logger.info('Closing all connection pools', 'closeAllPools');
+		pool.on("error", (err, client) => {
+			Logger.error("Unexpected error on idle client", err, "pool", { poolKey });
+		});
 
-    // Stop health monitoring
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = null;
-    }
+		this.pools.set(poolKey, pool);
+		Logger.info("Created new connection pool", "pool", { poolKey });
 
-    const closePromises = Array.from(this.pools.values()).map(pool =>
-      pool.end().catch(error => {
-        Logger.error('Error closing pool', error, 'closeAllPools');
-      })
-    );
+		return pool;
+	}
 
-    await Promise.all(closePromises);
-    this.pools.clear();
-    this.healthStatus.clear();
+	async closeAllPools(): Promise<void> {
+		Logger.info("Closing all connection pools", "closeAllPools");
 
-    Logger.info('All connection pools closed', 'closeAllPools');
-  }
+		// Stop health monitoring
+		if (this.healthCheckInterval) {
+			clearInterval(this.healthCheckInterval);
+			this.healthCheckInterval = null;
+		}
 
-  private startHealthMonitoring(): void {
-    // Check health every 30 seconds
-    this.healthCheckInterval = setInterval(async () => {
-      await this.performHealthChecks();
-    }, 30000);
+		const closePromises = Array.from(this.pools.values()).map((pool) =>
+			pool.end().catch((error) => {
+				Logger.error("Error closing pool", error, "closeAllPools");
+			}),
+		);
 
-    // Initial health check
-    this.performHealthChecks();
-  }
+		await Promise.all(closePromises);
+		this.pools.clear();
+		this.healthStatus.clear();
 
-  private async performHealthChecks(): Promise<void> {
-    const connectionIds = Array.from(this.healthStatus.keys());
+		Logger.info("All connection pools closed", "closeAllPools");
+	}
 
-    for (const connectionId of connectionIds) {
-      try {
-        const status = this.healthStatus.get(connectionId);
-        if (!status) {continue;}
+	private startHealthMonitoring(): void {
+		Logger.debug("Starting health monitoring", "startHealthMonitoring");
+		// Check health every 5 minutes to reduce load
+		this.healthCheckInterval = setInterval(() => {
+			// Run health checks asynchronously without blocking
+			this.performHealthChecks().catch((error) => {
+				Logger.error("Error in health monitoring", error as Error, "startHealthMonitoring");
+			});
+		}, 300000); // 5 minutes
 
-        const startTime = Date.now();
-        const isHealthy = await this.checkConnectionHealth(connectionId);
-        const responseTime = Date.now() - startTime;
+		// Initial health check with timeout
+		setTimeout(() => {
+			this.performHealthChecks().catch((error) => {
+				Logger.error("Error in initial health check", error as Error, "startHealthMonitoring");
+			});
+		}, 5000); // Delay initial check by 5 seconds
+	}
 
-        this.healthStatus.set(connectionId, {
-          ...status,
-          isHealthy,
-          lastChecked: new Date(),
-          responseTime,
-          errorMessage: isHealthy ? undefined : 'Connection health check failed',
-          poolStats: this.getPoolStats()[status.connectionId]
-        });
-      } catch (error) {
-        Logger.warn('Health check failed for connection', 'performHealthChecks', {
-          connectionId,
-          error: (error as Error).message
-        });
-      }
-    }
-  }
+	private async performHealthChecks(): Promise<void> {
+		const connectionIds = Array.from(this.healthStatus.keys());
+		Logger.debug("Performing health checks", "performHealthChecks", {
+			connectionCount: connectionIds.length,
+		});
 
-  private async checkConnectionHealth(connectionId: string): Promise<boolean> {
-    try {
-      // Get connection info from health status or find it
-      const status = this.healthStatus.get(connectionId);
-      if (!status) {return false;}
+		// Process health checks in smaller batches with longer delays
+		const batchSize = 2;
+		for (let i = 0; i < connectionIds.length; i += batchSize) {
+			const batch = connectionIds.slice(i, i + batchSize);
+			Logger.debug("Processing health check batch", "performHealthChecks", {
+				batchIndex: Math.floor(i / batchSize),
+				batchSize: batch.length,
+			});
 
-      // Create a minimal connection info for health check
-      const connectionInfo = {
-        id: connectionId,
-        name: 'Health Check',
-        host: 'localhost', // This would need to be stored or retrieved
-        port: 5432,
-        database: 'postgres',
-        username: 'postgres',
-        password: '',
-        createdDate: new Date().toISOString()
-      };
+			const batchPromises = batch.map(async (connectionId) => {
+				try {
+					const status = this.healthStatus.get(connectionId);
+					if (!status) {
+						Logger.debug("No status found for connection, skipping health check", "performHealthChecks", {
+							connectionId,
+						});
+						return;
+					}
 
-      const handle = await this.createConnection(connectionInfo);
-      handle.release();
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
+					const startTime = Date.now();
+					Logger.debug("Checking connection health", "performHealthChecks", {
+						connectionId,
+					});
 
-  getConnectionHealth(connectionId: string): ConnectionHealthStatus | undefined {
-    return this.healthStatus.get(connectionId);
-  }
+					// Add timeout to individual health checks
+					const healthCheckPromise = this.checkConnectionHealth(connectionId);
+					const timeoutPromise = new Promise<boolean>((_, reject) =>
+						setTimeout(() => reject(new Error("Health check timed out")), 10000),
+					);
 
-  getAllConnectionHealth(): ConnectionHealthStatus[] {
-    return Array.from(this.healthStatus.values());
-  }
+					const isHealthy = await Promise.race([healthCheckPromise, timeoutPromise]);
+					const responseTime = Date.now() - startTime;
 
-  registerConnectionForHealthMonitoring(connectionInfo: ConnectionInfo): void {
-    this.healthStatus.set(connectionInfo.id, {
-      connectionId: connectionInfo.id,
-      isHealthy: false,
-      lastChecked: new Date(),
-      responseTime: 0,
-      poolStats: this.getPoolStats()[`${connectionInfo.host}:${connectionInfo.port}:${connectionInfo.database}`]
-    });
-  }
+					this.healthStatus.set(connectionId, {
+						...status,
+						isHealthy,
+						lastChecked: new Date(),
+						responseTime,
+						errorMessage: isHealthy ? undefined : "Connection health check failed",
+						poolStats: this.getPoolStats()[status.connectionId],
+					});
 
-  getPoolStats(): { [key: string]: { totalCount: number; idleCount: number; waitingCount: number } } {
-    const stats: { [key: string]: { totalCount: number; idleCount: number; waitingCount: number } } = {};
+					Logger.debug("Health check completed for connection", "performHealthChecks", {
+						connectionId,
+						isHealthy,
+						responseTime,
+					});
+				} catch (error) {
+					Logger.warn("Health check failed for connection", "performHealthChecks", {
+						connectionId,
+						error: (error as Error).message,
+					});
+				}
+			});
 
-    for (const [key, pool] of this.pools) {
-      stats[key] = {
-        totalCount: pool.totalCount,
-        idleCount: pool.idleCount,
-        waitingCount: pool.waitingCount
-      };
-    }
+			// Wait for the current batch to complete before starting the next
+			await Promise.all(batchPromises);
 
-    return stats;
-  }
+			// Longer delay between batches to prevent overwhelming
+			if (i + batchSize < connectionIds.length) {
+				await new Promise((resolve) => setTimeout(resolve, 500));
+			}
+		}
 
-  // Native metadata extraction methods to replace DotNet services
-  async extractColumnMetadata(connection: ConnectionInfo, tableName: string, schema: string): Promise<NativeColumnMetadata[]> {
-    const handle = await this.createConnection(connection);
-    try {
-      const query = `
+		Logger.debug("All health checks completed", "performHealthChecks");
+	}
+
+	private async checkConnectionHealth(connectionId: string): Promise<boolean> {
+		try {
+			// Get connection info from health status or find it
+			const status = this.healthStatus.get(connectionId);
+			if (!status) {
+				return false;
+			}
+
+			// Create a minimal connection info for health check
+			const connectionInfo = {
+				id: connectionId,
+				name: "Health Check",
+				host: "localhost", // This would need to be stored or retrieved
+				port: 5432,
+				database: "postgres",
+				username: "postgres",
+				password: "",
+				createdDate: new Date().toISOString(),
+			};
+
+			// Add timeout to health check
+			const timeoutPromise = new Promise<never>((_, reject) =>
+				setTimeout(() => reject(new Error("Health check timed out")), 5000),
+			);
+
+			const healthCheckPromise = this.createConnection(connectionInfo).then((handle) => {
+				handle.release();
+				return true;
+			});
+
+			return await Promise.race([healthCheckPromise, timeoutPromise]);
+		} catch (error) {
+			return false;
+		}
+	}
+	getPoolStats(): {
+		[key: string]: {
+			totalCount: number;
+			idleCount: number;
+			waitingCount: number;
+		};
+	} {
+		const stats: {
+			[key: string]: {
+				totalCount: number;
+				idleCount: number;
+				waitingCount: number;
+			};
+		} = {};
+
+		for (const [key, pool] of this.pools) {
+			stats[key] = {
+				totalCount: pool.totalCount,
+				idleCount: pool.idleCount,
+				waitingCount: pool.waitingCount,
+			};
+		}
+
+		return stats;
+	}
+
+	// Native metadata extraction methods to replace DotNet services
+	async extractColumnMetadata(
+		connection: ConnectionInfo,
+		tableName: string,
+		schema: string,
+	): Promise<NativeColumnMetadata[]> {
+		const handle = await this.createConnection(connection);
+		try {
+			const query = `
         SELECT
           c.column_name as name,
           c.data_type as data_type,
@@ -352,36 +426,40 @@ export class PostgreSqlConnectionManager {
         ORDER BY c.ordinal_position
       `;
 
-      const result = await handle.connection.query(query, [schema, tableName]);
-      const columns: NativeColumnMetadata[] = [];
+			const result = await handle.connection.query(query, [schema, tableName]);
+			const columns: NativeColumnMetadata[] = [];
 
-      for (const row of result.rows) {
-        const column: NativeColumnMetadata = {
-          name: row.name,
-          dataType: row.data_type,
-          isNullable: row.is_nullable,
-          defaultValue: row.default_value,
-          constraints: [],
-          statistics: undefined
-        };
-        columns.push(column);
-      }
+			for (const row of result.rows) {
+				const column: NativeColumnMetadata = {
+					name: row.name,
+					dataType: row.data_type,
+					isNullable: row.is_nullable,
+					defaultValue: row.default_value,
+					constraints: [],
+					statistics: undefined,
+				};
+				columns.push(column);
+			}
 
-      // Get constraints for each column
-      for (const column of columns) {
-        column.constraints = await this.getColumnConstraints(handle.connection, tableName, schema, column.name);
-      }
+			// Get constraints for each column
+			for (const column of columns) {
+				column.constraints = await this.getColumnConstraints(handle.connection, tableName, schema, column.name);
+			}
 
-      return columns;
-    } finally {
-      handle.release();
-    }
-  }
+			return columns;
+		} finally {
+			handle.release();
+		}
+	}
 
-  async extractIndexMetadata(connection: ConnectionInfo, tableName: string, schema: string): Promise<NativeIndexMetadata[]> {
-    const handle = await this.createConnection(connection);
-    try {
-      const query = `
+	async extractIndexMetadata(
+		connection: ConnectionInfo,
+		tableName: string,
+		schema: string,
+	): Promise<NativeIndexMetadata[]> {
+		const handle = await this.createConnection(connection);
+		try {
+			const query = `
         SELECT
           i.indexname as name,
           i.indexdef,
@@ -396,29 +474,33 @@ export class PostgreSqlConnectionManager {
         GROUP BY i.indexname, i.indexdef, i.indisunique
       `;
 
-      const result = await handle.connection.query(query, [schema, tableName]);
-      const indexes: NativeIndexMetadata[] = [];
+			const result = await handle.connection.query(query, [schema, tableName]);
+			const indexes: NativeIndexMetadata[] = [];
 
-      for (const row of result.rows) {
-        const index: NativeIndexMetadata = {
-          name: row.name,
-          columnNames: row.column_names || [],
-          isUnique: row.is_unique,
-          statistics: undefined
-        };
-        indexes.push(index);
-      }
+			for (const row of result.rows) {
+				const index: NativeIndexMetadata = {
+					name: row.name,
+					columnNames: row.column_names || [],
+					isUnique: row.is_unique,
+					statistics: undefined,
+				};
+				indexes.push(index);
+			}
 
-      return indexes;
-    } finally {
-      handle.release();
-    }
-  }
+			return indexes;
+		} finally {
+			handle.release();
+		}
+	}
 
-  async extractConstraintMetadata(connection: ConnectionInfo, tableName: string, schema: string): Promise<NativeConstraintMetadata[]> {
-    const handle = await this.createConnection(connection);
-    try {
-      const query = `
+	async extractConstraintMetadata(
+		connection: ConnectionInfo,
+		tableName: string,
+		schema: string,
+	): Promise<NativeConstraintMetadata[]> {
+		const handle = await this.createConnection(connection);
+		try {
+			const query = `
         SELECT
           conname as name,
           CASE contype
@@ -437,46 +519,50 @@ export class PostgreSqlConnectionManager {
         WHERE n.nspname = $1 AND c.relname = $2
       `;
 
-      const result = await handle.connection.query(query, [schema, tableName]);
-      const constraints: NativeConstraintMetadata[] = [];
+			const result = await handle.connection.query(query, [schema, tableName]);
+			const constraints: NativeConstraintMetadata[] = [];
 
-      for (const row of result.rows) {
-        const constraint: NativeConstraintMetadata = {
-          name: row.name,
-          type: row.type,
-          definition: row.definition,
-          isEnabled: row.is_enabled,
-          referencedTable: undefined, // Will be populated for foreign keys
-          referencedColumns: []
-        };
-        constraints.push(constraint);
-      }
+			for (const row of result.rows) {
+				const constraint: NativeConstraintMetadata = {
+					name: row.name,
+					type: row.type,
+					definition: row.definition,
+					isEnabled: row.is_enabled,
+					referencedTable: undefined, // Will be populated for foreign keys
+					referencedColumns: [],
+				};
+				constraints.push(constraint);
+			}
 
-      // For foreign key constraints, extract referenced table information
-      for (const constraint of constraints) {
-        if (constraint.type === 'FOREIGN KEY' && constraint.definition) {
-          const fkMatch = constraint.definition.match(/REFERENCES\s+(\w+)\s*\(([^)]+)\)/i);
-          if (fkMatch) {
-            constraint.referencedTable = fkMatch[1];
-            constraint.referencedColumns = fkMatch[2].split(',').map(col => col.trim());
-          }
-        }
-      }
+			// For foreign key constraints, extract referenced table information
+			for (const constraint of constraints) {
+				if (constraint.type === "FOREIGN KEY" && constraint.definition) {
+					const fkMatch = constraint.definition.match(/REFERENCES\s+(\w+)\s*\(([^)]+)\)/i);
+					if (fkMatch) {
+						constraint.referencedTable = fkMatch[1];
+						constraint.referencedColumns = fkMatch[2].split(",").map((col) => col.trim());
+					}
+				}
+			}
 
-      return constraints;
-    } finally {
-      handle.release();
-    }
-  }
+			return constraints;
+		} finally {
+			handle.release();
+		}
+	}
 
-  async extractViewMetadata(connection: ConnectionInfo, viewName?: string, schema?: string): Promise<NativeViewMetadata[]> {
-    const handle = await this.createConnection(connection);
-    try {
-      let query: string;
-      let params: any[];
+	async extractViewMetadata(
+		connection: ConnectionInfo,
+		viewName?: string,
+		schema?: string,
+	): Promise<NativeViewMetadata[]> {
+		const handle = await this.createConnection(connection);
+		try {
+			let query: string;
+			let params: any[];
 
-      if (viewName && schema) {
-        query = `
+			if (viewName && schema) {
+				query = `
           SELECT
             c.relname as name,
             n.nspname as schema,
@@ -486,9 +572,9 @@ export class PostgreSqlConnectionManager {
           JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('v', 'm')
         `;
-        params = [schema, viewName];
-      } else if (schema) {
-        query = `
+				params = [schema, viewName];
+			} else if (schema) {
+				query = `
           SELECT
             c.relname as name,
             n.nspname as schema,
@@ -498,9 +584,9 @@ export class PostgreSqlConnectionManager {
           JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = $1 AND c.relkind IN ('v', 'm')
         `;
-        params = [schema];
-      } else {
-        query = `
+				params = [schema];
+			} else {
+				query = `
           SELECT
             c.relname as name,
             n.nspname as schema,
@@ -510,15 +596,15 @@ export class PostgreSqlConnectionManager {
           JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE c.relkind IN ('v', 'm') AND n.nspname NOT IN ('information_schema', 'pg_catalog')
         `;
-        params = [];
-      }
+				params = [];
+			}
 
-      const result = await handle.connection.query(query, params);
-      const views: NativeViewMetadata[] = [];
+			const result = await handle.connection.query(query, params);
+			const views: NativeViewMetadata[] = [];
 
-      for (const row of result.rows) {
-        // Get columns for this view
-        const columnsQuery = `
+			for (const row of result.rows) {
+				// Get columns for this view
+				const columnsQuery = `
           SELECT
             a.attname as name,
             pg_catalog.format_type(a.atttypid, a.atttypmod) as data_type
@@ -528,37 +614,41 @@ export class PostgreSqlConnectionManager {
           WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
           ORDER BY a.attnum
         `;
-        const columnsResult = await handle.connection.query(columnsQuery, [row.schema, row.name]);
-        const columns: ViewColumn[] = columnsResult.rows.map(col => ({
-          name: col.name,
-          dataType: col.data_type
-        }));
+				const columnsResult = await handle.connection.query(columnsQuery, [row.schema, row.name]);
+				const columns: ViewColumn[] = columnsResult.rows.map((col) => ({
+					name: col.name,
+					dataType: col.data_type,
+				}));
 
-        const view: NativeViewMetadata = {
-          name: row.name,
-          schema: row.schema,
-          definition: row.definition || '',
-          columns,
-          dependencies: [], // Will be populated by dependency analysis
-          isMaterialized: row.is_materialized
-        };
-        views.push(view);
-      }
+				const view: NativeViewMetadata = {
+					name: row.name,
+					schema: row.schema,
+					definition: row.definition || "",
+					columns,
+					dependencies: [], // Will be populated by dependency analysis
+					isMaterialized: row.is_materialized,
+				};
+				views.push(view);
+			}
 
-      return views;
-    } finally {
-      handle.release();
-    }
-  }
+			return views;
+		} finally {
+			handle.release();
+		}
+	}
 
-  async extractFunctionMetadata(connection: ConnectionInfo, functionName?: string, schema?: string): Promise<NativeFunctionMetadata[]> {
-    const handle = await this.createConnection(connection);
-    try {
-      let query: string;
-      let params: any[];
+	async extractFunctionMetadata(
+		connection: ConnectionInfo,
+		functionName?: string,
+		schema?: string,
+	): Promise<NativeFunctionMetadata[]> {
+		const handle = await this.createConnection(connection);
+		try {
+			let query: string;
+			let params: any[];
 
-      if (functionName && schema) {
-        query = `
+			if (functionName && schema) {
+				query = `
           SELECT
             p.proname as name,
             n.nspname as schema,
@@ -570,9 +660,9 @@ export class PostgreSqlConnectionManager {
           JOIN pg_language l ON l.oid = p.prolang
           WHERE n.nspname = $1 AND p.proname = $2
         `;
-        params = [schema, functionName];
-      } else if (schema) {
-        query = `
+				params = [schema, functionName];
+			} else if (schema) {
+				query = `
           SELECT
             p.proname as name,
             n.nspname as schema,
@@ -584,9 +674,9 @@ export class PostgreSqlConnectionManager {
           JOIN pg_language l ON l.oid = p.prolang
           WHERE n.nspname = $1
         `;
-        params = [schema];
-      } else {
-        query = `
+				params = [schema];
+			} else {
+				query = `
           SELECT
             p.proname as name,
             n.nspname as schema,
@@ -598,15 +688,15 @@ export class PostgreSqlConnectionManager {
           JOIN pg_language l ON l.oid = p.prolang
           WHERE n.nspname NOT IN ('information_schema', 'pg_catalog')
         `;
-        params = [];
-      }
+				params = [];
+			}
 
-      const result = await handle.connection.query(query, params);
-      const functions: NativeFunctionMetadata[] = [];
+			const result = await handle.connection.query(query, params);
+			const functions: NativeFunctionMetadata[] = [];
 
-      for (const row of result.rows) {
-        // Get parameters for this function
-        const paramsQuery = `
+			for (const row of result.rows) {
+				// Get parameters for this function
+				const paramsQuery = `
           SELECT
             coalesce(p.proargnames[ordinality], 'arg' || ordinality) as name,
             pg_catalog.format_type(unnest(p.proargtypes), null) as data_type,
@@ -626,32 +716,37 @@ export class PostgreSqlConnectionManager {
           WHERE n.nspname = $1 AND p.proname = $2
           ORDER BY ordinality
         `;
-        const paramsResult = await handle.connection.query(paramsQuery, [row.schema, row.name]);
-        const parameters: FunctionParameter[] = paramsResult.rows.map(param => ({
-          name: param.name,
-          dataType: param.data_type,
-          mode: param.mode as 'IN' | 'OUT' | 'INOUT'
-        }));
+				const paramsResult = await handle.connection.query(paramsQuery, [row.schema, row.name]);
+				const parameters: FunctionParameter[] = paramsResult.rows.map((param) => ({
+					name: param.name,
+					dataType: param.data_type,
+					mode: param.mode as "IN" | "OUT" | "INOUT",
+				}));
 
-        const func: NativeFunctionMetadata = {
-          name: row.name,
-          schema: row.schema,
-          definition: row.definition || '',
-          language: row.language,
-          returnType: row.return_type,
-          parameters
-        };
-        functions.push(func);
-      }
+				const func: NativeFunctionMetadata = {
+					name: row.name,
+					schema: row.schema,
+					definition: row.definition || "",
+					language: row.language,
+					returnType: row.return_type,
+					parameters,
+				};
+				functions.push(func);
+			}
 
-      return functions;
-    } finally {
-      handle.release();
-    }
-  }
+			return functions;
+		} finally {
+			handle.release();
+		}
+	}
 
-  private async getColumnConstraints(connection: PoolClient, tableName: string, schema: string, columnName: string): Promise<NativeConstraintMetadata[]> {
-    const query = `
+	private async getColumnConstraints(
+		connection: PoolClient,
+		tableName: string,
+		schema: string,
+		columnName: string,
+	): Promise<NativeConstraintMetadata[]> {
+		const query = `
       SELECT
         conname as name,
         CASE contype
@@ -674,19 +769,19 @@ export class PostgreSqlConnectionManager {
       )
     `;
 
-    const result = await connection.query(query, [schema, tableName, columnName]);
-    const constraints: NativeConstraintMetadata[] = [];
+		const result = await connection.query(query, [schema, tableName, columnName]);
+		const constraints: NativeConstraintMetadata[] = [];
 
-    for (const row of result.rows) {
-      const constraint: NativeConstraintMetadata = {
-        name: row.name,
-        type: row.type,
-        definition: row.definition,
-        isEnabled: row.is_enabled
-      };
-      constraints.push(constraint);
-    }
+		for (const row of result.rows) {
+			const constraint: NativeConstraintMetadata = {
+				name: row.name,
+				type: row.type,
+				definition: row.definition,
+				isEnabled: row.is_enabled,
+			};
+			constraints.push(constraint);
+		}
 
-    return constraints;
-  }
+		return constraints;
+	}
 }

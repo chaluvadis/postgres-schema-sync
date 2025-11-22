@@ -1,96 +1,99 @@
-import * as vscode from 'vscode';
-import { ConnectionManager, DatabaseConnection } from '@/managers/ConnectionManager';
-import { Logger } from '@/utils/Logger';
+import * as vscode from "vscode";
+import { ConnectionManager, DatabaseConnection } from "@/managers/ConnectionManager";
+import { Logger } from "@/utils/Logger";
 
 export class ConnectionManagementView {
-    private connectionManager: ConnectionManager;
-    constructor(connectionManager: ConnectionManager) {
-        this.connectionManager = connectionManager;
-    }
+	private connectionManager: ConnectionManager;
+	constructor(connectionManager: ConnectionManager) {
+		this.connectionManager = connectionManager;
+	}
 
-    async showConnectionDialog(existingConnection?: DatabaseConnection): Promise<DatabaseConnection | undefined> {
-        const panel = vscode.window.createWebviewPanel(
-            'connectionManagement',
-            existingConnection ? `Edit Connection: ${existingConnection.name}` : 'Add PostgreSQL Connection',
-            vscode.ViewColumn.One,
-            { enableScripts: true, retainContextWhenHidden: true }
-        );
+	async showConnectionDialog(existingConnection?: DatabaseConnection): Promise<DatabaseConnection | undefined> {
+		const panel = vscode.window.createWebviewPanel(
+			"connectionManagement",
+			existingConnection ? `Edit Connection: ${existingConnection.name}` : "Add PostgreSQL Connection",
+			vscode.ViewColumn.One,
+			{ enableScripts: true, retainContextWhenHidden: true },
+		);
 
-        const connections = this.connectionManager.getConnections();
-        const connectionHtml = await this.generateConnectionHtml(connections, existingConnection);
-        panel.webview.html = connectionHtml;
+		const connections = this.connectionManager.getConnections();
+		const connectionHtml = await this.generateConnectionHtml(connections, existingConnection);
+		panel.webview.html = connectionHtml;
 
-        return new Promise<DatabaseConnection | undefined>((resolve) => {
-            panel.webview.onDidReceiveMessage(async (message) => {
-                switch (message.command) {
-                    case 'saveConnection':
-                        try {
-                            const connection = message.connection as DatabaseConnection;
-                            if (existingConnection) {
-                                await this.connectionManager.updateConnection(existingConnection.id, connection);
-                                vscode.window.showInformationMessage(`Connection "${connection.name}" updated successfully`);
-                            } else {
-                                await this.connectionManager.addConnection(connection);
-                                vscode.window.showInformationMessage(`Connection "${connection.name}" added successfully`);
-                            }
-                            panel.dispose();
-                            resolve(connection);
-                        } catch (error) {
-                            Logger.error('Failed to save connection', error as Error);
-                            vscode.window.showErrorMessage(`Failed to save connection: ${(error as Error).message}`);
-                        }
-                        break;
+		return new Promise<DatabaseConnection | undefined>((resolve) => {
+			panel.webview.onDidReceiveMessage(async (message) => {
+				switch (message.command) {
+					case "saveConnection":
+						try {
+							const connection = message.connection as DatabaseConnection;
+							if (existingConnection) {
+								await this.connectionManager.updateConnection(existingConnection.id, connection);
+								vscode.window.showInformationMessage(`Connection "${connection.name}" updated successfully`);
+							} else {
+								await this.connectionManager.addConnection(connection);
+								vscode.window.showInformationMessage(`Connection "${connection.name}" added successfully`);
+							}
+							panel.dispose();
+							resolve(connection);
+						} catch (error) {
+							Logger.error("Failed to save connection", error as Error);
+							vscode.window.showErrorMessage(`Failed to save connection: ${(error as Error).message}`);
+						}
+						break;
 
-                    case 'testConnection':
-                        try {
-                            const connection = message.connection as DatabaseConnection;
+					case "testConnection":
+						try {
+							const connection = message.connection as DatabaseConnection;
 
-                            // Test connection - use connection data directly for new connections
-                            let success = false;
-                            if (connection.id && connection.id.trim() !== '') {
-                                // Existing connection - use ID-based test
-                                success = await this.connectionManager.testConnection(connection.id);
-                            } else {
-                                // New connection - use data-based test
-                                success = await this.connectionManager.testConnectionData({
-                                    name: connection.name,
-                                    host: connection.host,
-                                    port: connection.port,
-                                    database: connection.database,
-                                    username: connection.username,
-                                    password: connection.password
-                                });
-                            }
+							// Test connection - use connection data directly for new connections
+							let success = false;
+							if (connection.id && connection.id.trim() !== "") {
+								// Existing connection - use ID-based test
+								success = await this.connectionManager.testConnection(connection.id);
+							} else {
+								// New connection - use data-based test
+								success = await this.connectionManager.testConnectionData({
+									name: connection.name,
+									host: connection.host,
+									port: connection.port,
+									database: connection.database,
+									username: connection.username,
+									password: connection.password,
+								});
+							}
 
-                            panel.webview.postMessage({
-                                command: 'connectionTestResult',
-                                success,
-                                connectionId: connection.id || 'new'
-                            });
-                        } catch (error) {
-                            Logger.error('Failed to test connection', error as Error);
-                            panel.webview.postMessage({
-                                command: 'connectionTestResult',
-                                success: false,
-                                connectionId: message.connection.id || 'new',
-                                error: (error as Error).message
-                            });
-                        }
-                        break;
+							panel.webview.postMessage({
+								command: "connectionTestResult",
+								success,
+								connectionId: connection.id || "new",
+							});
+						} catch (error) {
+							Logger.error("Failed to test connection", error as Error);
+							panel.webview.postMessage({
+								command: "connectionTestResult",
+								success: false,
+								connectionId: message.connection.id || "new",
+								error: (error as Error).message,
+							});
+						}
+						break;
 
-                    case 'cancel':
-                        panel.dispose();
-                        resolve(undefined);
-                        break;
-                }
-            });
-        });
-    }
+					case "cancel":
+						panel.dispose();
+						resolve(undefined);
+						break;
+				}
+			});
+		});
+	}
 
-    private async generateConnectionHtml(connections: DatabaseConnection[], existingConnection?: DatabaseConnection): Promise<string> {
-        const isEdit = !!existingConnection;
+	private async generateConnectionHtml(
+		connections: DatabaseConnection[],
+		existingConnection?: DatabaseConnection,
+	): Promise<string> {
+		const isEdit = !!existingConnection;
 
-        return `
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -199,44 +202,44 @@ export class ConnectionManagementView {
                 </style>
             </head>
             <body>
-                <h2>${isEdit ? 'Edit' : 'Add'} PostgreSQL Connection</h2>
+                <h2>${isEdit ? "Edit" : "Add"} PostgreSQL Connection</h2>
 
                 <form id="connectionForm">
                     <div class="form-group">
                         <label for="connectionName">Connection Name *</label>
                         <input type="text" id="connectionName" name="connectionName"
-                               value="${existingConnection?.name || ''}" required>
+                               value="${existingConnection?.name || ""}" required>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label for="host">Host *</label>
                             <input type="text" id="host" name="host"
-                                   value="${existingConnection?.host || 'localhost'}" required>
+                                   value="${existingConnection?.host || "localhost"}" required>
                         </div>
                         <div class="form-group">
                             <label for="port">Port *</label>
                             <input type="number" id="port" name="port"
-                                   value="${existingConnection?.port || '5432'}" min="1" max="65535" required>
+                                   value="${existingConnection?.port || "5432"}" min="1" max="65535" required>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="database">Database *</label>
                         <input type="text" id="database" name="database"
-                               value="${existingConnection?.database || ''}" required>
+                               value="${existingConnection?.database || ""}" required>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label for="username">Username *</label>
                             <input type="text" id="username" name="username"
-                                   value="${existingConnection?.username || ''}" required>
+                                   value="${existingConnection?.username || ""}" required>
                         </div>
                         <div class="form-group">
                             <label for="password">Password *</label>
                             <input type="password" id="password" name="password"
-                                   value="${existingConnection?.password || ''}" required>
+                                   value="${existingConnection?.password || ""}" required>
                         </div>
                     </div>
 
@@ -250,19 +253,27 @@ export class ConnectionManagementView {
 
                 </form>
 
-                ${connections.length > 0 ? `
+                ${
+									connections.length > 0
+										? `
                 <div class="connection-list">
                     <h3>Existing Connections</h3>
-                    ${connections.map(conn => `
+                    ${connections
+											.map(
+												(conn) => `
                         <div class="connection-item">
                             <div class="connection-name">${conn.name}</div>
                             <div class="connection-details">
                                 ${conn.host}:${conn.port} / ${conn.database} (${conn.username})
                             </div>
                         </div>
-                    `).join('')}
+                    `,
+											)
+											.join("")}
                 </div>
-                ` : ''}
+                `
+										: ""
+								}
 
                 <script>
                     const vscode = acquireVsCodeApi();
@@ -291,7 +302,7 @@ export class ConnectionManagementView {
 
                     function getFormData() {
                         return {
-                            id: '${existingConnection?.id || ''}',
+                            id: '${existingConnection?.id || ""}',
                             name: document.getElementById('connectionName').value,
                             host: document.getElementById('host').value,
                             port: parseInt(document.getElementById('port').value),
@@ -349,5 +360,5 @@ export class ConnectionManagementView {
             </body>
             </html>
         `;
-    }
+	}
 }

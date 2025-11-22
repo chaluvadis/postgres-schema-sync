@@ -2,12 +2,12 @@
   "name": "postgresql-schema-sync",
   "displayName": "PostgreSQL Schema Compare & Sync",
   "description": "Advanced PostgreSQL schema comparison and synchronization extension for Visual Studio Code with enterprise-grade features",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "publisher": "nomad-in-code",
   "icon": "./resources/icon.png",
   "engines": {
     "vscode": "^1.105.0",
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
   "categories": [
     "Visualization",
@@ -190,12 +190,24 @@
         "icon": "$(question)"
       },
       {
-        "command": "postgresql.openSettings",
-        "title": "Open Settings",
-        "category": "PostgreSQL",
-        "icon": "$(settings-gear)"
-      }
-    ],
+              "command": "postgresql.openSettings",
+              "title": "Open Settings",
+              "category": "PostgreSQL",
+              "icon": "$(settings-gear)"
+            },
+            {
+              "command": "postgresql.showPerformanceDiagnostics",
+              "title": "Show Performance Diagnostics",
+              "category": "PostgreSQL",
+              "icon": "$(graph)"
+            },
+            {
+              "command": "postgresql.clearPerformanceMetrics",
+              "title": "Clear Performance Metrics",
+              "category": "PostgreSQL",
+              "icon": "$(clear-all)"
+            }
+          ],
     "menus": {
       "view/title": [
         {
@@ -321,12 +333,12 @@
         ],
         "description": "Log level for debug output"
       },
-      "postgresql.securityManager.enabled": {
+      "postgresql-schema-sync.securityManager.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable SSL/TLS certificate validation and security monitoring"
       },
-      "postgresql.securityManager.securityLevel": {
+      "postgresql-schema-sync.securityManager.securityLevel": {
         "type": "string",
         "default": "warning",
         "enum": [
@@ -341,63 +353,63 @@
         ],
         "description": "Security level for certificate validation"
       },
-      "postgresql.securityManager.certificateValidation.enabled": {
+      "postgresql-schema-sync.securityManager.certificateValidation.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable SSL/TLS certificate validation"
       },
-      "postgresql.securityManager.certificateValidation.checkRevocation": {
+      "postgresql-schema-sync.securityManager.certificateValidation.checkRevocation": {
         "type": "boolean",
         "default": false,
         "description": "Check certificate revocation lists (CRL/OCSP) - may impact performance"
       },
-      "postgresql.securityManager.certificateValidation.checkTransparency": {
+      "postgresql-schema-sync.securityManager.certificateValidation.checkTransparency": {
         "type": "boolean",
         "default": false,
         "description": "Check certificate transparency logs - may impact performance"
       },
-      "postgresql.securityManager.certificateValidation.allowSelfSigned": {
+      "postgresql-schema-sync.securityManager.certificateValidation.allowSelfSigned": {
         "type": "boolean",
         "default": false,
         "description": "Allow self-signed certificates (not recommended for production)"
       },
-      "postgresql.securityManager.certificateValidation.minKeySize": {
+      "postgresql-schema-sync.securityManager.certificateValidation.minKeySize": {
         "type": "number",
         "default": 2048,
         "minimum": 1024,
         "maximum": 4096,
         "description": "Minimum acceptable certificate key size in bits"
       },
-      "postgresql.securityManager.certificateValidation.maxValidityDays": {
+      "postgresql-schema-sync.securityManager.certificateValidation.maxValidityDays": {
         "type": "number",
         "default": 825,
         "minimum": 30,
         "maximum": 1095,
         "description": "Maximum certificate validity period in days (~2.25 years default)"
       },
-      "postgresql.securityManager.certificatePinning.enabled": {
+      "postgresql-schema-sync.securityManager.certificatePinning.enabled": {
         "type": "boolean",
         "default": false,
         "description": "Enable certificate pinning for high-security environments"
       },
-      "postgresql.securityManager.certificatePinning.autoPinTrusted": {
+      "postgresql-schema-sync.securityManager.certificatePinning.autoPinTrusted": {
         "type": "boolean",
         "default": false,
         "description": "Automatically pin certificates from trusted Certificate Authorities"
       },
-      "postgresql.securityManager.certificatePinning.requireUserApproval": {
+      "postgresql-schema-sync.securityManager.certificatePinning.requireUserApproval": {
         "type": "boolean",
         "default": true,
         "description": "Require user approval before pinning certificates"
       },
-      "postgresql.securityManager.certificatePinning.maxPinAge": {
+      "postgresql-schema-sync.securityManager.certificatePinning.maxPinAge": {
         "type": "number",
         "default": 365,
         "minimum": 30,
         "maximum": 730,
         "description": "Maximum age of pinned certificates in days"
       },
-      "postgresql.securityManager.certificatePinning.allowedHostnames": {
+      "postgresql-schema-sync.securityManager.certificatePinning.allowedHostnames": {
         "type": "array",
         "items": {
           "type": "string"
@@ -405,12 +417,12 @@
         "default": [],
         "description": "List of hostnames allowed for certificate pinning (empty allows all)"
       },
-      "postgresql.securityManager.monitoring.enabled": {
+      "postgresql-schema-sync.securityManager.monitoring.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable security event monitoring and alerting"
       },
-      "postgresql.securityManager.monitoring.alertLevels": {
+      "postgresql-schema-sync.securityManager.monitoring.alertLevels": {
         "type": "array",
         "items": {
           "type": "string",
@@ -428,89 +440,89 @@
         ],
         "description": "Security alert levels that trigger notifications"
       },
-      "postgresql.securityManager.monitoring.retentionDays": {
+      "postgresql-schema-sync.securityManager.monitoring.retentionDays": {
         "type": "number",
         "default": 90,
         "minimum": 7,
         "maximum": 365,
         "description": "Number of days to retain security events"
       },
-      "postgresql.securityManager.monitoring.maxEvents": {
+      "postgresql-schema-sync.securityManager.monitoring.maxEvents": {
         "type": "number",
         "default": 1000,
         "minimum": 100,
         "maximum": 10000,
         "description": "Maximum number of security events to store"
       },
-      "postgresql.securityManager.monitoring.autoResolveAfterDays": {
+      "postgresql-schema-sync.securityManager.monitoring.autoResolveAfterDays": {
         "type": "number",
         "default": 30,
         "minimum": 1,
         "maximum": 90,
         "description": "Auto-resolve security events after specified days"
       },
-      "postgresql.securityManager.monitoring.showNotifications": {
+      "postgresql-schema-sync.securityManager.monitoring.showNotifications": {
         "type": "boolean",
         "default": true,
         "description": "Show security notifications in VS Code"
       },
-      "postgresql.securityManager.monitoring.showInStatusBar": {
+      "postgresql-schema-sync.securityManager.monitoring.showInStatusBar": {
         "type": "boolean",
         "default": true,
         "description": "Show security status in VS Code status bar"
       },
-      "postgresql.securityManager.connectionSecurity.enforceSecureConnections": {
+      "postgresql-schema-sync.securityManager.connectionSecurity.enforceSecureConnections": {
         "type": "boolean",
         "default": false,
         "description": "Enforce secure connections - block insecure connections"
       },
-      "postgresql.securityManager.connectionSecurity.allowInsecureFallback": {
+      "postgresql-schema-sync.securityManager.connectionSecurity.allowInsecureFallback": {
         "type": "boolean",
         "default": true,
         "description": "Allow fallback to insecure connections if secure connection fails"
       },
-      "postgresql.securityManager.connectionSecurity.validateOnConnect": {
+      "postgresql-schema-sync.securityManager.connectionSecurity.validateOnConnect": {
         "type": "boolean",
         "default": true,
         "description": "Validate certificates when establishing connections"
       },
-      "postgresql.securityManager.connectionSecurity.validateOnReconnect": {
+      "postgresql-schema-sync.securityManager.connectionSecurity.validateOnReconnect": {
         "type": "boolean",
         "default": true,
         "description": "Validate certificates when reconnecting to databases"
       },
-      "postgresql.queryEditor.maxResults": {
+      "postgresql-schema-sync.queryEditor.maxResults": {
         "type": "number",
         "default": 1000,
         "minimum": 100,
         "maximum": 10000,
         "description": "Maximum number of rows to display in query results"
       },
-      "postgresql.queryEditor.queryTimeout": {
+      "postgresql-schema-sync.queryEditor.queryTimeout": {
         "type": "number",
         "default": 30,
         "minimum": 10,
         "maximum": 300,
         "description": "Query execution timeout in seconds"
       },
-      "postgresql.queryEditor.autoComplete.enabled": {
+      "postgresql-schema-sync.queryEditor.autoComplete.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable autocomplete in query editor"
       },
-      "postgresql.queryEditor.syntaxHighlighting.enabled": {
+      "postgresql-schema-sync.queryEditor.syntaxHighlighting.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable SQL syntax highlighting"
       },
-      "postgresql.queryEditor.historySize": {
+      "postgresql-schema-sync.queryEditor.historySize": {
         "type": "number",
         "default": 100,
         "minimum": 50,
         "maximum": 500,
         "description": "Maximum number of queries to keep in history"
       },
-      "postgresql.queryEditor.exportFormats": {
+      "postgresql-schema-sync.queryEditor.exportFormats": {
         "type": "array",
         "items": {
           "type": "string",
@@ -526,170 +538,170 @@
         ],
         "description": "Available export formats for query results"
       },
-      "postgresql.teamCollaboration.enabled": {
+      "postgresql-schema-sync.teamCollaboration.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable team collaboration features"
       },
-      "postgresql.teamCollaboration.autoShareQueries": {
+      "postgresql-schema-sync.teamCollaboration.autoShareQueries": {
         "type": "boolean",
         "default": false,
         "description": "Automatically share queries with team members"
       },
-      "postgresql.teamCollaboration.requireApproval": {
+      "postgresql-schema-sync.teamCollaboration.requireApproval": {
         "type": "boolean",
         "default": false,
         "description": "Require approval before sharing queries"
       },
-      "postgresql.teamCollaboration.organizationId": {
+      "postgresql-schema-sync.teamCollaboration.organizationId": {
         "type": "string",
         "default": "",
         "description": "Organization ID for multi-organization setups"
       },
-      "postgresql.performanceMonitoring.enabled": {
+      "postgresql-schema-sync.performanceMonitoring.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable performance monitoring and analytics"
       },
-      "postgresql.performanceMonitoring.slowQueryThreshold": {
+      "postgresql-schema-sync.performanceMonitoring.slowQueryThreshold": {
         "type": "number",
         "default": 5000,
         "minimum": 1000,
         "maximum": 60000,
         "description": "Threshold for slow query detection in milliseconds"
       },
-      "postgresql.performanceMonitoring.alertCooldown": {
+      "postgresql-schema-sync.performanceMonitoring.alertCooldown": {
         "type": "number",
         "default": 300,
         "minimum": 60,
         "maximum": 3600,
         "description": "Cooldown period between similar alerts in seconds"
       },
-      "postgresql.performanceMonitoring.retentionDays": {
+      "postgresql-schema-sync.performanceMonitoring.retentionDays": {
         "type": "number",
         "default": 30,
         "minimum": 7,
         "maximum": 365,
         "description": "Number of days to retain performance data"
       },
-      "postgresql.schemaDocumentation.enabled": {
+      "postgresql-schema-sync.schemaDocumentation.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable collaborative schema documentation"
       },
-      "postgresql.schemaDocumentation.requireReview": {
+      "postgresql-schema-sync.schemaDocumentation.requireReview": {
         "type": "boolean",
         "default": true,
         "description": "Require review before publishing documentation"
       },
-      "postgresql.schemaDocumentation.autoGenerate": {
+      "postgresql-schema-sync.schemaDocumentation.autoGenerate": {
         "type": "boolean",
         "default": false,
         "description": "Auto-generate documentation from schema metadata"
       },
-      "postgresql.dataExport.chunkSize": {
+      "postgresql-schema-sync.dataExport.chunkSize": {
         "type": "number",
         "default": 1000,
         "minimum": 100,
         "maximum": 10000,
         "description": "Number of rows to process in each export chunk"
       },
-      "postgresql.dataExport.parallelProcessing": {
+      "postgresql-schema-sync.dataExport.parallelProcessing": {
         "type": "boolean",
         "default": false,
         "description": "Enable parallel processing for large exports"
       },
-      "postgresql.dataExport.compression.enabled": {
+      "postgresql-schema-sync.dataExport.compression.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable compression for export files"
       },
-      "postgresql.dataExport.compression.level": {
+      "postgresql-schema-sync.dataExport.compression.level": {
         "type": "number",
         "default": 6,
         "minimum": 1,
         "maximum": 9,
         "description": "Compression level (1-9, higher = smaller files but slower)"
       },
-      "postgresql.dataImport.batchSize": {
+      "postgresql-schema-sync.dataImport.batchSize": {
         "type": "number",
         "default": 1000,
         "minimum": 100,
         "maximum": 10000,
         "description": "Number of rows to process in each import batch"
       },
-      "postgresql.dataImport.continueOnError": {
+      "postgresql-schema-sync.dataImport.continueOnError": {
         "type": "boolean",
         "default": false,
         "description": "Continue importing when errors are encountered"
       },
-      "postgresql.dataImport.validateBeforeImport": {
+      "postgresql-schema-sync.dataImport.validateBeforeImport": {
         "type": "boolean",
         "default": true,
         "description": "Validate data before performing import"
       },
-      "postgresql.backup.compression.enabled": {
+      "postgresql-schema-sync.backup.compression.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable compression for backup files"
       },
-      "postgresql.backup.encryption.enabled": {
+      "postgresql-schema-sync.backup.encryption.enabled": {
         "type": "boolean",
         "default": false,
         "description": "Enable encryption for backup files"
       },
-      "postgresql.backup.parallel.enabled": {
+      "postgresql-schema-sync.backup.parallel.enabled": {
         "type": "boolean",
         "default": false,
         "description": "Enable parallel backup processing"
       },
-      "postgresql.backup.verifyAfterCreation": {
+      "postgresql-schema-sync.backup.verifyAfterCreation": {
         "type": "boolean",
         "default": true,
         "description": "Verify backup integrity after creation"
       },
-      "postgresql.backup.retention.daily": {
+      "postgresql-schema-sync.backup.retention.daily": {
         "type": "number",
         "default": 7,
         "minimum": 1,
         "maximum": 365,
         "description": "Number of daily backups to retain"
       },
-      "postgresql.backup.retention.weekly": {
+      "postgresql-schema-sync.backup.retention.weekly": {
         "type": "number",
         "default": 4,
         "minimum": 1,
         "maximum": 52,
         "description": "Number of weekly backups to retain"
       },
-      "postgresql.backup.retention.monthly": {
+      "postgresql-schema-sync.backup.retention.monthly": {
         "type": "number",
         "default": 12,
         "minimum": 1,
         "maximum": 120,
         "description": "Number of monthly backups to retain"
       },
-      "postgresql.recovery.pointInTime.enabled": {
+      "postgresql-schema-sync.recovery.pointInTime.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable point-in-time recovery capabilities"
       },
-      "postgresql.recovery.verifyAfterRecovery": {
+      "postgresql-schema-sync.recovery.verifyAfterRecovery": {
         "type": "boolean",
         "default": true,
         "description": "Verify data integrity after recovery"
       },
-      "postgresql.validation.enabled": {
+      "postgresql-schema-sync.validation.enabled": {
         "type": "boolean",
         "default": true,
         "description": "Enable data validation features"
       },
-      "postgresql.validation.strictMode": {
+      "postgresql-schema-sync.validation.strictMode": {
         "type": "boolean",
         "default": false,
         "description": "Enable strict validation mode (fail on any warning)"
       },
-      "postgresql.validation.sampleSize": {
+      "postgresql-schema-sync.validation.sampleSize": {
         "type": "number",
         "default": 1000,
         "minimum": 100,
@@ -703,47 +715,45 @@
     "compile": "tsc -p ./",
     "build:views": "webpack --mode=production",
     "build:dev": "webpack --mode=development --watch",
-    "build": "pnpm run compile && pnpm run build:views",
-    "package": "pnpm run build && vsce package",
-    "dev": "concurrently \"pnpm run build:dev\" \"pnpm run compile -- --watch\"",
-    "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "clean": "rimraf bin out"
+    "build": "pnpm run compile && pnpm run build:views && pnpm run format",
+    "build:clean": "pnpm run clean && pnpm run build",
+    "package": "pnpm run build:clean && vsce package --no-dependencies",
+    "dev": "concurrently \"pnpm run compile -- --watch\" \"pnpm run build:dev\"",
+    "watch": "concurrently \"tsc -watch -p ./\" \"pnpm run build:dev\"",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "format": "biome format --write src",
+    "check": "biome check src && pnpm run type-check",
+    "type-check": "tsc --noEmit",
+    "clean": "pnpm clean:build && pnpm clean:vsix",
+    "clean:build": "rimraf dist",
+    "clean:vsix": "rimraf postgresql-schema-sync-0.1.0.vsix",
+    "postinstall": "echo 'Run pnpm run build:clean after installing dependencies'",
+    "knip": "knip",
+    "knip:fix": "knip --fix",
+    "knip:strict": "knip --strict",
+    "knip:production": "knip --production",
+    "knip:deps": "knip --include dependencies",
+    "knip:files": "knip --include files"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "24.10.0",
+    "@biomejs/biome": "^2.3.7",
+    "@types/node": "24.10.1",
     "@types/pg": "^8.15.6",
-    "@types/react": "^19.2.2",
-    "@types/react-dom": "^19.2.2",
-    "@types/sinon": "^17.0.4",
-    "@types/vscode": "^1.105.0",
-    "@typescript-eslint/eslint-plugin": "^8.46.3",
-    "@typescript-eslint/parser": "^8.46.3",
-    "@typescript/native-preview": "^7.0.0-dev.20251105.1",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.6.2",
+    "@types/react": "^19.2.6",
+    "@types/vscode": "^1.106.1",
+    "@vscode/vsce": "^3.7.0",
     "concurrently": "^9.2.1",
     "css-loader": "^7.1.2",
-    "esbuild": "^0.25.12",
-    "eslint": "^9.39.1",
-    "html-webpack-plugin": "^5.6.4",
-    "npm-run-all": "^4.1.5",
+    "html-webpack-plugin": "^5.6.5",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "rimraf": "^6.1.0",
-    "sinon": "^21.0.0",
+    "rimraf": "^6.1.2",
     "style-loader": "^4.0.0",
-    "ts-jest": "^29.4.5",
     "ts-loader": "^9.5.4",
-    "ts-node": "^10.9.2",
-    "webpack": "^5.102.1",
-    "webpack-cli": "^6.0.1"
+    "typescript": "^5.9.3",
+    "webpack": "^5.103.0",
+    "webpack-cli": "^6.0.1",
+    "knip":"^5.70.1"
   },
   "repository": {
     "type": "git",

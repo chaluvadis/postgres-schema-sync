@@ -1,596 +1,599 @@
-import * as vscode from 'vscode';
-import { Logger } from '@/utils/Logger';
-import { ConnectionManager } from '@/managers/ConnectionManager';
-import { ModularSchemaManager } from '@/managers/schema';
+import * as vscode from "vscode";
+import { ConnectionManager } from "@/managers/ConnectionManager";
+import { ModularSchemaManager } from "@/managers/schema";
+import { Logger } from "@/utils/Logger";
 
 export interface DashboardData {
-    connections: {
-        total: number;
-        active: number;
-        inactive: number;
-        recentActivity: ConnectionActivity[];
-    };
-    performance: {
-        averageQueryTime: number;
-        totalQueries: number;
-        cacheHitRate: number;
-        slowQueries: number;
-        trends: PerformanceTrend[];
-    };
-    schema: {
-        totalObjects: number;
-        recentChanges: SchemaChange[];
-        validationErrors: number;
-        lastSync: string;
-    };
-    security: {
-        overallStatus: 'secure' | 'warning' | 'insecure';
-        activeAlerts: number;
-        recentEvents: SecurityEvent[];
-        complianceScore: number;
-    };
-    system: {
-        uptime: string;
-        memoryUsage: NodeJS.MemoryUsage;
-        extensionVersion: string;
-        lastUpdate: string;
-    };
+	connections: {
+		total: number;
+		active: number;
+		inactive: number;
+		recentActivity: ConnectionActivity[];
+	};
+	performance: {
+		averageQueryTime: number;
+		totalQueries: number;
+		cacheHitRate: number;
+		slowQueries: number;
+		trends: PerformanceTrend[];
+	};
+	schema: {
+		totalObjects: number;
+		recentChanges: SchemaChange[];
+		validationErrors: number;
+		lastSync: string;
+	};
+	security: {
+		overallStatus: "secure" | "warning" | "insecure";
+		activeAlerts: number;
+		recentEvents: SecurityEvent[];
+		complianceScore: number;
+	};
+	system: {
+		uptime: string;
+		memoryUsage: NodeJS.MemoryUsage;
+		extensionVersion: string;
+		lastUpdate: string;
+	};
 }
 
 export interface ConnectionActivity {
-    id: string;
-    connectionName: string;
-    action: 'connected' | 'disconnected' | 'query' | 'error';
-    timestamp: string;
-    details?: string;
-    duration?: number;
+	id: string;
+	connectionName: string;
+	action: "connected" | "disconnected" | "query" | "error";
+	timestamp: string;
+	details?: string;
+	duration?: number;
 }
 
 export interface PerformanceTrend {
-    metric: string;
-    trend: 'improving' | 'degrading' | 'stable';
-    changePercent: number;
-    timeframe: string;
+	metric: string;
+	trend: "improving" | "degrading" | "stable";
+	changePercent: number;
+	timeframe: string;
 }
 
 export interface SchemaChange {
-    id: string;
-    type: 'created' | 'modified' | 'deleted';
-    objectType: string;
-    objectName: string;
-    schema: string;
-    timestamp: string;
-    user?: string;
+	id: string;
+	type: "created" | "modified" | "deleted";
+	objectType: string;
+	objectName: string;
+	schema: string;
+	timestamp: string;
+	user?: string;
 }
 
 export interface SecurityEvent {
-    id: string;
-    type: 'authentication' | 'authorization' | 'data_access' | 'configuration';
-    severity: 'low' | 'medium' | 'high' | 'critical';
-    description: string;
-    timestamp: string;
-    resolved: boolean;
+	id: string;
+	type: "authentication" | "authorization" | "data_access" | "configuration";
+	severity: "low" | "medium" | "high" | "critical";
+	description: string;
+	timestamp: string;
+	resolved: boolean;
 }
 
 export class DashboardView {
-    private panel: vscode.WebviewPanel | undefined;
-    private dashboardData: DashboardData | undefined;
-    private refreshInterval: NodeJS.Timeout | undefined;
-
-    constructor(
-        private connectionManager: ConnectionManager,
-        private schemaManager: ModularSchemaManager
-    ) { }
-
-    async showDashboard(): Promise<void> {
-        try {
-            Logger.info('Opening PostgreSQL dashboard');
-
-            this.panel = vscode.window.createWebviewPanel(
-                'postgresqlDashboard',
-                'PostgreSQL Extension Dashboard',
-                vscode.ViewColumn.One,
-                {
-                    enableScripts: true,
-                    retainContextWhenHidden: true,
-                    localResourceRoots: [
-                        vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.parse(''), 'resources')
-                    ]
-                }
-            );
-
-            // Handle panel disposal
-            this.panel.onDidDispose(() => {
-                this.panel = undefined;
-                if (this.refreshInterval) {
-                    clearInterval(this.refreshInterval);
-                    this.refreshInterval = undefined;
-                }
-            });
-
-            // Load initial data and start auto-refresh
-            await this.loadDashboardData();
-            this.startAutoRefresh();
-
-            // Generate and set HTML content
-            const htmlContent = await this.generateDashboardHtml(this.dashboardData!);
-            this.panel.webview.html = htmlContent;
-
-            // Handle messages from webview
-            this.panel.webview.onDidReceiveMessage(async (message) => {
-                await this.handleWebviewMessage(message);
-            });
-
-        } catch (error) {
-            Logger.error('Failed to show dashboard', error as Error);
-            vscode.window.showErrorMessage(
-                `Failed to open dashboard: ${(error as Error).message}`
-            );
-        }
-    }
-
-    private async loadDashboardData(): Promise<void> {
-        try {
-            const connections = this.connectionManager.getConnections();
-
-            // Mock data for demonstration - in real implementation, this would come from actual services
-            this.dashboardData = {
-                connections: {
-                    total: connections.length,
-                    active: connections.filter(c => c.status === 'Connected').length,
-                    inactive: connections.filter(c => c.status !== 'Connected').length,
-                    recentActivity: this.getRecentConnectionActivity()
-                },
-                performance: await this.getPerformanceMetrics(),
-                schema: {
-                    totalObjects: await this.getTotalSchemaObjects(),
-                    recentChanges: await this.getRecentSchemaChanges(),
-                    validationErrors: 0, // Would come from validation service
-                    lastSync: new Date().toISOString()
-                },
-                security: await this.getSecurityMetrics(),
-                system: {
-                    uptime: this.getSystemUptime(),
-                    memoryUsage: process.memoryUsage(),
-                    extensionVersion: await this.getExtensionVersion(),
-                    lastUpdate: new Date().toISOString()
-                }
-            };
-
-        } catch (error) {
-            Logger.error('Failed to load dashboard data', error as Error);
-            throw error;
-        }
-    }
-
-    private getRecentConnectionActivity(): ConnectionActivity[] {
-        try {
-            const connections = this.connectionManager.getConnections();
-            const activities: ConnectionActivity[] = [];
-
-            // Generate activities based on real connection data
-            connections.slice(0, 10).forEach((connection, index) => {
-                const baseTime = Date.now() - (index * 5 * 60 * 1000); // Spread over last 50 minutes
-
-                // Add connection activity
-                activities.push({
-                    id: `conn-${connection.id}-${Date.now()}`,
-                    connectionName: connection.name,
-                    action: connection.status === 'Connected' ? 'connected' : 'disconnected',
-                    timestamp: new Date(baseTime).toISOString(),
-                    details: `${connection.status === 'Connected' ? 'Active' : 'Inactive'} connection to ${connection.host}:${connection.port}`
-                });
-
-                // Add query activity for active connections
-                if (connection.status === 'Connected') {
-                    activities.push({
-                        id: `query-${connection.id}-${Date.now()}`,
-                        connectionName: connection.name,
-                        action: 'query',
-                        timestamp: new Date(baseTime - 2 * 60 * 1000).toISOString(),
-                        details: 'Schema query executed',
-                        duration: Math.floor(Math.random() * 100) + 20
-                    });
-                }
-            });
-
-            // Sort by timestamp (most recent first) and return top 10
-            return activities
-                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                .slice(0, 10);
-        } catch (error) {
-            Logger.error('Failed to get recent connection activity', error as Error);
-            return [];
-        }
-    }
-
-    private async getRecentSchemaChanges(): Promise<SchemaChange[]> {
-        try {
-            const connections = this.connectionManager.getConnections();
-            const changes: SchemaChange[] = [];
-
-            // Get recent schema objects and simulate changes based on object metadata
-            for (const connection of connections) {
-                if (connection.status === 'Connected') {
-                    try {
-                        const objects = await this.schemaManager.getDatabaseObjects(connection.id);
-
-                        // Create simulated recent changes based on object count and types
-                        objects.slice(0, 5).forEach((obj, index) => {
-                            const changeTime = Date.now() - (index * 30 * 60 * 1000); // Spread over last 2.5 hours
-
-                            changes.push({
-                                id: `change-${obj.id}-${Date.now()}`,
-                                type: index % 3 === 0 ? 'created' : index % 3 === 1 ? 'modified' : 'created',
-                                objectType: obj.type,
-                                objectName: obj.name,
-                                schema: obj.schema,
-                                timestamp: new Date(changeTime).toISOString(),
-                                user: 'system'
-                            });
-                        });
-                    } catch (error) {
-                        Logger.warn(`Failed to get schema changes for connection ${connection.name}`, 'getRecentSchemaChanges', error as Error);
-                    }
-                }
-            }
-
-            // Sort by timestamp and return most recent
-            return changes
-                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                .slice(0, 10);
-        } catch (error) {
-            Logger.error('Failed to get recent schema changes', error as Error);
-            return [];
-        }
-    }
-
-    private getRecentSecurityEvents(): SecurityEvent[] {
-        try {
-            const connections = this.connectionManager.getConnections();
-            const events: SecurityEvent[] = [];
-
-            // Generate security events based on connection status
-            connections.forEach((connection, index) => {
-                const eventTime = Date.now() - (index * 15 * 60 * 1000); // Spread over last time period
-
-                if (connection.status === 'Connected') {
-                    events.push({
-                        id: `security-${connection.id}-${Date.now()}`,
-                        type: 'authentication',
-                        severity: 'low',
-                        description: `Successful connection established to ${connection.name}`,
-                        timestamp: new Date(eventTime).toISOString(),
-                        resolved: true
-                    });
-                } else {
-                    events.push({
-                        id: `security-${connection.id}-${Date.now()}`,
-                        type: 'configuration',
-                        severity: 'medium',
-                        description: `Connection ${connection.name} is inactive`,
-                        timestamp: new Date(eventTime).toISOString(),
-                        resolved: false
-                    });
-                }
-            });
-
-            // Sort by timestamp and return most recent
-            return events
-                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                .slice(0, 10);
-        } catch (error) {
-            Logger.error('Failed to get recent security events', error as Error);
-            return [];
-        }
-    }
-
-    private getSystemUptime(): string {
-        try {
-            // Real uptime calculation using process.uptime()
-            const uptimeMs = process.uptime() * 1000;
-            const hours = Math.floor(uptimeMs / (1000 * 60 * 60));
-            const minutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
-            const seconds = Math.floor((uptimeMs % (1000 * 60)) / 1000);
-
-            if (hours > 0) {
-                return `${hours}h ${minutes}m ${seconds}s`;
-            } else if (minutes > 0) {
-                return `${minutes}m ${seconds}s`;
-            } else {
-                return `${seconds}s`;
-            }
-        } catch (error) {
-            Logger.error('Failed to get system uptime', error as Error);
-            return '0s';
-        }
-    }
-
-    private async getTotalSchemaObjects(): Promise<number> {
-        try {
-            const connections = this.connectionManager.getConnections();
-            let totalObjects = 0;
-
-            // Count objects from all active connections
-            for (const connection of connections) {
-                if (connection.status === 'Connected') {
-                    try {
-                        const objects = await this.schemaManager.getDatabaseObjects(connection.id);
-                        totalObjects += objects.length;
-                    } catch (error) {
-                        Logger.warn(`Failed to get objects for connection ${connection.name}`, 'getTotalSchemaObjects', error as Error);
-                        // Continue with other connections
-                    }
-                }
-            }
-
-            return totalObjects;
-        } catch (error) {
-            Logger.error('Failed to get total schema objects', error as Error);
-            return 0;
-        }
-    }
-
-    private async getPerformanceMetrics(): Promise<{
-        averageQueryTime: number;
-        totalQueries: number;
-        cacheHitRate: number;
-        slowQueries: number;
-        trends: PerformanceTrend[];
-    }> {
-        try {
-            // Get real performance data from actual operations
-            const performanceData = await this.getRealPerformanceData();
-
-            // Calculate cache hit rate based on actual cache performance
-            const cacheHitRate = await this.calculateCacheHitRate();
-
-            // Get slow queries from actual query logs
-            const slowQueries = await this.getSlowQueryCount();
-
-            // Calculate trends based on historical data
-            await this.getPerformanceTrendsFromHistory();
-
-            return {
-                averageQueryTime: performanceData.averageQueryTime,
-                totalQueries: performanceData.totalQueries,
-                cacheHitRate: cacheHitRate,
-                slowQueries: slowQueries,
-                trends: this.getFallbackPerformanceTrends()
-            };
-        } catch (error) {
-            Logger.error('Failed to get performance metrics', error as Error, 'getPerformanceMetrics');
-            // Return fallback metrics with error indication
-            return {
-                averageQueryTime: 45,
-                totalQueries: 0,
-                cacheHitRate: 0.85,
-                slowQueries: 0,
-                trends: this.getFallbackPerformanceTrends()
-            };
-        }
-    }
-
-    private async getRealPerformanceData(): Promise<{
-        averageQueryTime: number;
-        totalQueries: number;
-    }> {
-        // In a real implementation, this would query actual performance data
-        // For now, we'll use improved mock data based on real connection states
-        const connections = this.connectionManager.getConnections();
-        const activeConnections = connections.filter(c => c.status === 'Connected');
-
-        // Base metrics
-        let totalQueryTime = 0;
-        let totalQueries = 0;
-
-        // Simulate performance data based on connection activity
-        for (const connection of activeConnections) {
-            // Simulate query performance based on connection health
-            const connectionUptime = Date.now() - (connection as any).lastActivity || Date.now();
-            const hoursUptime = connectionUptime / (1000 * 60 * 60);
-
-            // Active connections that have been up longer tend to have more queries
-            const queriesForConnection = Math.floor(50 * Math.min(hoursUptime, 24) / 24);
-            const avgQueryTime = 45 + (Math.random() * 20); // 45-65ms variation
-
-            totalQueries += queriesForConnection;
-            totalQueryTime += queriesForConnection * avgQueryTime;
-        }
-
-        const averageQueryTime = totalQueries > 0 ? Math.floor(totalQueryTime / totalQueries) : 45;
-
-        return {
-            averageQueryTime,
-            totalQueries
-        };
-    }
-
-    private async calculateCacheHitRate(): Promise<number> {
-        try {
-            // In a real implementation, this would check actual cache statistics
-            const connections = this.connectionManager.getConnections();
-            const activeConnections = connections.filter(c => c.status === 'Connected');
-            const totalConnections = connections.length;
-
-            if (totalConnections === 0) { return 0.85; }
-
-            // Calculate cache hit rate based on connection stability and activity
-            const connectionStability = activeConnections.length / totalConnections;
-
-            // Simulate cache performance - stable connections have better cache performance
-            const baseCacheHitRate = 0.7;
-            const stabilityBonus = connectionStability * 0.25; // Up to 25% bonus for stability
-            const activityBonus = Math.min(0, 0.05); // Up to 5% bonus for activity (placeholder for now)
-
-            return Math.min(0.98, baseCacheHitRate + stabilityBonus + activityBonus);
-        } catch (error) {
-            Logger.warn('Failed to calculate cache hit rate, using default', 'calculateCacheHitRate', error as Error);
-            return 0.85;
-        }
-    }
-
-    private async getSlowQueryCount(): Promise<number> {
-        try {
-            // In a real implementation, this would query slow query logs
-            const connections = this.connectionManager.getConnections();
-            const inactiveConnections = connections.filter(c => c.status !== 'Connected');
-
-            // Estimate slow queries based on inactive connections and errors
-            const baseSlowQueries = Math.floor(inactiveConnections.length * 2); // 2 slow queries per inactive connection
-
-            // Add some random variation for realism
-            const variation = Math.floor(Math.random() * 5) - 2; // -2 to +2
-
-            return Math.max(0, baseSlowQueries + variation);
-        } catch (error) {
-            Logger.warn('Failed to get slow query count, using default', 'getSlowQueryCount', error as Error);
-            return 0;
-        }
-    }
-
-    private async getPerformanceTrendsFromHistory(): Promise<PerformanceTrend[]> {
-        try {
-            // In a real implementation, this would query historical performance data
-            const connections = this.connectionManager.getConnections();
-            const activeConnections = connections.filter(c => c.status === 'Connected');
-            const totalConnections = connections.length;
-
-            if (totalConnections === 0) {
-                return this.getFallbackPerformanceTrends();
-            }
-
-            const connectionTrend = totalConnections > 0 ?
-                (activeConnections.length / totalConnections > 0.8 ? 'improving' : 'stable') : 'stable';
-
-            // Get memory usage trend
-            const memoryUsage = process.memoryUsage();
-            const memoryUsagePercent = (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100;
-            const memoryTrend = memoryUsagePercent > 80 ? 'degrading' : 'stable';
-
-            // Get query performance trend
-            const performanceData = await this.getRealPerformanceData();
-            const queryTrend = performanceData.averageQueryTime < 50 ? 'improving' : 'stable';
-
-            return [
-                {
-                    metric: 'Active Connections',
-                    trend: connectionTrend,
-                    changePercent: totalConnections > 0 ?
-                        ((activeConnections.length / totalConnections - 0.8) * 100) : 0,
-                    timeframe: 'Last Hour'
-                },
-                {
-                    metric: 'Memory Usage',
-                    trend: memoryTrend,
-                    changePercent: memoryUsagePercent - 50,
-                    timeframe: 'Current'
-                },
-                {
-                    metric: 'Query Performance',
-                    trend: queryTrend,
-                    changePercent: (50 - performanceData.averageQueryTime) * 2, // Convert to percentage
-                    timeframe: 'Last Hour'
-                }
-            ];
-        } catch (error) {
-            Logger.warn('Failed to get performance trends, using fallback', 'getPerformanceTrendsFromHistory', error as Error);
-            return this.getFallbackPerformanceTrends();
-        }
-    }
-
-    private getFallbackPerformanceTrends(): PerformanceTrend[] {
-        return [
-            {
-                metric: 'System Health',
-                trend: 'stable',
-                changePercent: 0,
-                timeframe: 'Current'
-            }
-        ];
-    }
-
-    private async getSecurityMetrics(): Promise<{
-        overallStatus: 'secure' | 'warning' | 'insecure';
-        activeAlerts: number;
-        recentEvents: SecurityEvent[];
-        complianceScore: number;
-    }> {
-        try {
-            const connections = this.connectionManager.getConnections();
-            const activeConnections = connections.filter(c => c.status === 'Connected');
-            const totalConnections = connections.length;
-
-            // Calculate security metrics based on real connection data
-            const connectionHealth = totalConnections > 0 ? (activeConnections.length / totalConnections) : 1;
-            const inactiveConnections = totalConnections - activeConnections.length;
-
-            // Determine overall status based on connection health
-            let overallStatus: 'secure' | 'warning' | 'insecure' = 'secure';
-            if (connectionHealth < 0.5) {
-                overallStatus = 'insecure';
-            } else if (connectionHealth < 0.8) {
-                overallStatus = 'warning';
-            }
-
-            // Calculate compliance score based on multiple factors
-            const baseScore = 100;
-            const inactivePenalty = inactiveConnections * 5; // -5 points per inactive connection
-            const healthBonus = connectionHealth * 10; // Up to +10 points for good health
-            const complianceScore = Math.max(0, Math.min(100, baseScore - inactivePenalty + healthBonus));
-
-            return {
-                overallStatus,
-                activeAlerts: inactiveConnections,
-                recentEvents: this.getRecentSecurityEvents(),
-                complianceScore: Math.round(complianceScore)
-            };
-        } catch (error) {
-            Logger.error('Failed to get security metrics', error as Error);
-            return {
-                overallStatus: 'secure',
-                activeAlerts: 0,
-                recentEvents: this.getRecentSecurityEvents(),
-                complianceScore: 95
-            };
-        }
-    }
-
-    private async getExtensionVersion(): Promise<string> {
-        try {
-            // Try to read version from package.json
-            const fs = require('fs');
-            const path = require('path');
-
-            const packageJsonPath = path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', 'package.json');
-            if (fs.existsSync(packageJsonPath)) {
-                const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-                return packageJson.version || '1.0.0';
-            }
-
-            return '1.0.0';
-        } catch (error) {
-            Logger.error('Failed to get extension version', error as Error);
-            return '1.0.0';
-        }
-    }
-
-    private startAutoRefresh(): void {
-        this.refreshInterval = setInterval(async () => {
-            await this.refreshDashboard();
-        }, 30000); // Refresh every 30 seconds
-    }
-
-    private async refreshDashboard(): Promise<void> {
-        if (this.panel && this.panel.visible) {
-            await this.loadDashboardData();
-            const htmlContent = await this.generateDashboardHtml(this.dashboardData!);
-            this.panel.webview.html = htmlContent;
-        }
-    }
-
-    private async generateDashboardHtml(data: DashboardData): Promise<string> {
-        return `
+	private panel: vscode.WebviewPanel | undefined;
+	private dashboardData: DashboardData | undefined;
+	private refreshInterval: NodeJS.Timeout | undefined;
+
+	constructor(
+		private connectionManager: ConnectionManager,
+		private schemaManager: ModularSchemaManager,
+	) {}
+
+	async showDashboard(): Promise<void> {
+		try {
+			Logger.info("Opening PostgreSQL dashboard");
+
+			this.panel = vscode.window.createWebviewPanel(
+				"postgresqlDashboard",
+				"PostgreSQL Extension Dashboard",
+				vscode.ViewColumn.One,
+				{
+					enableScripts: true,
+					retainContextWhenHidden: true,
+					localResourceRoots: [
+						vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.parse(""), "resources"),
+					],
+				},
+			);
+
+			// Handle panel disposal
+			this.panel.onDidDispose(() => {
+				this.panel = undefined;
+				if (this.refreshInterval) {
+					clearInterval(this.refreshInterval);
+					this.refreshInterval = undefined;
+				}
+			});
+
+			// Load initial data and start auto-refresh
+			await this.loadDashboardData();
+			this.startAutoRefresh();
+
+			// Generate and set HTML content
+			const htmlContent = await this.generateDashboardHtml(this.dashboardData!);
+			this.panel.webview.html = htmlContent;
+
+			// Handle messages from webview
+			this.panel.webview.onDidReceiveMessage(async (message) => {
+				await this.handleWebviewMessage(message);
+			});
+		} catch (error) {
+			Logger.error("Failed to show dashboard", error as Error);
+			vscode.window.showErrorMessage(`Failed to open dashboard: ${(error as Error).message}`);
+		}
+	}
+
+	private async loadDashboardData(): Promise<void> {
+		try {
+			const connections = this.connectionManager.getConnections();
+
+			// Mock data for demonstration - in real implementation, this would come from actual services
+			this.dashboardData = {
+				connections: {
+					total: connections.length,
+					active: connections.filter((c) => c.status === "Connected").length,
+					inactive: connections.filter((c) => c.status !== "Connected").length,
+					recentActivity: this.getRecentConnectionActivity(),
+				},
+				performance: await this.getPerformanceMetrics(),
+				schema: {
+					totalObjects: await this.getTotalSchemaObjects(),
+					recentChanges: await this.getRecentSchemaChanges(),
+					validationErrors: 0, // Would come from validation service
+					lastSync: new Date().toISOString(),
+				},
+				security: await this.getSecurityMetrics(),
+				system: {
+					uptime: this.getSystemUptime(),
+					memoryUsage: process.memoryUsage(),
+					extensionVersion: await this.getExtensionVersion(),
+					lastUpdate: new Date().toISOString(),
+				},
+			};
+		} catch (error) {
+			Logger.error("Failed to load dashboard data", error as Error);
+			throw error;
+		}
+	}
+
+	private getRecentConnectionActivity(): ConnectionActivity[] {
+		try {
+			const connections = this.connectionManager.getConnections();
+			const activities: ConnectionActivity[] = [];
+
+			// Generate activities based on real connection data
+			connections.slice(0, 10).forEach((connection, index) => {
+				const baseTime = Date.now() - index * 5 * 60 * 1000; // Spread over last 50 minutes
+
+				// Add connection activity
+				activities.push({
+					id: `conn-${connection.id}-${Date.now()}`,
+					connectionName: connection.name,
+					action: connection.status === "Connected" ? "connected" : "disconnected",
+					timestamp: new Date(baseTime).toISOString(),
+					details: `${connection.status === "Connected" ? "Active" : "Inactive"} connection to ${connection.host}:${connection.port}`,
+				});
+
+				// Add query activity for active connections
+				if (connection.status === "Connected") {
+					activities.push({
+						id: `query-${connection.id}-${Date.now()}`,
+						connectionName: connection.name,
+						action: "query",
+						timestamp: new Date(baseTime - 2 * 60 * 1000).toISOString(),
+						details: "Schema query executed",
+						duration: Math.floor(Math.random() * 100) + 20,
+					});
+				}
+			});
+
+			// Sort by timestamp (most recent first) and return top 10
+			return activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
+		} catch (error) {
+			Logger.error("Failed to get recent connection activity", error as Error);
+			return [];
+		}
+	}
+
+	private async getRecentSchemaChanges(): Promise<SchemaChange[]> {
+		try {
+			const connections = this.connectionManager.getConnections();
+			const changes: SchemaChange[] = [];
+
+			// Get recent schema objects and simulate changes based on object metadata
+			for (const connection of connections) {
+				if (connection.status === "Connected") {
+					try {
+						const objects = await this.schemaManager.getDatabaseObjects(connection.id);
+
+						// Create simulated recent changes based on object count and types
+						objects.slice(0, 5).forEach((obj, index) => {
+							const changeTime = Date.now() - index * 30 * 60 * 1000; // Spread over last 2.5 hours
+
+							changes.push({
+								id: `change-${obj.id}-${Date.now()}`,
+								type: index % 3 === 0 ? "created" : index % 3 === 1 ? "modified" : "created",
+								objectType: obj.type,
+								objectName: obj.name,
+								schema: obj.schema,
+								timestamp: new Date(changeTime).toISOString(),
+								user: "system",
+							});
+						});
+					} catch (error) {
+						Logger.warn(
+							`Failed to get schema changes for connection ${connection.name}`,
+							"getRecentSchemaChanges",
+							error as Error,
+						);
+					}
+				}
+			}
+
+			// Sort by timestamp and return most recent
+			return changes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
+		} catch (error) {
+			Logger.error("Failed to get recent schema changes", error as Error);
+			return [];
+		}
+	}
+
+	private getRecentSecurityEvents(): SecurityEvent[] {
+		try {
+			const connections = this.connectionManager.getConnections();
+			const events: SecurityEvent[] = [];
+
+			// Generate security events based on connection status
+			connections.forEach((connection, index) => {
+				const eventTime = Date.now() - index * 15 * 60 * 1000; // Spread over last time period
+
+				if (connection.status === "Connected") {
+					events.push({
+						id: `security-${connection.id}-${Date.now()}`,
+						type: "authentication",
+						severity: "low",
+						description: `Successful connection established to ${connection.name}`,
+						timestamp: new Date(eventTime).toISOString(),
+						resolved: true,
+					});
+				} else {
+					events.push({
+						id: `security-${connection.id}-${Date.now()}`,
+						type: "configuration",
+						severity: "medium",
+						description: `Connection ${connection.name} is inactive`,
+						timestamp: new Date(eventTime).toISOString(),
+						resolved: false,
+					});
+				}
+			});
+
+			// Sort by timestamp and return most recent
+			return events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
+		} catch (error) {
+			Logger.error("Failed to get recent security events", error as Error);
+			return [];
+		}
+	}
+
+	private getSystemUptime(): string {
+		try {
+			// Real uptime calculation using process.uptime()
+			const uptimeMs = process.uptime() * 1000;
+			const hours = Math.floor(uptimeMs / (1000 * 60 * 60));
+			const minutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
+			const seconds = Math.floor((uptimeMs % (1000 * 60)) / 1000);
+
+			if (hours > 0) {
+				return `${hours}h ${minutes}m ${seconds}s`;
+			} else if (minutes > 0) {
+				return `${minutes}m ${seconds}s`;
+			} else {
+				return `${seconds}s`;
+			}
+		} catch (error) {
+			Logger.error("Failed to get system uptime", error as Error);
+			return "0s";
+		}
+	}
+
+	private async getTotalSchemaObjects(): Promise<number> {
+		try {
+			const connections = this.connectionManager.getConnections();
+			let totalObjects = 0;
+
+			// Count objects from all active connections
+			for (const connection of connections) {
+				if (connection.status === "Connected") {
+					try {
+						const objects = await this.schemaManager.getDatabaseObjects(connection.id);
+						totalObjects += objects.length;
+					} catch (error) {
+						Logger.warn(
+							`Failed to get objects for connection ${connection.name}`,
+							"getTotalSchemaObjects",
+							error as Error,
+						);
+						// Continue with other connections
+					}
+				}
+			}
+
+			return totalObjects;
+		} catch (error) {
+			Logger.error("Failed to get total schema objects", error as Error);
+			return 0;
+		}
+	}
+
+	private async getPerformanceMetrics(): Promise<{
+		averageQueryTime: number;
+		totalQueries: number;
+		cacheHitRate: number;
+		slowQueries: number;
+		trends: PerformanceTrend[];
+	}> {
+		try {
+			// Get real performance data from actual operations
+			const performanceData = await this.getRealPerformanceData();
+
+			// Calculate cache hit rate based on actual cache performance
+			const cacheHitRate = await this.calculateCacheHitRate();
+
+			// Get slow queries from actual query logs
+			const slowQueries = await this.getSlowQueryCount();
+
+			// Calculate trends based on historical data
+			await this.getPerformanceTrendsFromHistory();
+
+			return {
+				averageQueryTime: performanceData.averageQueryTime,
+				totalQueries: performanceData.totalQueries,
+				cacheHitRate: cacheHitRate,
+				slowQueries: slowQueries,
+				trends: this.getFallbackPerformanceTrends(),
+			};
+		} catch (error) {
+			Logger.error("Failed to get performance metrics", error as Error, "getPerformanceMetrics");
+			// Return fallback metrics with error indication
+			return {
+				averageQueryTime: 45,
+				totalQueries: 0,
+				cacheHitRate: 0.85,
+				slowQueries: 0,
+				trends: this.getFallbackPerformanceTrends(),
+			};
+		}
+	}
+
+	private async getRealPerformanceData(): Promise<{
+		averageQueryTime: number;
+		totalQueries: number;
+	}> {
+		// In a real implementation, this would query actual performance data
+		// For now, we'll use improved mock data based on real connection states
+		const connections = this.connectionManager.getConnections();
+		const activeConnections = connections.filter((c) => c.status === "Connected");
+
+		// Base metrics
+		let totalQueryTime = 0;
+		let totalQueries = 0;
+
+		// Simulate performance data based on connection activity
+		for (const connection of activeConnections) {
+			// Simulate query performance based on connection health
+			const connectionUptime = Date.now() - (connection as any).lastActivity || Date.now();
+			const hoursUptime = connectionUptime / (1000 * 60 * 60);
+
+			// Active connections that have been up longer tend to have more queries
+			const queriesForConnection = Math.floor((50 * Math.min(hoursUptime, 24)) / 24);
+			const avgQueryTime = 45 + Math.random() * 20; // 45-65ms variation
+
+			totalQueries += queriesForConnection;
+			totalQueryTime += queriesForConnection * avgQueryTime;
+		}
+
+		const averageQueryTime = totalQueries > 0 ? Math.floor(totalQueryTime / totalQueries) : 45;
+
+		return {
+			averageQueryTime,
+			totalQueries,
+		};
+	}
+
+	private async calculateCacheHitRate(): Promise<number> {
+		try {
+			// In a real implementation, this would check actual cache statistics
+			const connections = this.connectionManager.getConnections();
+			const activeConnections = connections.filter((c) => c.status === "Connected");
+			const totalConnections = connections.length;
+
+			if (totalConnections === 0) {
+				return 0.85;
+			}
+
+			// Calculate cache hit rate based on connection stability and activity
+			const connectionStability = activeConnections.length / totalConnections;
+
+			// Simulate cache performance - stable connections have better cache performance
+			const baseCacheHitRate = 0.7;
+			const stabilityBonus = connectionStability * 0.25; // Up to 25% bonus for stability
+			const activityBonus = Math.min(0, 0.05); // Up to 5% bonus for activity (placeholder for now)
+
+			return Math.min(0.98, baseCacheHitRate + stabilityBonus + activityBonus);
+		} catch (error) {
+			Logger.warn("Failed to calculate cache hit rate, using default", "calculateCacheHitRate", error as Error);
+			return 0.85;
+		}
+	}
+
+	private async getSlowQueryCount(): Promise<number> {
+		try {
+			// In a real implementation, this would query slow query logs
+			const connections = this.connectionManager.getConnections();
+			const inactiveConnections = connections.filter((c) => c.status !== "Connected");
+
+			// Estimate slow queries based on inactive connections and errors
+			const baseSlowQueries = Math.floor(inactiveConnections.length * 2); // 2 slow queries per inactive connection
+
+			// Add some random variation for realism
+			const variation = Math.floor(Math.random() * 5) - 2; // -2 to +2
+
+			return Math.max(0, baseSlowQueries + variation);
+		} catch (error) {
+			Logger.warn("Failed to get slow query count, using default", "getSlowQueryCount", error as Error);
+			return 0;
+		}
+	}
+
+	private async getPerformanceTrendsFromHistory(): Promise<PerformanceTrend[]> {
+		try {
+			// In a real implementation, this would query historical performance data
+			const connections = this.connectionManager.getConnections();
+			const activeConnections = connections.filter((c) => c.status === "Connected");
+			const totalConnections = connections.length;
+
+			if (totalConnections === 0) {
+				return this.getFallbackPerformanceTrends();
+			}
+
+			const connectionTrend =
+				totalConnections > 0 ? (activeConnections.length / totalConnections > 0.8 ? "improving" : "stable") : "stable";
+
+			// Get memory usage trend
+			const memoryUsage = process.memoryUsage();
+			const memoryUsagePercent = (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100;
+			const memoryTrend = memoryUsagePercent > 80 ? "degrading" : "stable";
+
+			// Get query performance trend
+			const performanceData = await this.getRealPerformanceData();
+			const queryTrend = performanceData.averageQueryTime < 50 ? "improving" : "stable";
+
+			return [
+				{
+					metric: "Active Connections",
+					trend: connectionTrend,
+					changePercent: totalConnections > 0 ? (activeConnections.length / totalConnections - 0.8) * 100 : 0,
+					timeframe: "Last Hour",
+				},
+				{
+					metric: "Memory Usage",
+					trend: memoryTrend,
+					changePercent: memoryUsagePercent - 50,
+					timeframe: "Current",
+				},
+				{
+					metric: "Query Performance",
+					trend: queryTrend,
+					changePercent: (50 - performanceData.averageQueryTime) * 2, // Convert to percentage
+					timeframe: "Last Hour",
+				},
+			];
+		} catch (error) {
+			Logger.warn(
+				"Failed to get performance trends, using fallback",
+				"getPerformanceTrendsFromHistory",
+				error as Error,
+			);
+			return this.getFallbackPerformanceTrends();
+		}
+	}
+
+	private getFallbackPerformanceTrends(): PerformanceTrend[] {
+		return [
+			{
+				metric: "System Health",
+				trend: "stable",
+				changePercent: 0,
+				timeframe: "Current",
+			},
+		];
+	}
+
+	private async getSecurityMetrics(): Promise<{
+		overallStatus: "secure" | "warning" | "insecure";
+		activeAlerts: number;
+		recentEvents: SecurityEvent[];
+		complianceScore: number;
+	}> {
+		try {
+			const connections = this.connectionManager.getConnections();
+			const activeConnections = connections.filter((c) => c.status === "Connected");
+			const totalConnections = connections.length;
+
+			// Calculate security metrics based on real connection data
+			const connectionHealth = totalConnections > 0 ? activeConnections.length / totalConnections : 1;
+			const inactiveConnections = totalConnections - activeConnections.length;
+
+			// Determine overall status based on connection health
+			let overallStatus: "secure" | "warning" | "insecure" = "secure";
+			if (connectionHealth < 0.5) {
+				overallStatus = "insecure";
+			} else if (connectionHealth < 0.8) {
+				overallStatus = "warning";
+			}
+
+			// Calculate compliance score based on multiple factors
+			const baseScore = 100;
+			const inactivePenalty = inactiveConnections * 5; // -5 points per inactive connection
+			const healthBonus = connectionHealth * 10; // Up to +10 points for good health
+			const complianceScore = Math.max(0, Math.min(100, baseScore - inactivePenalty + healthBonus));
+
+			return {
+				overallStatus,
+				activeAlerts: inactiveConnections,
+				recentEvents: this.getRecentSecurityEvents(),
+				complianceScore: Math.round(complianceScore),
+			};
+		} catch (error) {
+			Logger.error("Failed to get security metrics", error as Error);
+			return {
+				overallStatus: "secure",
+				activeAlerts: 0,
+				recentEvents: this.getRecentSecurityEvents(),
+				complianceScore: 95,
+			};
+		}
+	}
+
+	private async getExtensionVersion(): Promise<string> {
+		try {
+			// Try to read version from package.json
+			const fs = require("fs");
+			const path = require("path");
+
+			const packageJsonPath = path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "", "package.json");
+			if (fs.existsSync(packageJsonPath)) {
+				const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+				return packageJson.version || "1.0.0";
+			}
+
+			return "1.0.0";
+		} catch (error) {
+			Logger.error("Failed to get extension version", error as Error);
+			return "1.0.0";
+		}
+	}
+
+	private startAutoRefresh(): void {
+		this.refreshInterval = setInterval(async () => {
+			await this.refreshDashboard();
+		}, 30000); // Refresh every 30 seconds
+	}
+
+	private async refreshDashboard(): Promise<void> {
+		if (this.panel && this.panel.visible) {
+			await this.loadDashboardData();
+			const htmlContent = await this.generateDashboardHtml(this.dashboardData!);
+			this.panel.webview.html = htmlContent;
+		}
+	}
+
+	private async generateDashboardHtml(data: DashboardData): Promise<string> {
+		return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -1013,7 +1016,9 @@ export class DashboardView {
                                 <div style="margin-top: 15px;">
                                     <div style="font-size: 12px; font-weight: bold; margin-bottom: 8px;">Recent Activity</div>
                                     <div class="activity-list">
-                                        ${data.connections.recentActivity.map(activity => `
+                                        ${data.connections.recentActivity
+																					.map(
+																						(activity) => `
                                             <div class="activity-item">
                                                 <div class="activity-icon activity-${activity.action}"></div>
                                                 <div class="activity-content">
@@ -1021,7 +1026,9 @@ export class DashboardView {
                                                     <div class="activity-time">${new Date(activity.timestamp).toLocaleTimeString()}</div>
                                                 </div>
                                             </div>
-                                        `).join('')}
+                                        `,
+																					)
+																					.join("")}
                                     </div>
                                 </div>
                             </div>
@@ -1060,17 +1067,21 @@ export class DashboardView {
 
                                 <div style="margin-top: 15px;">
                                     <div style="font-size: 12px; font-weight: bold; margin-bottom: 8px;">Performance Trends</div>
-                                    ${data.performance.trends.map(trend => `
+                                    ${data.performance.trends
+																			.map(
+																				(trend) => `
                                         <div class="trend-item">
                                             <span class="trend-metric">${trend.metric}</span>
                                             <span class="trend-indicator trend-${trend.trend}">
                                                 <span class="trend-arrow">
-                                                    ${trend.trend === 'improving' ? '↗' : trend.trend === 'degrading' ? '↘' : '→'}
+                                                    ${trend.trend === "improving" ? "↗" : trend.trend === "degrading" ? "↘" : "→"}
                                                 </span>
-                                                ${trend.changePercent > 0 ? '+' : ''}${trend.changePercent.toFixed(1)}%
+                                                ${trend.changePercent > 0 ? "+" : ""}${trend.changePercent.toFixed(1)}%
                                             </span>
                                         </div>
-                                    `).join('')}
+                                    `,
+																			)
+																			.join("")}
                                 </div>
                             </div>
                         </div>
@@ -1097,7 +1108,7 @@ export class DashboardView {
                                         <div class="metric-label">Recent Changes</div>
                                     </div>
                                     <div class="metric-item">
-                                        <div class="metric-value" style="color: ${data.schema.validationErrors > 0 ? 'var(--vscode-gitDecoration-deletedResourceForeground)' : 'var(--vscode-gitDecoration-addedResourceForeground)'};">${data.schema.validationErrors}</div>
+                                        <div class="metric-value" style="color: ${data.schema.validationErrors > 0 ? "var(--vscode-gitDecoration-deletedResourceForeground)" : "var(--vscode-gitDecoration-addedResourceForeground)"};">${data.schema.validationErrors}</div>
                                         <div class="metric-label">Validation Errors</div>
                                     </div>
                                 </div>
@@ -1105,7 +1116,9 @@ export class DashboardView {
                                 <div style="margin-top: 15px;">
                                     <div style="font-size: 12px; font-weight: bold; margin-bottom: 8px;">Recent Changes</div>
                                     <div class="schema-changes">
-                                        ${data.schema.recentChanges.map(change => `
+                                        ${data.schema.recentChanges
+																					.map(
+																						(change) => `
                                             <div class="change-item">
                                                 <div class="change-icon change-${change.type}"></div>
                                                 <div>
@@ -1115,7 +1128,9 @@ export class DashboardView {
                                                     </div>
                                                 </div>
                                             </div>
-                                        `).join('')}
+                                        `,
+																					)
+																					.join("")}
                                     </div>
                                 </div>
                             </div>
@@ -1142,7 +1157,7 @@ export class DashboardView {
 
                                 <div class="metric-grid">
                                     <div class="metric-item">
-                                        <div class="metric-value" style="color: ${data.security.activeAlerts > 0 ? 'var(--vscode-gitDecoration-deletedResourceForeground)' : 'var(--vscode-gitDecoration-addedResourceForeground)'};">${data.security.activeAlerts}</div>
+                                        <div class="metric-value" style="color: ${data.security.activeAlerts > 0 ? "var(--vscode-gitDecoration-deletedResourceForeground)" : "var(--vscode-gitDecoration-addedResourceForeground)"};">${data.security.activeAlerts}</div>
                                         <div class="metric-label">Active Alerts</div>
                                     </div>
                                     <div class="metric-item">
@@ -1250,45 +1265,46 @@ export class DashboardView {
             </body>
             </html>
         `;
-    }
+	}
 
-    private async handleWebviewMessage(message: any): Promise<void> {
-        switch (message.command) {
-            case 'refreshDashboard':
-                await this.refreshDashboard();
-                break;
+	private async handleWebviewMessage(message: any): Promise<void> {
+		switch (message.command) {
+			case "refreshDashboard":
+				await this.refreshDashboard();
+				break;
 
-            case 'manageConnections':
-                await vscode.commands.executeCommand('postgresql.manageConnections');
-                break;
+			case "manageConnections":
+				await vscode.commands.executeCommand("postgresql.manageConnections");
+				break;
 
-            case 'viewPerformanceReport':
-                vscode.window.showInformationMessage('Performance report feature not yet implemented');
-                break;
+			case "viewPerformanceReport":
+				vscode.window.showInformationMessage("Performance report feature not yet implemented");
+				break;
 
-            case 'browseSchema':
-                await vscode.commands.executeCommand('postgresql.browseSchema');
-                break;
+			case "browseSchema":
+				await vscode.commands.executeCommand("postgresql.browseSchema");
+				break;
 
+			case "viewSystemInfo":
+				await this.showSystemInformation();
+				break;
 
-            case 'viewSystemInfo':
-                await this.showSystemInformation();
-                break;
+			case "exportDashboard":
+				await this.exportDashboardReport();
+				break;
 
-            case 'exportDashboard':
-                await this.exportDashboardReport();
-                break;
+			case "openSettings":
+				await vscode.commands.executeCommand("postgresql.openSettings");
+				break;
+		}
+	}
 
-            case 'openSettings':
-                await vscode.commands.executeCommand('postgresql.openSettings');
-                break;
-        }
-    }
+	private async showSystemInformation(): Promise<void> {
+		if (!this.dashboardData) {
+			return;
+		}
 
-    private async showSystemInformation(): Promise<void> {
-        if (!this.dashboardData) { return; }
-
-        const systemInfo = `
+		const systemInfo = `
 System Information:
 - Extension Version: ${this.dashboardData.system.extensionVersion}
 - Uptime: ${this.dashboardData.system.uptime}
@@ -1298,38 +1314,40 @@ System Information:
 - Last Update: ${new Date(this.dashboardData.system.lastUpdate).toLocaleString()}
         `;
 
-        const outputChannel = vscode.window.createOutputChannel('PostgreSQL System Info');
-        outputChannel.clear();
-        outputChannel.appendLine(systemInfo);
-        outputChannel.show();
-    }
+		const outputChannel = vscode.window.createOutputChannel("PostgreSQL System Info");
+		outputChannel.clear();
+		outputChannel.appendLine(systemInfo);
+		outputChannel.show();
+	}
 
-    private async exportDashboardReport(): Promise<void> {
-        if (!this.dashboardData) { return; }
+	private async exportDashboardReport(): Promise<void> {
+		if (!this.dashboardData) {
+			return;
+		}
 
-        try {
-            const reportContent = this.generateDashboardReport(this.dashboardData);
-            const uri = await vscode.window.showSaveDialog({
-                filters: {
-                    'Text Files': ['txt'],
-                    'JSON Files': ['json'],
-                    'All Files': ['*']
-                },
-                defaultUri: vscode.Uri.file(`postgresql-dashboard-${new Date().toISOString().split('T')[0]}.txt`)
-            });
+		try {
+			const reportContent = this.generateDashboardReport(this.dashboardData);
+			const uri = await vscode.window.showSaveDialog({
+				filters: {
+					"Text Files": ["txt"],
+					"JSON Files": ["json"],
+					"All Files": ["*"],
+				},
+				defaultUri: vscode.Uri.file(`postgresql-dashboard-${new Date().toISOString().split("T")[0]}.txt`),
+			});
 
-            if (uri) {
-                await vscode.workspace.fs.writeFile(uri, Buffer.from(reportContent, 'utf8'));
-                vscode.window.showInformationMessage('Dashboard report exported successfully');
-            }
-        } catch (error) {
-            Logger.error('Failed to export dashboard report', error as Error);
-            vscode.window.showErrorMessage('Failed to export dashboard report');
-        }
-    }
+			if (uri) {
+				await vscode.workspace.fs.writeFile(uri, Buffer.from(reportContent, "utf8"));
+				vscode.window.showInformationMessage("Dashboard report exported successfully");
+			}
+		} catch (error) {
+			Logger.error("Failed to export dashboard report", error as Error);
+			vscode.window.showErrorMessage("Failed to export dashboard report");
+		}
+	}
 
-    private generateDashboardReport(data: DashboardData): string {
-        return `PostgreSQL Extension Dashboard Report
+	private generateDashboardReport(data: DashboardData): string {
+		return `PostgreSQL Extension Dashboard Report
 Generated: ${new Date().toISOString()}
 
 CONNECTIONS:
@@ -1361,17 +1379,17 @@ SYSTEM:
 - Extension Version: ${data.system.extensionVersion}
 - Last Update: ${new Date(data.system.lastUpdate).toLocaleString()}
 `;
-    }
+	}
 
-    dispose(): void {
-        if (this.panel) {
-            this.panel.dispose();
-            this.panel = undefined;
-        }
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-            this.refreshInterval = undefined;
-        }
-        this.dashboardData = undefined;
-    }
+	dispose(): void {
+		if (this.panel) {
+			this.panel.dispose();
+			this.panel = undefined;
+		}
+		if (this.refreshInterval) {
+			clearInterval(this.refreshInterval);
+			this.refreshInterval = undefined;
+		}
+		this.dashboardData = undefined;
+	}
 }
