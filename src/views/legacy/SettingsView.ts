@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { Logger } from "@/utils/Logger";
 
-export interface ExtensionSettings {
+interface ExtensionSettings {
 	compare: {
 		mode: "strict" | "lenient";
 		ignoreSchemas: string[];

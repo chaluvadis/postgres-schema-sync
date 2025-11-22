@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-export interface LogEntry {
+interface LogEntry {
 	level: LogLevel;
 	message: string;
 	timestamp: Date;
@@ -8,7 +8,7 @@ export interface LogEntry {
 	metadata?: Record<string, any> | undefined;
 }
 
-export enum LogLevel {
+enum LogLevel {
 	Trace = 0,
 	Debug = 1,
 	Info = 2,

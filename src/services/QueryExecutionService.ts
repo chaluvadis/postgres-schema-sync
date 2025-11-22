@@ -4,7 +4,7 @@ import { SchemaOperations } from "@/managers/schema/SchemaOperations";
 import { getUUId } from "@/utils/helper";
 import { Logger } from "@/utils/Logger";
 
-export interface QueryResult {
+interface QueryResult {
 	id: string;
 	query: string;
 	executionTime: number;
@@ -16,19 +16,19 @@ export interface QueryResult {
 	timestamp: Date;
 }
 
-export interface QueryColumn {
+interface QueryColumn {
 	name: string;
 	type: string;
 	nullable: boolean;
 }
 
-export interface QueryOptions {
+interface QueryOptions {
 	timeout?: number;
 	maxRows?: number;
 	includeExecutionPlan?: boolean;
 }
 
-export interface IntelliSenseSuggestion {
+interface IntelliSenseSuggestion {
 	label: string;
 	kind: "table" | "column" | "function" | "keyword" | "schema";
 	detail?: string;

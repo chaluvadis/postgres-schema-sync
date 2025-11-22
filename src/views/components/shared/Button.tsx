@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { vscodeTheme } from "../../theme/vscode-theme";
 
-export interface ButtonProps {
+interface ButtonProps {
 	children: React.ReactNode;
 	onClick: () => void;
 	variant?: "primary" | "secondary" | "danger" | "success";
